@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.aspire/
+.env.local
+
+# bun.lock checkas IN — den styr att Aspire kör AppHosten med bun.
+# En package-lock.json ska aldrig finnas här.
+package-lock.json
