@@ -11,6 +11,7 @@ import { authRoutes } from './routes/auth.ts';
 import { requestRoutes } from './routes/requests.ts';
 import { bidRoutes } from './routes/bids.ts';
 import { meRoutes } from './routes/me.ts';
+import { contractRoutes } from './routes/contracts.ts';
 import { registerValidation } from './plugins/validation.ts';
 
 export const API_PREFIX = '/api/v1';
@@ -62,6 +63,7 @@ export async function buildServer(options: BuildServerOptions = {}) {
   await app.register(requestRoutes, { prefix: API_PREFIX });
   await app.register(bidRoutes, { prefix: API_PREFIX });
   await app.register(meRoutes, { prefix: API_PREFIX });
+  await app.register(contractRoutes, { prefix: API_PREFIX });
 
   return app;
 }

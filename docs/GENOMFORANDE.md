@@ -115,6 +115,10 @@ Två fallgropar i `Bun.SQL`, båda upptäckta genom att gå på dem:
    `= ANY(${ids})` och `= ANY(${ids}::uuid[])` ger *"malformed array literal"*. Använd
    `IN ${sql(ids)}` — hjälparen expanderar till en parametriserad lista. Den kräver en
    icke-tom array, så anroparen måste returnera tidigt vid tom sida.
+3. **En `jsonb`-kolumn kommer tillbaka som sträng**, medan ett `jsonb`-*uttryck*
+   (`'{"a":1}'::jsonb`) kommer tillbaka som objekt. Skillnaden är lätt att missa: felet
+   dyker inte upp vid läsningen utan i serialiseringen, som en 500:a med beskedet
+   `"bidId" is required!`. `parseTerms` i `db/contracts.ts` parsar därför explicit.
 
 ---
 
@@ -423,6 +427,17 @@ Ingen body. Semantik:
 
 Svar: `{ contractId, status, buyerSignedAt, sellerSignedAt, terms }`.
 
+**Ingen kropp — men `content-type: application/json` måste tålas.** Fastify avvisar annars
+en tom kropp med 400 (*"Body cannot be empty…"*), och de flesta HTTP-klienter sätter
+content-type på varje POST oavsett. Det upptäcktes först när flödet kördes mot levande
+Aspire: `inject()` utan payload sätter ingen content-type, så hela testsviten missade det.
+Parsern i `plugins/validation.ts` gör en tom kropp till `undefined`, vilket för routes som
+kräver en kropp faller ut som 422 istället för 400. Låst av S7.1b–S7.1d.
+
+**Serialisering.** Låset tas på **förfrågningsraden** (`FOR UPDATE OF r`), inte på avtalet:
+avtalet finns inte ännu när den första signaturen kommer, så det går inte att låsa. En
+förfrågan kan bara ha ett avtal, vilket gör förfrågan till rätt seriliseringspunkt.
+
 > Detta är den enda designtolkning i planen som inte är direkt given av uppgiften: kravlistan
 > nämner "signera avtal" men inget separat "acceptera anbud". Vi låter köparens signatur
 > *vara* accepterandet, vilket håller ytan vid sju API:er utan att tappa något steg i flödet.
@@ -558,14 +573,23 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | L4.4b | Okänd status ⇒ 422 |
 | L4.4c | Sidbrytning fungerar som för förfrågningar |
 | **S7** | **Signera avtal** |
-| S7.1 | Köparens signatur skapar avtal ⇒ 200, `pending_signatures`, terms frusna |
+| S7.1 | Köparens signatur skapar avtal ⇒ 200, `pending_signatures`, terms frusna, förfrågan fortfarande `open` |
+| S7.1b | Tom kropp med `content-type: application/json` ⇒ 200 (se §6.1) |
+| S7.1c | Tom kropp där en kropp krävs ⇒ 422, inte 400 |
+| S7.1d | Trasig JSON ⇒ 400 |
 | S7.2 | Säljarens signatur därefter ⇒ `active` |
-| S7.3 | Vid `active`: förfrågan blir `awarded`, övriga anbud `rejected` |
+| S7.3 | Vid `active`: förfrågan blir `awarded`, vinnande anbud `accepted`, övriga `rejected` |
+| S7.3b | Ett avslaget anbud går inte att signera ⇒ 422 |
 | S7.4 | Säljaren signerar först ⇒ 409 |
+| S7.4b | Okänt anbud ⇒ 404 |
+| S7.4c | Utan token ⇒ 401 |
 | S7.5 | Utomstående användare ⇒ 403 |
-| S7.6 | Samma part signerar två gånger ⇒ 200, oförändrade tidsstämplar |
+| S7.5b | Utomstående ⇒ 403 även innan avtalet finns |
+| S7.6 | Samma part signerar två gånger ⇒ 200, oförändrade tidsstämplar, ett avtal i tabellen |
+| S7.6b | Signatur på ett redan aktivt avtal ändrar ingenting |
 | S7.7 | Ändrat anbud efter avtalet påverkar inte `terms` |
 | S7.8 | Två samtidiga signaturer ger exakt ett avtal (`FOR UPDATE`-test) |
+| S7.8b | Samtidiga signaturer från båda parter aktiverar avtalet en gång |
 | **M** | **Migrationsrunner** (etapp 1) |
 | M.1 | Migrationerna läses i filnamnsordning |
 | M.2 | En katalog utan migrationer är inte ett fel |
@@ -575,7 +599,7 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | **D** | **Domänenheter (utan databas)** |
 | D.1 | Ersättningsformen till och från kolumner: fastpris fyller bara fixed-kolumnen, timpris bara timkolumnerna, ogiltiga belopp och timmar kastar, och en rad som bryter mot formen tolkas inte utan kastar |
 | D.2 | Totalberäkning: fastpris är sitt eget total, timpris = rate × timmar avrundat i minorenhet, halva ören uppåt, ingen flyttalsdrift |
-| D.3 | Signaturstatens övergångar som ren funktion |
+| D.3 | Signaturstatens övergångar som ren funktion: första signaturen aktiverar inte, andra gör det, ordningen är likgiltig, samma part igen är verkningslös, `void` går inte att signera, indata muteras inte |
 | D.4 | `bigint` från `Bun.SQL` (string) → `number`; null förblir null; belopp utanför säkra heltal och skräp kastar; `toMinorColumn` kräver positivt heltal |
 | **X** | **Tvärsnitt** |
 | X.1 | `/docs/json` validerar som OpenAPI 3.1 och innehåller alla sju operationerna |
@@ -583,7 +607,7 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | X.3 | `/health` svarar 200 när databasen är nåbar, 503 annars |
 | X.4 | Okänd väg ⇒ 404 i Problem Details-format |
 
-Totalt 85 testfall, varav 68 gröna — allt utom S7.\*, D.3 och X.1/X.2/X.4.
+Totalt 95 testfall, varav 92 gröna — kvar är bara X.1, X.2 och X.4 i etapp 7.
 Matrisen är levande — den *ska* ändras i dialogen (§8.1).
 
 ### 7.3 Körning
@@ -651,8 +675,8 @@ Varje etapp är en pull-liknande enhet med en tydlig grön-tröskel.
 | **3** ✅ | Förfrågningar (API 5) | `requests`-migrering (enum-typer, budget-check, sidbrytningsindex), TypeBox-scheman, `domain/money.ts`, route | **Klar.** F5.\* och D.4 gröna; 28/28 i hela sviten |
 | **4** ✅ | Anbud (API 6) | `bids`-migrering med CHECK på ersättningsformen och partiellt unikt index, `domain/bid-rules.ts`, route | **Klar.** F6.\*, D.1, D.2 gröna; 49/49 i hela sviten |
 | **5** ✅ | Listnings-API:er (API 3–4) | Joins utan N+1, markörsidbrytning, filter, `004_contracts.sql` (tidigarelagd), dubbla valideringsregimer | **Klar.** L3.\*, L4.\* gröna; 68/68 i hela sviten |
-| **6** | Avtalssignering (API 7) | Transaktionell tillståndsmaskin med `sql.begin` + `SELECT … FOR UPDATE` (tabellen finns sedan etapp 5) | S7.\*, D.3 gröna |
-| **7** | Dokumentation & finish | `operationId`/`tags`/felsvar på alla routes, Problem Details överallt, `docs/API.md` | X.\* gröna; hela sviten (85 fall) grön; Swagger UI körbar mot levande API |
+| **6** ✅ | Avtalssignering (API 7) | `domain/contract-rules.ts`, transaktionell tillståndsmaskin med `sql.begin` + `FOR UPDATE OF r`, frysta villkor, tom-kropp-parser | **Klar.** S7.\*, D.3 gröna; 92/92 i hela sviten; hela flödet kört mot levande Aspire |
+| **7** | Dokumentation & finish | `operationId`/`tags`/felsvar på alla routes, Problem Details överallt, `docs/API.md` | X.\* gröna; hela sviten (95 fall) grön; Swagger UI körbar mot levande API |
 
 Etapp 0–1 är infrastruktur och skrivs inte testdrivet i strikt mening — de *är* verktyget som
 gör resten testdriven. Från etapp 2 gäller §8.1 utan undantag.

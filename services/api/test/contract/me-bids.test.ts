@@ -92,9 +92,9 @@ test('L4.2 status speglar avtalsflödet', async () => {
   const accepted = await placeBid(seller, requestId);
   const rejected = await placeBid(otherSeller, requestId);
 
-  // Avtalsflödet som sätter detta kommer i etapp 6.
-  await ctx.sql`UPDATE bids SET status = 'accepted' WHERE id = ${accepted}`;
-  await ctx.sql`UPDATE bids SET status = 'rejected' WHERE id = ${rejected}`;
+  // Genom det riktiga flödet: båda signaturerna aktiverar avtalet och avgör anbuden.
+  await buyer.post(`/api/v1/bids/${accepted}/contract/signatures`);
+  await seller.post(`/api/v1/bids/${accepted}/contract/signatures`);
 
   const mine = (await seller.get('/api/v1/me/bids')).json<Page>().items;
   const theirs = (await otherSeller.get('/api/v1/me/bids')).json<Page>().items;
@@ -118,18 +118,17 @@ test('L4.3 contract visar signaturläget när avtal finns', async () => {
   const requestId = await createRequest('Uppdrag med påbörjat avtal');
   const bidId = await placeBid(seller, requestId);
 
-  const [contract] = (await ctx.sql`
-    INSERT INTO contracts (request_id, bid_id, terms, buyer_signed_at)
-    VALUES (${requestId}, ${bidId}, ${JSON.stringify({ note: 'frysta villkor' })}, now())
-    RETURNING id
-  `) as { id: string }[];
+  // Köparens signatur skapar avtalet; säljaren har inte signerat än.
+  const signed = await buyer.post(`/api/v1/bids/${bidId}/contract/signatures`);
+  expect(signed.statusCode).toBe(200);
+  const contractId = signed.json<{ contractId: string }>().contractId;
 
   const item = (await seller.get('/api/v1/me/bids')).json<Page>().items.find(
     (i) => i.id === bidId,
   );
 
   expect(item!.contract).toEqual({
-    id: contract!.id,
+    id: contractId,
     status: 'pending_signatures',
     buyerSigned: true,
     sellerSigned: false,

@@ -103,6 +103,31 @@ export const bidExists = () =>
     detail: 'Du har redan ett aktivt anbud på den här förfrågan.',
   });
 
+export const bidNotFound = () =>
+  new ProblemError({
+    status: 404,
+    slug: 'bid-not-found',
+    title: 'Anbudet finns inte',
+    detail: 'Det finns inget anbud med det id:t.',
+  });
+
+export const notAParty = () =>
+  new ProblemError({
+    status: 403,
+    slug: 'not-a-party',
+    title: 'Inte part i avtalet',
+    detail: 'Bara förfrågans köpare och anbudets säljare kan signera.',
+  });
+
+export const noContractYet = () =>
+  new ProblemError({
+    status: 409,
+    slug: 'no-contract-yet',
+    title: 'Inget avtal att signera',
+    detail:
+      'Köparen signerar först, vilket skapar avtalet. Det finns inget att signera ännu.',
+  });
+
 /**
  * Översätter Fastifys valideringsfel till 422 med fältpekare.
  * 400 är reserverat för trasig syntax; ett schemabrott är semantiskt (planens §8.1).
