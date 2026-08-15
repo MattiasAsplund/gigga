@@ -25,3 +25,20 @@ export const ProblemSchema = Type.Object(
 );
 
 export const UuidSchema = Type.String({ format: 'uuid' });
+
+/** Belopp anges alltid i minorenhet (öre) — aldrig decimaltal. */
+export const MoneySchema = Type.Object(
+  {
+    amountMinor: Type.Integer({
+      minimum: 1,
+      description: 'Belopp i minorenhet, t.ex. 4500000 för 45 000,00 kr.',
+      examples: [4500000],
+    }),
+    currency: Type.String({
+      pattern: '^[A-Z]{3}$',
+      default: 'SEK',
+      description: 'ISO 4217, versaler.',
+    }),
+  },
+  { additionalProperties: false, $id: 'Money', title: 'Money' },
+);

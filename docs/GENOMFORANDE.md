@@ -129,7 +129,6 @@ fastgig/
 │   └── api/
 │       ├── package.json
 │       ├── tsconfig.json
-│       ├── bunfig.toml         # testinställningar (preload av global setup)
 │       ├── migrations/
 │       │   ├── 001_users.sql
 │       │   ├── 002_requests.sql
@@ -156,8 +155,8 @@ fastgig/
 │       │   │   ├── request.ts
 │       │   │   ├── bid.ts
 │       │   │   └── contract.ts
-│       │   ├── domain/         # ren logik, inga I/O-beroenden
-│       │   │   ├── money.ts
+│       │   ├── domain/         # ren logik, inga I/O-beroenden och därmed snabba tester
+│       │   │   ├── money.ts    # minorenhet in/ut ur bigint-kolumner
 │       │   │   ├── bid-rules.ts
 │       │   │   └── contract-rules.ts
 │       │   └── routes/
@@ -481,11 +480,15 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | A2.2 + A2.3 | Fel lösenord respektive okänd e-post ⇒ 401 med **byte-identisk** kropp (ett testfall, eftersom likheten är själva påståendet) |
 | A2.4 | Utgången, manipulerad, obegriplig och saknad token ⇒ 401 |
 | **F5** | **Registrera förfrågan** |
-| F5.1 | Giltig förfrågan ⇒ 201, status `open`, buyerId = anroparen |
+| F5.1 | Giltig förfrågan ⇒ 201, status `open`, buyerId = anroparen, budget som `number` |
+| F5.1b | Budget och deadline är valfria ⇒ `null` i svaret, inte utelämnade fält |
 | F5.2 | Utan token ⇒ 401 |
-| F5.3 | Deadline i dåtid ⇒ 422 |
-| F5.4 | Budget med negativt belopp ⇒ 422 |
-| F5.5 | Titel över maxlängd ⇒ 422 |
+| F5.3 | Deadline i dåtid ⇒ 422 med pekare på `deadlineAt` |
+| F5.4 | Budget med negativt belopp ⇒ 422 med pekare på `budget.amountMinor` |
+| F5.4b | Nollbudget ⇒ 422 |
+| F5.5 | Titel över maxlängd (120) ⇒ 422 |
+| F5.5b | Tom titel ⇒ 422 |
+| F5.5c | Okänd `compensationPref` ⇒ 422 |
 | **F6** | **Registrera anbud** |
 | F6.1 | Fastprisanbud ⇒ 201, status `submitted` |
 | F6.2 | Timanbud med rate + estimatedHours ⇒ 201 |
@@ -520,21 +523,20 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | M.2 | En katalog utan migrationer är inte ett fel |
 | M.3 | `migrate` applicerar i ordning och är idempotent vid andra körningen |
 | M.4 | En migration som fallerar halvvägs rullas tillbaka helt och bokförs inte |
-| M.5 | Boot-migrering mot en tom databas (verifierad manuellt mot Aspire i etapp 2 — testriggen kör mot malldatabasen och täcker inte den vägen) |
+| M.5 | Migrering från tom databas: malldatabasen rivs och byggs om vid varje testkörning, så hela migrationskedjan körs från noll varje gång. Endast `index.ts`-anropet vid boot är otestat, och det verifierades manuellt mot Aspire i etapp 2 |
 | **D** | **Domänenheter (utan databas)** |
 | D.1 | Ersättningsvalidering: alla giltiga/ogiltiga kombinationer |
 | D.2 | Totalberäkning för timanbud (rate × timmar, avrundning i minorenhet) |
 | D.3 | Signaturstatens övergångar som ren funktion |
-| D.4 | `bigint`/`numeric` från `Bun.SQL` mappas till rätt JS-typ, aldrig implicit `string` |
+| D.4 | `bigint` från `Bun.SQL` (string) → `number`; null förblir null; belopp utanför säkra heltal och skräp kastar; `toMinorColumn` kräver positivt heltal |
 | **X** | **Tvärsnitt** |
 | X.1 | `/docs/json` validerar som OpenAPI 3.1 och innehåller alla sju operationerna |
 | X.2 | Varje route har `operationId`, `tags` och beskrivna felsvar |
 | X.3 | `/health` svarar 200 när databasen är nåbar, 503 annars |
 | X.4 | Okänd väg ⇒ 404 i Problem Details-format |
 
-Totalt 51 testfall, varav 14 gröna (A1.\*, A2.\*, M.1–M.4, X.3:s båda vägar). M.5 är
-markerad som manuellt verifierad, inte automatiserad. Matrisen är levande — den *ska*
-ändras i dialogen (§8.1).
+Totalt 60 testfall, varav 28 gröna (A1.\*, A2.\*, F5.\*, D.4, M.1–M.4, X.3:s båda vägar).
+Matrisen är levande — den *ska* ändras i dialogen (§8.1).
 
 ### 7.3 Körning
 
@@ -598,11 +600,11 @@ Varje etapp är en pull-liknande enhet med en tydlig grön-tröskel.
 | **0** ✅ | Grund | `aspire init --language typescript`, `bun install` ⇒ `bun.lock`, bort med `package-lock.json` + `tsx`/`nodemon`, `aspire add postgresql`, `aspire add javascript`, bun-workspaces, podman-socket, `services/api`-skelett | **Klar.** `aspire start` gav alla resurser `Running/Healthy`; CLI-loggen visade `GuestRuntime for TypeScript (Bun)`; `/health` → `{"status":"ok","database":"up"}`; `/docs/json` → `openapi: 3.1.0`; `podman ps` visade `postgres:17-alpine` + `pgweb`; `aspire stop` rev båda |
 | **1** ✅ | Testrigg | `Bun.$`-postgreshelper med återanvänd container + malldatabas, `buildTestApp()`, migrationsrunner med transaktion per migration | **Klar.** X.3 grön (både 200- och 503-vägen); migrationsrunnern har fyra egna testfall (ordning, tom katalog, idempotens, rollback); 6/6 gröna; trasig assertion ger svar på 0,95 s varm |
 | **2** ✅ | Konto & inloggning (API 1–2) | `users`-migrering (citext), `Bun.password` (argon2id), `@fastify/jwt`, `requireAuth`, Problem Details-hanteraren, `actors.ts` | **Klar.** A1.\*, A2.\* gröna; 14/14 i hela sviten; register/dubblett/login/fel-lösenord verifierade mot levande Aspire |
-| **3** | Förfrågningar (API 5) | `requests`-migrering, TypeBox-scheman, route | F5.\* gröna |
-| **4** | Anbud (API 6) | `bids`-migrering, diskriminerad ersättningsunion, domänregler, beloppsmappning | F6.\*, D.1, D.2, D.4 gröna |
+| **3** ✅ | Förfrågningar (API 5) | `requests`-migrering (enum-typer, budget-check, sidbrytningsindex), TypeBox-scheman, `domain/money.ts`, route | **Klar.** F5.\* och D.4 gröna; 28/28 i hela sviten |
+| **4** | Anbud (API 6) | `bids`-migrering, diskriminerad ersättningsunion, domänregler | F6.\*, D.1, D.2 gröna |
 | **5** | Listnings-API:er (API 3–4) | Joins, sidbrytning, filter | L3.\*, L4.\* gröna |
 | **6** | Avtalssignering (API 7) | `contracts`-migrering, transaktionell tillståndsmaskin med `sql.begin` + `SELECT … FOR UPDATE` | S7.\*, D.3 gröna |
-| **7** | Dokumentation & finish | `operationId`/`tags`/felsvar på alla routes, Problem Details överallt, `docs/API.md` | X.\* gröna; hela sviten (51 fall) grön; Swagger UI körbar mot levande API |
+| **7** | Dokumentation & finish | `operationId`/`tags`/felsvar på alla routes, Problem Details överallt, `docs/API.md` | X.\* gröna; hela sviten (60 fall) grön; Swagger UI körbar mot levande API |
 
 Etapp 0–1 är infrastruktur och skrivs inte testdrivet i strikt mening — de *är* verktyget som
 gör resten testdriven. Från etapp 2 gäller §8.1 utan undantag.

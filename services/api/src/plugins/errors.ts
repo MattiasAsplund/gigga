@@ -58,6 +58,19 @@ export const invalidCredentials = () =>
     detail: 'E-postadressen eller lösenordet stämmer inte.',
   });
 
+/**
+ * Semantiska valideringsfel som schemat inte kan uttrycka — t.ex. "deadline måste ligga
+ * i framtiden". Samma form som schemabrotten, så klienten bara behöver hantera en.
+ */
+export const validationFailed = (errors: FieldError[], detail?: string) =>
+  new ProblemError({
+    status: 422,
+    slug: 'validation-failed',
+    title: 'Ogiltig indata',
+    detail: detail ?? 'Begäran validerade inte mot reglerna.',
+    errors,
+  });
+
 export const emailTaken = () =>
   new ProblemError({
     status: 409,
