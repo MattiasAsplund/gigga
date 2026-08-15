@@ -1,0 +1,132 @@
+# fastgig API
+
+Kort översikt. **Swagger är sanningen** — kör `aspire run` och öppna `/docs` för det
+fullständiga, alltid aktuella kontraktet. Det här dokumentet finns för att komma igång och
+för att förklara konventioner som ett schema inte kan uttrycka.
+
+- Bas: `/api/v1`
+- OpenAPI 3.1: `/docs/json`
+- Swagger UI: `/docs`
+- Hälsa: `/health` (utanför versionsprefixet)
+
+## Autentisering
+
+`POST /auth/register` och `POST /auth/login` ger en access-token. Skicka den som
+`Authorization: Bearer <token>`. Livslängd 1 timme; det finns inga refresh-tokens ännu.
+
+**Rollerna är inte fasta.** Samma konto kan vara köpare i en förfrågan och säljare i en
+annan. Behörighet avgörs alltid av ägarskap i just den raden, aldrig av en roll på kontot.
+
+## Konventioner
+
+**Belopp** anges som heltal i minorenhet (öre) med separat valuta — `4500000` är 45 000,00
+kr. Aldrig decimaltal. `currency` är valfri och betyder `SEK` om den utelämnas.
+
+**Tid** är alltid ISO 8601 med tidszon, i UTC.
+
+**Fel** följer RFC 9457 och kommer som `application/problem+json`:
+
+```json
+{
+  "type": "https://fastgig.dev/problems/validation-failed",
+  "title": "Ogiltig indata",
+  "status": 422,
+  "detail": "Begäran validerade inte mot schemat.",
+  "errors": [{ "path": "budget.amountMinor", "message": "must be >= 1" }]
+}
+```
+
+`type` är stabil och den enda delen ett program bör grena på. Statuskoderna används så här:
+
+| Kod | Betyder |
+|---|---|
+| 401 | Token saknas, är utgången eller ogiltig |
+| 403 | Inloggad, men fel part för den här resursen |
+| 404 | Resursen finns inte |
+| 409 | Konflikt med befintligt tillstånd |
+| 422 | Syntaktiskt giltig men semantiskt ogiltig indata |
+| 400 | Trasig JSON — inte schemabrott, de blir 422 |
+
+**Sidbrytning** är markörbaserad. Skicka `?limit=20&cursor=<nextCursor>`; markören är
+ogenomskinlig och kommer från föregående svar. `nextCursor: null` betyder sista sidan.
+Offset används inte — det tappar och upprepar rader när nya poster tillkommer under
+bläddringen.
+
+## Endpoints
+
+| Metod & väg | Auth | Gör |
+|---|---|---|
+| `POST /auth/register` | – | Skapar konto, returnerar token |
+| `POST /auth/login` | – | Loggar in, returnerar token |
+| `POST /requests` | ✔ | Publicerar en uppdragsförfrågan |
+| `POST /requests/{requestId}/bids` | ✔ | Lämnar anbud med plan och ersättning |
+| `GET /me/requests` | ✔ | Egna förfrågningar, var och en med sina anbud |
+| `GET /me/bids` | ✔ | Egna anbud med status och avtalsläge |
+| `POST /bids/{bidId}/contract/signatures` | ✔ | Signerar avtalet |
+
+### Ersättning i ett anbud
+
+Diskriminerad på `type` — exakt en av formerna, aldrig fält från båda:
+
+```json
+{ "type": "fixed",  "amountMinor": 4500000, "currency": "SEK" }
+{ "type": "hourly", "rateMinor": 95000, "estimatedHours": 40, "currency": "SEK" }
+```
+
+Svaret innehåller `estimatedTotalMinor` — för timanbud `rateMinor × estimatedHours`
+avrundat till hela ören — så att anbud går att jämföra utan att räkna själv.
+
+### Signering
+
+Det finns inget separat "acceptera anbud". **Köparens signatur är accepterandet:**
+
+1. Köparen signerar → avtalet skapas med anbudets villkor **frysta** i `terms`, status
+   `pending_signatures`. Förfrågan är fortfarande `open` — ett halvsignerat avtal binder
+   ingen.
+2. Säljaren signerar → status `active`. I samma transaktion blir förfrågan `awarded`, det
+   vinnande anbudet `accepted` och övriga anbud `rejected`.
+
+Säljaren kan inte signera först — då finns inget avtal, och svaret är `409`.
+
+Anropet är **idempotent**: samma part kan signera igen utan att något ändras, inte ens
+tidsstämpeln. Ändras anbudet efter att avtalet skapats rör det inte `terms`.
+
+Endast förfrågans köpare och anbudets säljare är parter; alla andra får `403`.
+
+## Ett helt flöde
+
+```bash
+API=http://localhost:PORT/api/v1   # porten syns i Aspire-dashboarden
+
+kopare=$(curl -s -X POST $API/auth/register -H 'content-type: application/json' \
+  -d '{"email":"kim@example.se","password":"ett-langt-losenord","displayName":"Kim"}')
+saljare=$(curl -s -X POST $API/auth/register -H 'content-type: application/json' \
+  -d '{"email":"robin@example.se","password":"ett-langt-losenord","displayName":"Robin"}')
+
+KT=$(echo "$kopare"  | bun -e 'console.log((await Bun.stdin.json()).token)')
+ST=$(echo "$saljare" | bun -e 'console.log((await Bun.stdin.json()).token)')
+
+REQ=$(curl -s -X POST $API/requests -H "authorization: Bearer $KT" \
+  -H 'content-type: application/json' \
+  -d '{"title":"Bygg en Fortnox-integration","description":"Synk varje timme, på distans.","compensationPref":"any","budget":{"amountMinor":5000000,"currency":"SEK"}}' \
+  | bun -e 'console.log((await Bun.stdin.json()).id)')
+
+BID=$(curl -s -X POST $API/requests/$REQ/bids -H "authorization: Bearer $ST" \
+  -H 'content-type: application/json' \
+  -d '{"plan":"Kartläggning, bygge, överlämning.","compensation":{"type":"hourly","rateMinor":95000,"estimatedHours":40,"currency":"SEK"}}' \
+  | bun -e 'console.log((await Bun.stdin.json()).id)')
+
+curl -s -X POST $API/bids/$BID/contract/signatures -H "authorization: Bearer $KT"   # pending_signatures
+curl -s -X POST $API/bids/$BID/contract/signatures -H "authorization: Bearer $ST"   # active
+
+curl -s "$API/me/requests" -H "authorization: Bearer $KT"   # awarded, med anbudens status
+curl -s "$API/me/bids"     -H "authorization: Bearer $ST"   # accepted, med avtalets läge
+```
+
+Signeringsanropen har ingen kropp. `content-type: application/json` utan kropp är tillåtet.
+
+## Vad som inte finns än
+
+Publik sökning bland öppna förfrågningar, ändra eller dra tillbaka anbud, refresh-tokens,
+utloggning, e-postverifiering, betalning och tidrapportering. Se §10 i
+[GENOMFORANDE.md](GENOMFORANDE.md).

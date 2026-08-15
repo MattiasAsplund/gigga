@@ -107,7 +107,7 @@ Och i etapp 0, mot den riktiga uppsättningen: `aspire start` gav `postgres`, `p
 `{"status":"ok","database":"up"}` — alltså `Bun.SQL` mot Aspires Postgres — `/docs/json`
 gav `openapi: 3.1.0`, och `aspire stop` rev båda containrarna.
 
-Två fallgropar i `Bun.SQL`, båda upptäckta genom att gå på dem:
+Tre fallgropar i `Bun.SQL`, alla upptäckta genom att gå på dem:
 
 1. **`bigint`- och `numeric`-kolumner kommer tillbaka som `string`.** Mappningen i
    `src/domain/money.ts` konverterar explicit och kastar hellre än tappar precision (D.4).
@@ -145,39 +145,46 @@ fastgig/
 │       │   └── 004_contracts.sql
 │       ├── src/
 │       │   ├── server.ts       # buildServer(): FastifyInstance — inga sidoeffekter
-│       │   ├── index.ts        # entrypoint: buildServer().listen()  ← bun kör denna direkt
+│       │   ├── index.ts        # entrypoint: migrerar och lyssnar  ← bun kör denna direkt
 │       │   ├── config.ts       # env-parsning, validerad med TypeBox
 │       │   ├── db/
-│       │   │   ├── sql.ts      # Bun.SQL-instans + hjälpare
-│       │   │   ├── migrate.ts
+│       │   │   ├── sql.ts      # Bun.SQL-instans
+│       │   │   ├── migrate.ts  # en transaktion per migration
 │       │   │   ├── users.ts
 │       │   │   ├── requests.ts
 │       │   │   ├── bids.ts
-│       │   │   └── contracts.ts
+│       │   │   ├── contracts.ts
+│       │   │   └── listings.ts # frågorna bakom API 3 och 4
 │       │   ├── plugins/
 │       │   │   ├── swagger.ts
-│       │   │   ├── auth.ts     # JWT-dekorator + `requireAuth` preHandler
-│       │   │   └── errors.ts   # felmappning → Problem Details
-│       │   ├── schemas/        # TypeBox-scheman, delade mellan route och test
-│       │   │   ├── common.ts
+│       │   │   ├── auth.ts       # JWT + requireAuth
+│       │   │   ├── errors.ts     # Problem Details
+│       │   │   └── validation.ts # två Ajv-regimer + tom-kropp-parser
+│       │   ├── schemas/        # TypeBox-scheman, delade mellan route och OpenAPI
+│       │   │   ├── common.ts   # Problem, Money, Uuid
 │       │   │   ├── auth.ts
 │       │   │   ├── request.ts
 │       │   │   ├── bid.ts
-│       │   │   └── contract.ts
+│       │   │   ├── contract.ts
+│       │   │   └── me.ts
 │       │   ├── domain/         # ren logik, inga I/O-beroenden och därmed snabba tester
-│       │   │   ├── money.ts    # minorenhet in/ut ur bigint-kolumner
-│       │   │   ├── bid-rules.ts
-│       │   │   └── contract-rules.ts
+│       │   │   ├── money.ts          # minorenhet in/ut ur bigint-kolumner
+│       │   │   ├── bid-rules.ts      # diskriminerad ersättning, totalbelopp
+│       │   │   ├── contract-rules.ts # signaturernas tillståndsmaskin
+│       │   │   └── pagination.ts     # markör på (created_at, id)
 │       │   └── routes/
+│       │       ├── health.ts
 │       │       ├── auth.ts     # API 1–2
+│       │       ├── requests.ts # API 5
+│       │       ├── bids.ts     # API 6
 │       │       ├── me.ts       # API 3–4
-│       │       ├── requests.ts # API 5–6
 │       │       └── contracts.ts# API 7
 │       └── test/
 │           ├── helpers/
-│           │   ├── postgres.ts # podman-container via Bun.$ + template-databas
+│           │   ├── postgres.ts # podman via Bun.$ + malldatabas
 │           │   ├── app.ts      # buildTestApp()
-│           │   └── actors.ts   # registerBuyer(), registerSeller(), …
+│           │   └── actors.ts   # actor(app, 'kopare')
+│           ├── fixtures/       # migrationer att pröva runnern mot
 │           ├── contract/       # ett spec-test per API (§7.2)
 │           └── domain/         # snabba enhetstester utan databas
 └── .claude/skills/             # se §8
@@ -602,13 +609,26 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | D.3 | Signaturstatens övergångar som ren funktion: första signaturen aktiverar inte, andra gör det, ordningen är likgiltig, samma part igen är verkningslös, `void` går inte att signera, indata muteras inte |
 | D.4 | `bigint` från `Bun.SQL` (string) → `number`; null förblir null; belopp utanför säkra heltal och skräp kastar; `toMinorColumn` kräver positivt heltal |
 | **X** | **Tvärsnitt** |
-| X.1 | `/docs/json` validerar som OpenAPI 3.1 och innehåller alla sju operationerna |
-| X.2 | Varje route har `operationId`, `tags` och beskrivna felsvar |
+| X.1 | `/docs/json` är OpenAPI 3.1 med ifylld `info` |
+| X.1b | Alla sju API:erna finns på rätt metod och väg, med rätt `operationId` |
+| X.1c | API-ytan är **exakt** de sju plus `/health` — en oavsiktlig route faller ut här |
+| X.1d | Varje `$ref` går att slå upp i `components` |
+| X.2 | Varje operation har unikt `operationId`, `tags` och `summary` |
+| X.2b | Varje 4xx-svar är beskrivet och har ett kroppsschema |
+| X.2c | Skyddade operationer deklarerar `bearerAuth`, öppna gör det inte |
+| X.2d | Varje skyddad operation dokumenterar 401 |
 | X.3 | `/health` svarar 200 när databasen är nåbar, 503 annars |
 | X.4 | Okänd väg ⇒ 404 i Problem Details-format |
+| X.4b | Fel metod på en känd väg ⇒ 404 i samma format |
+| X.4c | Felsvar från en riktig route är också `application/problem+json` |
 
-Totalt 95 testfall, varav 92 gröna — kvar är bara X.1, X.2 och X.4 i etapp 7.
-Matrisen är levande — den *ska* ändras i dialogen (§8.1).
+Totalt 103 testfall, **alla gröna**. Matrisen är levande — den *ska* ändras i
+dialogen (§8.1).
+
+X-gruppen var grön redan när den skrevs, eftersom den beskriver tvärsnitt som byggdes upp
+etapp för etapp. Ett test som aldrig varit rött är värdelöst tills motsatsen är visad, så
+de muterades: ett duplicerat `operationId`, en borttagen `security` och ett borttaget
+401-svar fällde fyra av dem. Mutationerna återställdes.
 
 ### 7.3 Körning
 
@@ -676,7 +696,7 @@ Varje etapp är en pull-liknande enhet med en tydlig grön-tröskel.
 | **4** ✅ | Anbud (API 6) | `bids`-migrering med CHECK på ersättningsformen och partiellt unikt index, `domain/bid-rules.ts`, route | **Klar.** F6.\*, D.1, D.2 gröna; 49/49 i hela sviten |
 | **5** ✅ | Listnings-API:er (API 3–4) | Joins utan N+1, markörsidbrytning, filter, `004_contracts.sql` (tidigarelagd), dubbla valideringsregimer | **Klar.** L3.\*, L4.\* gröna; 68/68 i hela sviten |
 | **6** ✅ | Avtalssignering (API 7) | `domain/contract-rules.ts`, transaktionell tillståndsmaskin med `sql.begin` + `FOR UPDATE OF r`, frysta villkor, tom-kropp-parser | **Klar.** S7.\*, D.3 gröna; 92/92 i hela sviten; hela flödet kört mot levande Aspire |
-| **7** | Dokumentation & finish | `operationId`/`tags`/felsvar på alla routes, Problem Details överallt, `docs/API.md` | X.\* gröna; hela sviten (95 fall) grön; Swagger UI körbar mot levande API |
+| **7** ✅ | Dokumentation & finish | OpenAPI-tvärsnittstester, `docs/API.md` | **Klar.** X.\* gröna; hela sviten 103/103; Swagger UI och hela flödet körda mot levande Aspire |
 
 Etapp 0–1 är infrastruktur och skrivs inte testdrivet i strikt mening — de *är* verktyget som
 gör resten testdriven. Från etapp 2 gäller §8.1 utan undantag.
