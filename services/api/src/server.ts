@@ -10,6 +10,8 @@ import { healthRoutes } from './routes/health.ts';
 import { authRoutes } from './routes/auth.ts';
 import { requestRoutes } from './routes/requests.ts';
 import { bidRoutes } from './routes/bids.ts';
+import { meRoutes } from './routes/me.ts';
+import { registerValidation } from './plugins/validation.ts';
 
 export const API_PREFIX = '/api/v1';
 
@@ -50,6 +52,7 @@ export async function buildServer(options: BuildServerOptions = {}) {
     });
   }
 
+  registerValidation(app);
   registerErrorHandling(app);
   await registerSwagger(app);
   await registerAuth(app);
@@ -58,6 +61,7 @@ export async function buildServer(options: BuildServerOptions = {}) {
   await app.register(authRoutes, { prefix: API_PREFIX });
   await app.register(requestRoutes, { prefix: API_PREFIX });
   await app.register(bidRoutes, { prefix: API_PREFIX });
+  await app.register(meRoutes, { prefix: API_PREFIX });
 
   return app;
 }

@@ -122,6 +122,18 @@ test('F5.4 nollbudget ger 422', async () => {
   expect(res.statusCode).toBe(422);
 });
 
+test('F5.4 ett belopp som sträng i kroppen typtvingas inte utan ger 422', async () => {
+  // Query-parametrar typtvingas (?limit=2 → 2), men kroppar ska aldrig städas upp:
+  // ett belopp som sträng är ett klientfel vi vill se. Se plugins/validation.ts.
+  const res = await buyer.post('/api/v1/requests', {
+    ...validRequest(),
+    budget: { amountMinor: '4500000', currency: 'SEK' },
+  });
+
+  expect(res.statusCode).toBe(422);
+  expect(res.json<Problem>().errors?.map((e) => e.path)).toContain('budget.amountMinor');
+});
+
 test('F5.5 titel över maxlängd ger 422', async () => {
   const res = await buyer.post('/api/v1/requests', {
     ...validRequest(),

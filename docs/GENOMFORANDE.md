@@ -107,9 +107,14 @@ Och i etapp 0, mot den riktiga uppsättningen: `aspire start` gav `postgres`, `p
 `{"status":"ok","database":"up"}` — alltså `Bun.SQL` mot Aspires Postgres — `/docs/json`
 gav `openapi: 3.1.0`, och `aspire stop` rev båda containrarna.
 
-En känd fallgrop från samma körning: **`bigint`-kolumner kommer tillbaka som `string`** från
-`Bun.SQL`. Beloppsmappningen i `src/db/` konverterar därför explicit, och det finns ett
-testfall för det (D.4).
+Två fallgropar i `Bun.SQL`, båda upptäckta genom att gå på dem:
+
+1. **`bigint`- och `numeric`-kolumner kommer tillbaka som `string`.** Mappningen i
+   `src/domain/money.ts` konverterar explicit och kastar hellre än tappar precision (D.4).
+2. **En JS-array binds som komma-separerad sträng**, inte som en Postgres-array. Både
+   `= ANY(${ids})` och `= ANY(${ids}::uuid[])` ger *"malformed array literal"*. Använd
+   `IN ${sql(ids)}` — hjälparen expanderar till en parametriserad lista. Den kräver en
+   icke-tom array, så anroparen måste returnera tidigt vid tom sida.
 
 ---
 
@@ -369,13 +374,21 @@ register-schemat: annars kan man läsa ut lösenordsreglerna genom att se ett ko
 ge `422` istället för `401`.
 
 **3. `GET /me/requests`** → `200`
-`{ items: [{ …request, bids: [{ id, sellerId, sellerDisplayName, plan, compensation, status, createdAt }] }] }`.
+`{ items: [{ …request, bids: [{ id, sellerId, sellerDisplayName, plan, compensation, estimatedTotalMinor, status, createdAt }] }], nextCursor }`.
 Endast anropande användares egna förfrågningar. Anbudens `plan`-fält ingår — köparen ska
-kunna bedöma dem. Sortering: nyaste först. Sidbrytning via `?limit&cursor` (default 20).
+kunna bedöma dem. Sortering: nyaste först. Sidbrytning via `?limit&cursor` (default 20,
+max 100).
+
+Markören är ogenomskinlig (base64url av `created_at|id`) och pekar på sista raden i
+föregående sida. Inte offset: med offset tappar eller upprepar man rader när nya
+förfrågningar tillkommer mitt i bläddringen. `nextCursor` är `null` på sista sidan.
+
+Anbuden hämtas i **en** extra fråga för hela sidan, inte en per förfrågan.
 
 **4. `GET /me/bids`** → `200`
-`{ items: [{ id, requestId, requestTitle, compensation, status, contract: { status, buyerSigned, sellerSigned } | null, createdAt }] }`.
-Endast egna anbud. Filtrering via `?status=`.
+`{ items: [{ id, requestId, requestTitle, plan, compensation, estimatedTotalMinor, status, contract: { id, status, buyerSigned, sellerSigned } | null, createdAt }], nextCursor }`.
+Endast egna anbud. Filtrering via `?status=`, och samma markörsidbrytning som API 3 —
+en obegränsad lista är ett problem som växer tyst.
 
 **5. `POST /requests`** → `201`
 `{ title, description, compensationPref, budget?: { amountMinor, currency }, deadlineAt? }`.
@@ -458,6 +471,14 @@ En fallgrop värd att känna till: **flerradiga `Bun.$`-literaler bryter kommand
 radbytet** (`bun: command not found: -e`). Långa podman-anrop byggs som en argumentarray
 och interpoleras i ett svep: `` $`podman ${runArgs}` ``.
 
+**Två valideringsregimer.** Fastify har en validator-kompilator, men kroppar och
+query-parametrar har olika behov, så `plugins/validation.ts` väljer regim per `httpPart`:
+
+- **body** — inget typtvång. `{"amountMinor": "4500000"}` ska ge 422, inte tyst städas upp
+  till ett tal. Låst av testfall F5.4c.
+- **querystring och params** — typtvång på. Allt kommer in som strängar över HTTP, så utan
+  det går ett heltal i `?limit=2` inte att uttrycka i schemat alls.
+
 **App.** `buildServer()` returnerar en `FastifyInstance` utan att lyssna på någon port.
 Testerna använder `app.inject({ method, url, headers, payload })`. Ingen nätverksstack,
 inga portkonflikter, millisekunder per anrop. Verifierat på Bun (§2.2).
@@ -499,6 +520,7 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | F5.3 | Deadline i dåtid ⇒ 422 med pekare på `deadlineAt` |
 | F5.4 | Budget med negativt belopp ⇒ 422 med pekare på `budget.amountMinor` |
 | F5.4b | Nollbudget ⇒ 422 |
+| F5.4c | Belopp som sträng i kroppen typtvingas **inte** ⇒ 422 (låser fast att kroppar valideras strikt, se §7.1) |
 | F5.5 | Titel över maxlängd (120) ⇒ 422 |
 | F5.5b | Tom titel ⇒ 422 |
 | F5.5c | Okänd `compensationPref` ⇒ 422 |
@@ -517,15 +539,24 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | F6.8 | Anbud på `awarded` förfrågan ⇒ 422 |
 | **L3** | **Lista egna förfrågningar med anbud** |
 | L3.1 | Returnerar bara egna förfrågningar, aldrig andras |
-| L3.2 | Inkluderar inlämnade anbud med plan, ersättning och status |
+| L3.2 | Inkluderar inlämnade anbud med plan, ersättning, säljarens namn och status |
+| L3.2b | Anbud på andras förfrågningar läcker inte in i svaret |
 | L3.3 | Förfrågan utan anbud ⇒ tom `bids`-lista, inte utelämnat fält |
-| L3.4 | Sidbrytning: `limit` respekteras, `cursor` ger nästa sida utan dubbletter |
+| L3.4 | Sidbrytning: `limit` respekteras, `cursor` ger nästa sida utan dubbletter och utan tappade rader |
+| L3.4b | Nyaste först |
+| L3.4c | Trasig `cursor` ⇒ 422 med pekare på `cursor` |
+| L3.4d | `limit` utanför 1–100 ⇒ 422 |
 | L3.5 | Utan token ⇒ 401 |
 | **L4** | **Lista egna anbud** |
 | L4.1 | Returnerar bara egna anbud |
+| L4.1b | Anbudet bär förfrågans titel och beräknat totalbelopp |
+| L4.1c | Utan token ⇒ 401 |
 | L4.2 | Status speglar avtalsflödet (`submitted` → `accepted`/`rejected`) |
-| L4.3 | `contract`-fältet visar signaturläget, `null` innan avtal finns |
-| L4.4 | `?status=submitted` filtrerar |
+| L4.3 | `contract` är `null` innan avtal finns |
+| L4.3b | `contract` visar signaturläget när avtal finns |
+| L4.4 | `?status=` filtrerar |
+| L4.4b | Okänd status ⇒ 422 |
+| L4.4c | Sidbrytning fungerar som för förfrågningar |
 | **S7** | **Signera avtal** |
 | S7.1 | Köparens signatur skapar avtal ⇒ 200, `pending_signatures`, terms frusna |
 | S7.2 | Säljarens signatur därefter ⇒ `active` |
@@ -552,8 +583,8 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | X.3 | `/health` svarar 200 när databasen är nåbar, 503 annars |
 | X.4 | Okänd väg ⇒ 404 i Problem Details-format |
 
-Totalt 71 testfall, varav 49 gröna (A1.\*, A2.\*, F5.\*, F6.\*, D.1, D.2, D.4, M.1–M.4,
-X.3:s båda vägar). Matrisen är levande — den *ska* ändras i dialogen (§8.1).
+Totalt 85 testfall, varav 68 gröna — allt utom S7.\*, D.3 och X.1/X.2/X.4.
+Matrisen är levande — den *ska* ändras i dialogen (§8.1).
 
 ### 7.3 Körning
 
@@ -619,9 +650,9 @@ Varje etapp är en pull-liknande enhet med en tydlig grön-tröskel.
 | **2** ✅ | Konto & inloggning (API 1–2) | `users`-migrering (citext), `Bun.password` (argon2id), `@fastify/jwt`, `requireAuth`, Problem Details-hanteraren, `actors.ts` | **Klar.** A1.\*, A2.\* gröna; 14/14 i hela sviten; register/dubblett/login/fel-lösenord verifierade mot levande Aspire |
 | **3** ✅ | Förfrågningar (API 5) | `requests`-migrering (enum-typer, budget-check, sidbrytningsindex), TypeBox-scheman, `domain/money.ts`, route | **Klar.** F5.\* och D.4 gröna; 28/28 i hela sviten |
 | **4** ✅ | Anbud (API 6) | `bids`-migrering med CHECK på ersättningsformen och partiellt unikt index, `domain/bid-rules.ts`, route | **Klar.** F6.\*, D.1, D.2 gröna; 49/49 i hela sviten |
-| **5** | Listnings-API:er (API 3–4) | Joins, sidbrytning, filter | L3.\*, L4.\* gröna |
-| **6** | Avtalssignering (API 7) | `contracts`-migrering, transaktionell tillståndsmaskin med `sql.begin` + `SELECT … FOR UPDATE` | S7.\*, D.3 gröna |
-| **7** | Dokumentation & finish | `operationId`/`tags`/felsvar på alla routes, Problem Details överallt, `docs/API.md` | X.\* gröna; hela sviten (71 fall) grön; Swagger UI körbar mot levande API |
+| **5** ✅ | Listnings-API:er (API 3–4) | Joins utan N+1, markörsidbrytning, filter, `004_contracts.sql` (tidigarelagd), dubbla valideringsregimer | **Klar.** L3.\*, L4.\* gröna; 68/68 i hela sviten |
+| **6** | Avtalssignering (API 7) | Transaktionell tillståndsmaskin med `sql.begin` + `SELECT … FOR UPDATE` (tabellen finns sedan etapp 5) | S7.\*, D.3 gröna |
+| **7** | Dokumentation & finish | `operationId`/`tags`/felsvar på alla routes, Problem Details överallt, `docs/API.md` | X.\* gröna; hela sviten (85 fall) grön; Swagger UI körbar mot levande API |
 
 Etapp 0–1 är infrastruktur och skrivs inte testdrivet i strikt mening — de *är* verktyget som
 gör resten testdriven. Från etapp 2 gäller §8.1 utan undantag.
