@@ -1,7 +1,15 @@
 import type { FastifyPluginAsyncTypebox } from '@fastify/type-provider-typebox';
 import { ProblemSchema } from '../schemas/common.ts';
-import { CreateRequestBodySchema, RequestResponseSchema } from '../schemas/request.ts';
+import {
+  CatalogQuerySchema,
+  CatalogResponseSchema,
+  CreateRequestBodySchema,
+  RequestResponseSchema,
+} from '../schemas/request.ts';
 import { insertRequest, type UppdragsRequest } from '../db/requests.ts';
+import { listOpenRequests } from '../db/listings.ts';
+import { paginate, DEFAULT_PAGE_SIZE } from '../domain/pagination.ts';
+import { parseCursor } from './query.ts';
 import { validationFailed } from '../plugins/errors.ts';
 import { currencyOr } from '../domain/money.ts';
 
@@ -21,6 +29,47 @@ export function requestToResponse(request: UppdragsRequest) {
 }
 
 export const requestRoutes: FastifyPluginAsyncTypebox = async (app) => {
+  app.get(
+    '/requests',
+    {
+      onRequest: app.requireAuth,
+      schema: {
+        operationId: 'listOpenRequests',
+        tags: ['requests'],
+        summary: 'Lista öppna förfrågningar',
+        description:
+          'Uppdrag som går att lämna anbud på: status `open` och deadline inte passerad. ' +
+          'Anbudens innehåll lämnas inte ut — bara hur många som finns, och om anroparen ' +
+          'är en av dem.',
+        security: [{ bearerAuth: [] }],
+        querystring: CatalogQuerySchema,
+        response: { 200: CatalogResponseSchema, 401: ProblemSchema, 422: ProblemSchema },
+      },
+    },
+    async (req) => {
+      const limit = req.query.limit ?? DEFAULT_PAGE_SIZE;
+      const rows = await listOpenRequests(
+        app.sql,
+        req.user.sub,
+        { limit, cursor: parseCursor(req.query.cursor) },
+        req.query.compensationPref ?? null,
+      );
+
+      const page = paginate(rows, limit);
+      return {
+        items: page.items.map((request) => ({
+          ...requestToResponse(request),
+          buyerDisplayName: request.buyerDisplayName,
+          bidCount: request.bidCount,
+          hasMyBid: request.hasMyBid,
+          // Egen förfrågan ger 403 och ett andra anbud 409 — säg det direkt istället.
+          canBid: !request.hasMyBid && request.buyerId !== req.user.sub,
+        })),
+        nextCursor: page.nextCursor,
+      };
+    },
+  );
+
   app.post(
     '/requests',
     {

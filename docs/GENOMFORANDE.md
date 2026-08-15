@@ -367,6 +367,7 @@ och vid valideringsfel `errors[]`.
 | 5 | `POST /api/v1/requests` | ✔ | Registrera förfrågan |
 | 6 | `POST /api/v1/requests/{requestId}/bids` | ✔ | Registrera anbud |
 | 7 | `POST /api/v1/bids/{bidId}/contract/signatures` | ✔ | Signera avtal |
+| 8 | `GET /api/v1/requests` | ✔ | Lista öppna förfrågningar (katalogen) |
 
 ### 6.1 Detaljer per API
 
@@ -444,6 +445,18 @@ kräver en kropp faller ut som 422 istället för 400. Låst av S7.1b–S7.1d.
 **Serialisering.** Låset tas på **förfrågningsraden** (`FOR UPDATE OF r`), inte på avtalet:
 avtalet finns inte ännu när den första signaturen kommer, så det går inte att låsa. En
 förfrågan kan bara ha ett avtal, vilket gör förfrågan till rätt seriliseringspunkt.
+
+**8. `GET /requests`** → `200`
+Katalogen: uppdrag som faktiskt går att lämna anbud på. Filtrerar på `status = 'open'` och
+deadline som inte passerat — en tilldelad eller utgången förfrågan är brus för den som letar
+uppdrag. Sidbrytning som API 3–4, filter via `?compensationPref=`.
+
+Varje post bär `buyerDisplayName`, `bidCount` och `hasMyBid`, plus `canBid` som är falskt
+för egna förfrågningar och när anroparen redan lämnat anbud — det sparar ett anrop som ändå
+skulle ge 403 eller 409.
+
+**Anbudens innehåll lämnas aldrig ut här**, bara antalet. Vem som bjudit vad är en sak
+mellan köparen och respektive säljare, och L8.7 vaktar det.
 
 > Detta är den enda designtolkning i planen som inte är direkt given av uppgiften: kravlistan
 > nämner "signera avtal" men inget separat "acceptera anbud". Vi låter köparens signatur
@@ -608,6 +621,16 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | D.2 | Totalberäkning: fastpris är sitt eget total, timpris = rate × timmar avrundat i minorenhet, halva ören uppåt, ingen flyttalsdrift |
 | D.3 | Signaturstatens övergångar som ren funktion: första signaturen aktiverar inte, andra gör det, ordningen är likgiltig, samma part igen är verkningslös, `void` går inte att signera, indata muteras inte |
 | D.4 | `bigint` från `Bun.SQL` (string) → `number`; null förblir null; belopp utanför säkra heltal och skräp kastar; `toMinorColumn` kräver positivt heltal |
+| **L8** | **Lista öppna förfrågningar** (API 8) |
+| L8.1 | En säljare ser öppna förfrågningar från andra, med köparens namn |
+| L8.2 | Utan token ⇒ 401 |
+| L8.3 | Tilldelade förfrågningar visas inte |
+| L8.4 | Passerad deadline visas inte; förfrågan helt utan deadline visas |
+| L8.5 | `bidCount` räknar anbuden, `hasMyBid` speglar bara anroparens eget |
+| L8.6 | `canBid` är falskt för egen förfrågan och när anbud redan lämnats |
+| L8.7 | Inga anbudsdetaljer läcker — varken plan eller belopp |
+| L8.8 | `?compensationPref` filtrerar; okänt värde ⇒ 422 |
+| L8.9 | Sidbrytning utan dubbletter, nyaste först |
 | **X** | **Tvärsnitt** |
 | X.1 | `/docs/json` är OpenAPI 3.1 med ifylld `info` |
 | X.1b | Alla sju API:erna finns på rätt metod och väg, med rätt `operationId` |
@@ -622,7 +645,7 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | X.4b | Fel metod på en känd väg ⇒ 404 i samma format |
 | X.4c | Felsvar från en riktig route är också `application/problem+json` |
 
-Totalt 103 testfall, **alla gröna**. Matrisen är levande — den *ska* ändras i
+Totalt 116 testfall, **alla gröna**. Matrisen är levande — den *ska* ändras i
 dialogen (§8.1).
 
 X-gruppen var grön redan när den skrevs, eftersom den beskriver tvärsnitt som byggdes upp
@@ -697,6 +720,7 @@ Varje etapp är en pull-liknande enhet med en tydlig grön-tröskel.
 | **5** ✅ | Listnings-API:er (API 3–4) | Joins utan N+1, markörsidbrytning, filter, `004_contracts.sql` (tidigarelagd), dubbla valideringsregimer | **Klar.** L3.\*, L4.\* gröna; 68/68 i hela sviten |
 | **6** ✅ | Avtalssignering (API 7) | `domain/contract-rules.ts`, transaktionell tillståndsmaskin med `sql.begin` + `FOR UPDATE OF r`, frysta villkor, tom-kropp-parser | **Klar.** S7.\*, D.3 gröna; 92/92 i hela sviten; hela flödet kört mot levande Aspire |
 | **7** ✅ | Dokumentation & finish | OpenAPI-tvärsnittstester, `docs/API.md` | **Klar.** X.\* gröna; hela sviten 103/103; Swagger UI och hela flödet körda mot levande Aspire |
+| **8** ✅ | Katalogen (API 8) | `GET /requests` med `bidCount`/`hasMyBid`/`canBid`, filter och sidbrytning | **Klar.** L8.\* gröna; 116/116; körd mot levande Aspire. Tillkom efter att luckan påpekats — säljare kunde bara lägga anbud på förfrågningar de kände till ID:t för |
 
 Etapp 0–1 är infrastruktur och skrivs inte testdrivet i strikt mening — de *är* verktyget som
 gör resten testdriven. Från etapp 2 gäller §8.1 utan undantag.
@@ -711,8 +735,6 @@ gör resten testdriven. Från etapp 2 gäller §8.1 utan undantag.
 - **Betalning, fakturering, tidrapportering** — nästa domänområde efter avtalet.
 - **Migrationsverktyg med rollback** — meningslöst mot en icke-persistent databas, men
   krävs innan någon persistent miljö sätts upp. Detta är den skuld som förfaller först.
-- **Publik sökning bland öppna förfrågningar** — säljare kan i etapp 1 bara lägga anbud på
-  förfrågningar de känner till ID:t för. Ett `GET /requests`-API är det självklara API 8.
 - **Distribution** — Aspire kan publicera (`aspire publish`; `addBunApp` använder
   `oven/bun:1` som basimage), men målet här är localhost.
 

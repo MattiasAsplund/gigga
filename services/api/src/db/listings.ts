@@ -1,5 +1,10 @@
 import type { SQL } from 'bun';
-import { toRequest, type RequestRow, type UppdragsRequest } from './requests.ts';
+import {
+  toRequest,
+  type CompensationPref,
+  type RequestRow,
+  type UppdragsRequest,
+} from './requests.ts';
 import { toBid, type Bid, type BidRow, type BidStatus } from './bids.ts';
 import type { Cursor } from '../domain/pagination.ts';
 
@@ -81,6 +86,62 @@ export async function listBuyerRequests(
     ...request,
     // Alltid en lista, aldrig utelämnad: en förfrågan utan anbud har noll anbud (L3.3).
     bids: byRequest.get(request.id) ?? [],
+  }));
+}
+
+export interface CatalogRequest extends UppdragsRequest {
+  buyerDisplayName: string;
+  bidCount: number;
+  hasMyBid: boolean;
+}
+
+/**
+ * Katalogen: förfrågningar som faktiskt går att lämna anbud på — `open` och med deadline
+ * kvar. En tilldelad eller utgången förfrågan är brus för den som letar uppdrag.
+ *
+ * Anbudens innehåll lämnas aldrig ut här, bara antalet. Vem som bjudit vad är en sak
+ * mellan köparen och respektive säljare.
+ */
+export async function listOpenRequests(
+  sql: SQL,
+  viewerId: string,
+  page: PageQuery,
+  compensationPref: CompensationPref | null,
+): Promise<CatalogRequest[]> {
+  const cursorAt = page.cursor?.createdAt ?? null;
+  const cursorId = page.cursor?.id ?? null;
+
+  const rows = (await sql`
+    SELECT r.id, r.buyer_id, r.title, r.description, r.compensation_pref,
+           r.budget_minor, r.currency, r.deadline_at, r.status, r.created_at,
+           u.display_name,
+           (SELECT count(*) FROM bids b
+             WHERE b.request_id = r.id AND b.status <> 'withdrawn')::int AS bid_count,
+           EXISTS (SELECT 1 FROM bids b
+                    WHERE b.request_id = r.id
+                      AND b.seller_id = ${viewerId}
+                      AND b.status <> 'withdrawn') AS has_my_bid
+    FROM requests r
+    JOIN users u ON u.id = r.buyer_id
+    WHERE r.status = 'open'
+      AND (r.deadline_at IS NULL OR r.deadline_at > now())
+      AND (${compensationPref}::compensation_pref IS NULL
+           OR r.compensation_pref = ${compensationPref}::compensation_pref)
+      AND (${cursorAt}::timestamptz IS NULL
+           OR (r.created_at, r.id) < (${cursorAt}::timestamptz, ${cursorId}::uuid))
+    ORDER BY r.created_at DESC, r.id DESC
+    LIMIT ${page.limit + 1}
+  `) as (RequestRow & {
+    display_name: string;
+    bid_count: number;
+    has_my_bid: boolean;
+  })[];
+
+  return rows.map((row) => ({
+    ...toRequest(row),
+    buyerDisplayName: row.display_name,
+    bidCount: row.bid_count,
+    hasMyBid: row.has_my_bid,
   }));
 }
 

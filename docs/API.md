@@ -58,11 +58,24 @@ bläddringen.
 |---|---|---|
 | `POST /auth/register` | – | Skapar konto, returnerar token |
 | `POST /auth/login` | – | Loggar in, returnerar token |
+| `GET /requests` | ✔ | Listar öppna uppdrag att lämna anbud på |
 | `POST /requests` | ✔ | Publicerar en uppdragsförfrågan |
 | `POST /requests/{requestId}/bids` | ✔ | Lämnar anbud med plan och ersättning |
 | `GET /me/requests` | ✔ | Egna förfrågningar, var och en med sina anbud |
 | `GET /me/bids` | ✔ | Egna anbud med status och avtalsläge |
 | `POST /bids/{bidId}/contract/signatures` | ✔ | Signerar avtalet |
+
+### Katalogen
+
+`GET /requests` är säljarens ingång. Den visar bara uppdrag som faktiskt går att lämna
+anbud på — `open` och med deadline kvar. Varje post har:
+
+- `bidCount` — hur många anbud som redan lämnats. **Innehållet i dem lämnas aldrig ut här.**
+- `hasMyBid` — har du själv ett aktivt anbud?
+- `canBid` — falskt för dina egna förfrågningar och när du redan bjudit, så du slipper ett
+  anrop som ändå skulle ge 403 eller 409.
+
+Filtrera med `?compensationPref=fixed|hourly|any`, sidbryt som vanligt.
 
 ### Ersättning i ett anbud
 
@@ -111,6 +124,8 @@ REQ=$(curl -s -X POST $API/requests -H "authorization: Bearer $KT" \
   -d '{"title":"Bygg en Fortnox-integration","description":"Synk varje timme, på distans.","compensationPref":"any","budget":{"amountMinor":5000000,"currency":"SEK"}}' \
   | bun -e 'console.log((await Bun.stdin.json()).id)')
 
+curl -s "$API/requests" -H "authorization: Bearer $ST"      # katalogen: hittar uppdraget
+
 BID=$(curl -s -X POST $API/requests/$REQ/bids -H "authorization: Bearer $ST" \
   -H 'content-type: application/json' \
   -d '{"plan":"Kartläggning, bygge, överlämning.","compensation":{"type":"hourly","rateMinor":95000,"estimatedHours":40,"currency":"SEK"}}' \
@@ -127,6 +142,6 @@ Signeringsanropen har ingen kropp. `content-type: application/json` utan kropp �
 
 ## Vad som inte finns än
 
-Publik sökning bland öppna förfrågningar, ändra eller dra tillbaka anbud, refresh-tokens,
+Fritextsökning och sortering i katalogen, ändra eller dra tillbaka anbud, refresh-tokens,
 utloggning, e-postverifiering, betalning och tidrapportering. Se §10 i
 [GENOMFORANDE.md](GENOMFORANDE.md).

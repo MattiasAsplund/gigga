@@ -7,22 +7,10 @@ import {
   PageQuerySchema,
 } from '../schemas/me.ts';
 import { listBuyerRequests, listSellerBids } from '../db/listings.ts';
-import { decodeCursor, paginate, DEFAULT_PAGE_SIZE, type Cursor } from '../domain/pagination.ts';
+import { paginate, DEFAULT_PAGE_SIZE } from '../domain/pagination.ts';
 import { estimatedTotalMinor } from '../domain/bid-rules.ts';
 import { requestToResponse } from './requests.ts';
-import { validationFailed } from '../plugins/errors.ts';
-
-function parseCursor(raw: string | undefined): Cursor | null {
-  if (!raw) return null;
-  try {
-    return decodeCursor(raw);
-  } catch {
-    throw validationFailed(
-      [{ path: 'cursor', message: 'markören går inte att tolka' }],
-      'Använd `nextCursor` från föregående svar.',
-    );
-  }
-}
+import { parseCursor } from './query.ts';
 
 export const meRoutes: FastifyPluginAsyncTypebox = async (app) => {
   app.get(

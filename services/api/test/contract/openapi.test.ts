@@ -22,7 +22,7 @@ interface OpenApiDocument {
 
 const HTTP_METHODS = ['get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace'];
 
-/** De sju API:erna ur planens §6, som operationId → metod och väg. */
+/** API:erna ur planens §6, som operationId → metod och väg. */
 const EXPECTED_OPERATIONS: Record<string, [string, string]> = {
   register: ['post', '/api/v1/auth/register'],
   login: ['post', '/api/v1/auth/login'],
@@ -31,6 +31,7 @@ const EXPECTED_OPERATIONS: Record<string, [string, string]> = {
   createRequest: ['post', '/api/v1/requests'],
   createBid: ['post', '/api/v1/requests/{requestId}/bids'],
   signContract: ['post', '/api/v1/bids/{bidId}/contract/signatures'],
+  listOpenRequests: ['get', '/api/v1/requests'],
 };
 
 /** Operationer som kräver token, och därmed ska deklarera bearerAuth. */
@@ -40,6 +41,7 @@ const PROTECTED = new Set([
   'createRequest',
   'createBid',
   'signContract',
+  'listOpenRequests',
 ]);
 
 function operations(document: OpenApiDocument): { id: string; op: Operation; where: string }[] {
@@ -74,7 +76,7 @@ test('X.1 dokumentet är OpenAPI 3.1 med ifylld info', () => {
   expect(doc.info.description).toBeTruthy();
 });
 
-test('X.1 alla sju API:erna finns på rätt metod och väg', () => {
+test('X.1 alla API:erna finns på rätt metod och väg', () => {
   for (const [operationId, [method, path]] of Object.entries(EXPECTED_OPERATIONS)) {
     const op = doc.paths[path]?.[method];
     expect(op, `${method.toUpperCase()} ${path} saknas`).toBeDefined();
@@ -82,7 +84,7 @@ test('X.1 alla sju API:erna finns på rätt metod och väg', () => {
   }
 });
 
-test('X.1 API-ytan är exakt de sju plus /health', () => {
+test('X.1 API-ytan är exakt de deklarerade plus /health', () => {
   const surface = operations(doc)
     .map((o) => o.where)
     .sort();
