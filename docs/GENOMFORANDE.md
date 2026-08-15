@@ -408,37 +408,39 @@ den, och varje etapp i §9 är klar först när dess testfall är gröna.
 
 ### 7.1 Testinfrastruktur
 
-**Databas.** `test/helpers/postgres.ts` startar **en** Postgres-container per testkörning
-direkt med `Bun.$` — ingen Testcontainers-dependency, ingen Ryuk:
+**Databas.** `test/helpers/postgres.ts` styr podman direkt med `Bun.$` — ingen
+Testcontainers-dependency, ingen Ryuk. Containern har ett **fast namn**
+(`fastgig-test-pg`) och **återanvänds mellan körningar**: finns den redan igång används
+den som den är, annars startas den.
 
-```ts
-import { $ } from 'bun';
-
-const IMAGE = 'docker.io/library/postgres:17-alpine';   // fullkvalificerat, se §2.1
-const id = (await $`podman run -d --rm -e POSTGRES_PASSWORD=test -e POSTGRES_USER=test
-                    -e POSTGRES_DB=postgres -P ${IMAGE}`.text()).trim();
-// porten läses ut med `podman port ${id} 5432`, readiness med `podman exec ${id} pg_isready`
-```
-
-Migrationerna körs en gång mot `fastgig_template`, och varje testfil får en färsk databas:
+Migrationerna körs en gång per körning mot `fastgig_template`, och varje testfil får en
+färsk databas:
 
 ```sql
-CREATE DATABASE test_<n> TEMPLATE fastgig_template;
+CREATE DATABASE test_<pid>_<n> TEMPLATE fastgig_template;
 ```
 
 Det ger full isolering mellan filer utan att betala migrationskostnaden per fil.
-`CREATE DATABASE … TEMPLATE` är verifierat mot `Bun.SQL` (§2.2). Containern rivs i
-teardown (`podman rm -f`), och `--rm` ser till att inget blir kvar även vid krasch.
+`CREATE DATABASE … TEMPLATE` är verifierat mot `Bun.SQL` (§2.2).
 
-`TEST_DATABASE_URL` i miljön kringgår containerstarten helt och kör mot en redan uppe
+Återanvändningen kostar inget i isolering — malldatabasen byggs om vid varje körning
+(`DROP … WITH (FORCE)` + `CREATE`) och kvarlämnade `test_%`-databaser städas bort vid
+uppstart — men den avgör om dialogloopen är användbar. Mätt i etapp 1:
+
+| | Full svit | Ett fallerande test |
+|---|---|---|
+| Kall (containern startas) | 3,3 s | 3,3 s |
+| Varm (containern återanvänds) | **1,4 s** | **0,95 s** |
+
+Containern lämnas alltså kvar när körningen är slut. Riv den för hand med
+`podman rm -f fastgig-test-pg` när du vill börja om från noll.
+
+`TEST_DATABASE_URL` i miljön kringgår podman helt och kör mot en redan uppe
 Aspire-Postgres — praktiskt när man vill inspektera data i pgweb efter ett fallerande test.
 
-Uppstarten hängs på `bunfig.toml`:
-
-```toml
-[test]
-preload = ["./test/helpers/postgres.ts"]
-```
+En fallgrop värd att känna till: **flerradiga `Bun.$`-literaler bryter kommandot vid
+radbytet** (`bun: command not found: -e`). Långa podman-anrop byggs som en argumentarray
+och interpoleras i ett svep: `` $`podman ${runArgs}` ``.
 
 **App.** `buildServer()` returnerar en `FastifyInstance` utan att lyssna på någon port.
 Testerna använder `app.inject({ method, url, headers, payload })`. Ingen nätverksstack,
@@ -447,6 +449,11 @@ inga portkonflikter, millisekunder per anrop. Verifierat på Bun (§2.2).
 **Aktörer.** `test/helpers/actors.ts` ger `const buyer = await actor(app, 'buyer')` med
 `buyer.post(url, body)` som redan bär rätt `Authorization`-huvud. Testerna handlar då om
 domänen, inte om token-hantering.
+
+Hjälparen bygger på `POST /auth/register` och kan därför inte skrivas förrän det API:t
+finns. Den landar i **etapp 2**, driven av A1-testfallen, inte i etapp 1 — att skriva en
+hjälpare som ingenting kan köra är precis den sortens obekräftad kod planen försöker
+undvika.
 
 ### 7.2 Testfallsmatris
 
@@ -501,6 +508,11 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | S7.6 | Samma part signerar två gånger ⇒ 200, oförändrade tidsstämplar |
 | S7.7 | Ändrat anbud efter avtalet påverkar inte `terms` |
 | S7.8 | Två samtidiga signaturer ger exakt ett avtal (`FOR UPDATE`-test) |
+| **M** | **Migrationsrunner** (etapp 1) |
+| M.1 | Migrationerna läses i filnamnsordning |
+| M.2 | En katalog utan migrationer är inte ett fel |
+| M.3 | `migrate` applicerar i ordning och är idempotent vid andra körningen |
+| M.4 | En migration som fallerar halvvägs rullas tillbaka helt och bokförs inte |
 | **D** | **Domänenheter (utan databas)** |
 | D.1 | Ersättningsvalidering: alla giltiga/ogiltiga kombinationer |
 | D.2 | Totalberäkning för timanbud (rate × timmar, avrundning i minorenhet) |
@@ -512,7 +524,8 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | X.3 | `/health` svarar 200 när databasen är nåbar, 503 annars |
 | X.4 | Okänd väg ⇒ 404 i Problem Details-format |
 
-Totalt 47 testfall. Matrisen är levande — den *ska* ändras i dialogen (§8.1).
+Totalt 51 testfall, varav 6 gröna (M.1–M.4 och X.3:s båda vägar). Matrisen är levande —
+den *ska* ändras i dialogen (§8.1).
 
 ### 7.3 Körning
 
@@ -574,13 +587,13 @@ Varje etapp är en pull-liknande enhet med en tydlig grön-tröskel.
 | # | Etapp | Innehåll | Klar när |
 |---|---|---|---|
 | **0** ✅ | Grund | `aspire init --language typescript`, `bun install` ⇒ `bun.lock`, bort med `package-lock.json` + `tsx`/`nodemon`, `aspire add postgresql`, `aspire add javascript`, bun-workspaces, podman-socket, `services/api`-skelett | **Klar.** `aspire start` gav alla resurser `Running/Healthy`; CLI-loggen visade `GuestRuntime for TypeScript (Bun)`; `/health` → `{"status":"ok","database":"up"}`; `/docs/json` → `openapi: 3.1.0`; `podman ps` visade `postgres:17-alpine` + `pgweb`; `aspire stop` rev båda |
-| **1** | Testrigg | `Bun.$`-postgreshelper, template-databas, `buildServer()`, `actors.ts`, migrationsrunner, `bunfig.toml` | X.3 grön; en avsiktligt trasig assertion i ett dummytest fallerar på < 2 s |
-| **2** | Konto & inloggning (API 1–2) | `users`-migrering, `Bun.password`, `@fastify/jwt`, `requireAuth` | A1.\*, A2.\* gröna |
+| **1** ✅ | Testrigg | `Bun.$`-postgreshelper med återanvänd container + malldatabas, `buildTestApp()`, migrationsrunner med transaktion per migration | **Klar.** X.3 grön (både 200- och 503-vägen); migrationsrunnern har fyra egna testfall (ordning, tom katalog, idempotens, rollback); 6/6 gröna; trasig assertion ger svar på 0,95 s varm |
+| **2** | Konto & inloggning (API 1–2) | `users`-migrering, `Bun.password`, `@fastify/jwt`, `requireAuth`, `actors.ts` | A1.\*, A2.\* gröna |
 | **3** | Förfrågningar (API 5) | `requests`-migrering, TypeBox-scheman, route | F5.\* gröna |
 | **4** | Anbud (API 6) | `bids`-migrering, diskriminerad ersättningsunion, domänregler, beloppsmappning | F6.\*, D.1, D.2, D.4 gröna |
 | **5** | Listnings-API:er (API 3–4) | Joins, sidbrytning, filter | L3.\*, L4.\* gröna |
 | **6** | Avtalssignering (API 7) | `contracts`-migrering, transaktionell tillståndsmaskin med `sql.begin` + `SELECT … FOR UPDATE` | S7.\*, D.3 gröna |
-| **7** | Dokumentation & finish | `operationId`/`tags`/felsvar på alla routes, Problem Details överallt, `docs/API.md` | X.\* gröna; hela sviten (47 fall) grön; Swagger UI körbar mot levande API |
+| **7** | Dokumentation & finish | `operationId`/`tags`/felsvar på alla routes, Problem Details överallt, `docs/API.md` | X.\* gröna; hela sviten (51 fall) grön; Swagger UI körbar mot levande API |
 
 Etapp 0–1 är infrastruktur och skrivs inte testdrivet i strikt mening — de *är* verktyget som
 gör resten testdriven. Från etapp 2 gäller §8.1 utan undantag.

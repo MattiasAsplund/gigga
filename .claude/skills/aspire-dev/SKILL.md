@@ -89,7 +89,8 @@ så schemat finns alltid. Ser du tom data efter en omstart är det inte ett fel.
 | AppHosten startar med node/tsx istället för bun | `package-lock.json` finns, eller `bun.lock` saknas | `rm package-lock.json && bun install` |
 | API:et startar men kraschar direkt | migrering fallerar mot tom databas | `aspire logs api`, kör migrationsfilen manuellt mot anslutningssträngen |
 | `port already in use` | tidigare AppHost lever kvar | `aspire ps` → `aspire stop`, annars `podman ps` + `podman rm -f <id>` |
-| Containrar hopar sig efter testkörningar | teardown hoppades över vid krasch | `podman container prune` |
+| Testerna beter sig konstigt mot en gammal databas | testcontainern `fastgig-test-pg` återanvänds mellan körningar med flit | `podman rm -f fastgig-test-pg` för att börja om |
+| Containrar hopar sig | avbrutna körningar | `podman container prune` |
 | `aspire run` hittar ingen AppHost | fel arbetskatalog | kör från repo-roten där `aspire.config.json` ligger |
 
 ## Röra AppHosten
