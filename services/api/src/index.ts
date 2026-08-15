@@ -1,6 +1,11 @@
 import { buildServer } from './server.ts';
+import { migrate } from './db/migrate.ts';
 
 const app = await buildServer();
+
+// Databasen är icke-persistent, så schemat byggs upp vid varje start. Idempotent.
+const applied = await migrate(app.sql);
+if (applied.length > 0) app.log.info({ applied }, 'migrationer applicerade');
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {

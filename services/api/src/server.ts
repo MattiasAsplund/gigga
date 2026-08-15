@@ -4,7 +4,12 @@ import type { SQL } from 'bun';
 import { loadConfig, type Config } from './config.ts';
 import { createSql } from './db/sql.ts';
 import { registerSwagger } from './plugins/swagger.ts';
+import { registerErrorHandling } from './plugins/errors.ts';
+import { registerAuth } from './plugins/auth.ts';
 import { healthRoutes } from './routes/health.ts';
+import { authRoutes } from './routes/auth.ts';
+
+export const API_PREFIX = '/api/v1';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -43,8 +48,12 @@ export async function buildServer(options: BuildServerOptions = {}) {
     });
   }
 
+  registerErrorHandling(app);
   await registerSwagger(app);
+  await registerAuth(app);
+
   await app.register(healthRoutes);
+  await app.register(authRoutes, { prefix: API_PREFIX });
 
   return app;
 }

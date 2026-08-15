@@ -1,0 +1,88 @@
+import type { FastifyPluginAsyncTypebox } from '@fastify/type-provider-typebox';
+import { ProblemSchema } from '../schemas/common.ts';
+import {
+  LoginBodySchema,
+  LoginResponseSchema,
+  RegisterBodySchema,
+  RegisterResponseSchema,
+} from '../schemas/auth.ts';
+import { findUserByEmail, insertUser, normalizeEmail } from '../db/users.ts';
+import { emailTaken, invalidCredentials } from '../plugins/errors.ts';
+import { TOKEN_TTL_SECONDS } from '../plugins/auth.ts';
+
+/**
+ * En argon2id-hash av ett kasserat lösenord. Vid inloggning mot en okänd e-postadress
+ * verifierar vi mot den istället för att returnera direkt — annars går det att skilja
+ * "kontot finns inte" från "fel lösenord" på svarstiden (A2.2/A2.3).
+ */
+let dummyHash: Promise<string> | null = null;
+const getDummyHash = () => (dummyHash ??= Bun.password.hash('inte-ett-riktigt-losenord'));
+
+export const authRoutes: FastifyPluginAsyncTypebox = async (app) => {
+  app.post(
+    '/auth/register',
+    {
+      schema: {
+        operationId: 'register',
+        tags: ['auth'],
+        summary: 'Registrering av konto',
+        description:
+          'Skapar ett konto och returnerar en access-token. Rollen är inte fast — samma ' +
+          'konto kan vara köpare i en förfrågan och säljare i en annan.',
+        body: RegisterBodySchema,
+        response: {
+          201: RegisterResponseSchema,
+          409: ProblemSchema,
+          422: ProblemSchema,
+        },
+      },
+    },
+    async (req, reply) => {
+      const { email, password, displayName } = req.body;
+
+      const user = await insertUser(app.sql, {
+        email,
+        passwordHash: await Bun.password.hash(password),
+        displayName,
+      });
+
+      if (!user) throw emailTaken();
+
+      return reply.code(201).send({
+        id: user.id,
+        email: user.email,
+        displayName: user.displayName,
+        token: app.issueToken(user.id),
+      });
+    },
+  );
+
+  app.post(
+    '/auth/login',
+    {
+      schema: {
+        operationId: 'login',
+        tags: ['auth'],
+        summary: 'Inloggning',
+        body: LoginBodySchema,
+        response: {
+          200: LoginResponseSchema,
+          401: ProblemSchema,
+          422: ProblemSchema,
+        },
+      },
+    },
+    async (req, reply) => {
+      const { password } = req.body;
+      const user = await findUserByEmail(app.sql, normalizeEmail(req.body.email));
+
+      const matches = await Bun.password.verify(password, user?.passwordHash ?? (await getDummyHash()));
+      if (!user || !matches) throw invalidCredentials();
+
+      return reply.code(200).send({
+        token: app.issueToken(user.id),
+        expiresIn: TOKEN_TTL_SECONDS,
+      });
+    },
+  );
+};

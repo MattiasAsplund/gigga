@@ -12,11 +12,19 @@ export interface TestApp {
 
 const TEST_JWT_SECRET = 'test-secret-som-ar-minst-fyrtioatta-tecken-langt-abc';
 
+export interface BuildTestAppOptions {
+  /**
+   * Registreras före app.ready(). Används för att pröva sådant som inte har en egen
+   * publik route — t.ex. requireAuth — utan att API-ytan växer utanför §6 i planen.
+   */
+  extraRoutes?: (app: App) => Promise<void>;
+}
+
 /**
  * Bygger appen mot en egen databas. Testerna anropar app.inject() — ingen port öppnas.
  * Anropas en gång per testfil i beforeAll.
  */
-export async function buildTestApp(): Promise<TestApp> {
+export async function buildTestApp(options: BuildTestAppOptions = {}): Promise<TestApp> {
   const db = await freshDatabase();
 
   const app = await buildServer({
@@ -29,6 +37,8 @@ export async function buildTestApp(): Promise<TestApp> {
     },
     sql: db.sql,
   });
+
+  await options.extraRoutes?.(app);
   await app.ready();
 
   return {

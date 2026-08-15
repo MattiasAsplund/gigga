@@ -59,11 +59,12 @@ test('en migration som fallerar halvvägs rullas tillbaka helt', async () => {
     `) as { finns: boolean }[];
     expect(table!.finns).toBe(false);
 
-    // Och inget får ha bokförts som applicerat.
+    // Och den fallerande migrationen får inte ha bokförts som applicerad.
+    // (Tabellen är inte tom — malldatabasen bär redan de riktiga migrationerna.)
     const applied = (await scratch.sql`SELECT name FROM schema_migrations`) as {
       name: string;
     }[];
-    expect(applied).toEqual([]);
+    expect(applied.map((r) => r.name)).not.toContain('001_broken.sql');
   } finally {
     await scratch.close();
   }
