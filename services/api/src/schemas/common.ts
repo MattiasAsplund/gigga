@@ -34,11 +34,14 @@ export const MoneySchema = Type.Object(
       description: 'Belopp i minorenhet, t.ex. 4500000 för 45 000,00 kr.',
       examples: [4500000],
     }),
-    currency: Type.String({
-      pattern: '^[A-Z]{3}$',
-      default: 'SEK',
-      description: 'ISO 4217, versaler.',
-    }),
+    // Valfri och utan `default` — samma skäl som i schemas/bid.ts: koden fyller i SEK.
+    currency: Type.Optional(
+      Type.String({
+        pattern: '^[A-Z]{3}$',
+        description: 'ISO 4217, versaler. Utelämnad betyder SEK.',
+        examples: ['SEK'],
+      }),
+    ),
   },
   { additionalProperties: false, $id: 'Money', title: 'Money' },
 );

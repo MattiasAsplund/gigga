@@ -9,6 +9,7 @@ import { registerAuth } from './plugins/auth.ts';
 import { healthRoutes } from './routes/health.ts';
 import { authRoutes } from './routes/auth.ts';
 import { requestRoutes } from './routes/requests.ts';
+import { bidRoutes } from './routes/bids.ts';
 
 export const API_PREFIX = '/api/v1';
 
@@ -56,6 +57,7 @@ export async function buildServer(options: BuildServerOptions = {}) {
   await app.register(healthRoutes);
   await app.register(authRoutes, { prefix: API_PREFIX });
   await app.register(requestRoutes, { prefix: API_PREFIX });
+  await app.register(bidRoutes, { prefix: API_PREFIX });
 
   return app;
 }

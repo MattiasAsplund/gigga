@@ -382,9 +382,22 @@ Endast egna anbud. Filtrering via `?status=`.
 `deadlineAt` måste ligga i framtiden. Skaparen blir köpare.
 
 **6. `POST /requests/{id}/bids`** → `201`
-`{ plan, compensation: { type:'fixed', amountMinor, currency } | { type:'hourly', rateMinor, estimatedHours, currency } }`.
-Diskriminerad union i TypeBox ⇒ Swagger får `oneOf` med `discriminator`.
+`{ plan, compensation: { type:'fixed', amountMinor, currency? } | { type:'hourly', rateMinor, estimatedHours, currency? } }`.
+Svaret innehåller dessutom `estimatedTotalMinor` — beräknat totalbelopp, för timanbud
+rate × timmar avrundat till hela ören. Köparen ska kunna jämföra anbud utan att räkna själv.
 `403` på egen förfrågan, `409` vid dubbelt anbud, `422` om förfrågan är stängd eller deadline passerat.
+
+> **Avvikelse från planen.** Unionen uttrycks som `anyOf` med `const` på `type`, inte som
+> OpenAPI:s `discriminator`. TypeBox genererar `anyOf`, medan Ajv:s discriminator-stöd
+> kräver `oneOf`, och nyckelordet fälls dessutom av strict mode
+> (*"unknown keyword: discriminator"*). Att slå av `strictSchema` globalt för en ren
+> dokumentationsvinst är fel byte — valideringen blir identisk, och F6.3 fångas av
+> `additionalProperties: false` i varje gren.
+>
+> Av samma orsak har `currency` **ingen `default` i schemat**: Ajv applicerar inte defaults
+> inuti `anyOf`-grenar och fäller schemat i strict mode. Fältet är valfritt och fylls i av
+> koden (`currencyOr` i `domain/money.ts`). Samma sak gäller `budget.currency` i API 5, så
+> reglerna är desamma på båda ställena.
 
 **7. `POST /bids/{bidId}/contract/signatures`** → `200`
 Ingen body. Semantik:
@@ -490,13 +503,17 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | F5.5b | Tom titel ⇒ 422 |
 | F5.5c | Okänd `compensationPref` ⇒ 422 |
 | **F6** | **Registrera anbud** |
-| F6.1 | Fastprisanbud ⇒ 201, status `submitted` |
-| F6.2 | Timanbud med rate + estimatedHours ⇒ 201 |
+| F6.1 | Fastprisanbud ⇒ 201, status `submitted`, timkolumnerna tomma i databasen |
+| F6.2 | Timanbud med rate + estimatedHours ⇒ 201, `estimatedTotalMinor` beräknad |
+| F6.2b | Anbud utan token ⇒ 401 |
 | F6.3 | `type:'fixed'` men `rateMinor` skickas ⇒ 422 |
+| F6.3b | `type:'hourly'` utan `estimatedHours` ⇒ 422 |
 | F6.4 | Anbud på egen förfrågan ⇒ 403 |
 | F6.5 | Andra anbudet från samma säljare på samma förfrågan ⇒ 409 |
+| F6.5b | En annan säljare får lämna anbud på samma förfrågan ⇒ 201 |
 | F6.6 | Anbud efter deadline ⇒ 422 |
 | F6.7 | Anbud på okänd förfrågan ⇒ 404 |
+| F6.7b | `requestId` som inte är en uuid ⇒ 422 |
 | F6.8 | Anbud på `awarded` förfrågan ⇒ 422 |
 | **L3** | **Lista egna förfrågningar med anbud** |
 | L3.1 | Returnerar bara egna förfrågningar, aldrig andras |
@@ -525,8 +542,8 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | M.4 | En migration som fallerar halvvägs rullas tillbaka helt och bokförs inte |
 | M.5 | Migrering från tom databas: malldatabasen rivs och byggs om vid varje testkörning, så hela migrationskedjan körs från noll varje gång. Endast `index.ts`-anropet vid boot är otestat, och det verifierades manuellt mot Aspire i etapp 2 |
 | **D** | **Domänenheter (utan databas)** |
-| D.1 | Ersättningsvalidering: alla giltiga/ogiltiga kombinationer |
-| D.2 | Totalberäkning för timanbud (rate × timmar, avrundning i minorenhet) |
+| D.1 | Ersättningsformen till och från kolumner: fastpris fyller bara fixed-kolumnen, timpris bara timkolumnerna, ogiltiga belopp och timmar kastar, och en rad som bryter mot formen tolkas inte utan kastar |
+| D.2 | Totalberäkning: fastpris är sitt eget total, timpris = rate × timmar avrundat i minorenhet, halva ören uppåt, ingen flyttalsdrift |
 | D.3 | Signaturstatens övergångar som ren funktion |
 | D.4 | `bigint` från `Bun.SQL` (string) → `number`; null förblir null; belopp utanför säkra heltal och skräp kastar; `toMinorColumn` kräver positivt heltal |
 | **X** | **Tvärsnitt** |
@@ -535,8 +552,8 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | X.3 | `/health` svarar 200 när databasen är nåbar, 503 annars |
 | X.4 | Okänd väg ⇒ 404 i Problem Details-format |
 
-Totalt 60 testfall, varav 28 gröna (A1.\*, A2.\*, F5.\*, D.4, M.1–M.4, X.3:s båda vägar).
-Matrisen är levande — den *ska* ändras i dialogen (§8.1).
+Totalt 71 testfall, varav 49 gröna (A1.\*, A2.\*, F5.\*, F6.\*, D.1, D.2, D.4, M.1–M.4,
+X.3:s båda vägar). Matrisen är levande — den *ska* ändras i dialogen (§8.1).
 
 ### 7.3 Körning
 
@@ -601,10 +618,10 @@ Varje etapp är en pull-liknande enhet med en tydlig grön-tröskel.
 | **1** ✅ | Testrigg | `Bun.$`-postgreshelper med återanvänd container + malldatabas, `buildTestApp()`, migrationsrunner med transaktion per migration | **Klar.** X.3 grön (både 200- och 503-vägen); migrationsrunnern har fyra egna testfall (ordning, tom katalog, idempotens, rollback); 6/6 gröna; trasig assertion ger svar på 0,95 s varm |
 | **2** ✅ | Konto & inloggning (API 1–2) | `users`-migrering (citext), `Bun.password` (argon2id), `@fastify/jwt`, `requireAuth`, Problem Details-hanteraren, `actors.ts` | **Klar.** A1.\*, A2.\* gröna; 14/14 i hela sviten; register/dubblett/login/fel-lösenord verifierade mot levande Aspire |
 | **3** ✅ | Förfrågningar (API 5) | `requests`-migrering (enum-typer, budget-check, sidbrytningsindex), TypeBox-scheman, `domain/money.ts`, route | **Klar.** F5.\* och D.4 gröna; 28/28 i hela sviten |
-| **4** | Anbud (API 6) | `bids`-migrering, diskriminerad ersättningsunion, domänregler | F6.\*, D.1, D.2 gröna |
+| **4** ✅ | Anbud (API 6) | `bids`-migrering med CHECK på ersättningsformen och partiellt unikt index, `domain/bid-rules.ts`, route | **Klar.** F6.\*, D.1, D.2 gröna; 49/49 i hela sviten |
 | **5** | Listnings-API:er (API 3–4) | Joins, sidbrytning, filter | L3.\*, L4.\* gröna |
 | **6** | Avtalssignering (API 7) | `contracts`-migrering, transaktionell tillståndsmaskin med `sql.begin` + `SELECT … FOR UPDATE` | S7.\*, D.3 gröna |
-| **7** | Dokumentation & finish | `operationId`/`tags`/felsvar på alla routes, Problem Details överallt, `docs/API.md` | X.\* gröna; hela sviten (60 fall) grön; Swagger UI körbar mot levande API |
+| **7** | Dokumentation & finish | `operationId`/`tags`/felsvar på alla routes, Problem Details överallt, `docs/API.md` | X.\* gröna; hela sviten (71 fall) grön; Swagger UI körbar mot levande API |
 
 Etapp 0–1 är infrastruktur och skrivs inte testdrivet i strikt mening — de *är* verktyget som
 gör resten testdriven. Från etapp 2 gäller §8.1 utan undantag.

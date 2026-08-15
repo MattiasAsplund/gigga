@@ -10,6 +10,16 @@ export interface Money {
   currency: string;
 }
 
+/**
+ * Valutan är valfri i API:et och fylls i här istället för med `default` i schemat:
+ * Ajv applicerar inte defaults inuti `anyOf`-grenar, och en default som bara ibland
+ * gäller är värre än ingen alls.
+ */
+export const DEFAULT_CURRENCY = 'SEK';
+
+export const currencyOr = (currency: string | undefined): string =>
+  currency ?? DEFAULT_CURRENCY;
+
 /** Läser en bigint-kolumn. Kastar hellre än tappar precision tyst. */
 export function fromMinorColumn(value: string | number | null | undefined): number | null {
   if (value === null || value === undefined) return null;
@@ -17,6 +27,20 @@ export function fromMinorColumn(value: string | number | null | undefined): numb
   const parsed = typeof value === 'number' ? value : Number(value);
   if (!Number.isSafeInteger(parsed)) {
     throw new Error(`Beloppet ${value} är inte ett säkert heltal i minorenhet.`);
+  }
+  return parsed;
+}
+
+/**
+ * Läser en `numeric`-kolumn (t.ex. `estimated_hours`). Bun.SQL ger även dessa som string,
+ * med efterföljande nollor: '7.50' → 7.5.
+ */
+export function fromNumericColumn(value: string | number | null | undefined): number | null {
+  if (value === null || value === undefined) return null;
+
+  const parsed = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(parsed)) {
+    throw new Error(`Värdet ${value} är inte ett tal.`);
   }
   return parsed;
 }

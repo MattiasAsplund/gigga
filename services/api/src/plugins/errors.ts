@@ -79,6 +79,30 @@ export const emailTaken = () =>
     detail: 'Det finns redan ett konto med den adressen.',
   });
 
+export const requestNotFound = () =>
+  new ProblemError({
+    status: 404,
+    slug: 'request-not-found',
+    title: 'Förfrågan finns inte',
+    detail: 'Det finns ingen uppdragsförfrågan med det id:t.',
+  });
+
+export const ownRequest = () =>
+  new ProblemError({
+    status: 403,
+    slug: 'own-request',
+    title: 'Egen förfrågan',
+    detail: 'Du kan inte lämna anbud på en förfrågan du själv har publicerat.',
+  });
+
+export const bidExists = () =>
+  new ProblemError({
+    status: 409,
+    slug: 'bid-exists',
+    title: 'Anbud finns redan',
+    detail: 'Du har redan ett aktivt anbud på den här förfrågan.',
+  });
+
 /**
  * Översätter Fastifys valideringsfel till 422 med fältpekare.
  * 400 är reserverat för trasig syntax; ett schemabrott är semantiskt (planens §8.1).

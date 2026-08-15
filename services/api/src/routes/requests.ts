@@ -3,6 +3,7 @@ import { ProblemSchema } from '../schemas/common.ts';
 import { CreateRequestBodySchema, RequestResponseSchema } from '../schemas/request.ts';
 import { insertRequest, type UppdragsRequest } from '../db/requests.ts';
 import { validationFailed } from '../plugins/errors.ts';
+import { currencyOr } from '../domain/money.ts';
 
 /** Domänobjekt → JSON. Datum som ISO-strängar, belopp som heltal. */
 export function requestToResponse(request: UppdragsRequest) {
@@ -56,7 +57,9 @@ export const requestRoutes: FastifyPluginAsyncTypebox = async (app) => {
         title,
         description,
         compensationPref,
-        budget: budget ?? null,
+        budget: budget
+          ? { amountMinor: budget.amountMinor, currency: currencyOr(budget.currency) }
+          : null,
         deadlineAt: deadline,
       });
 
