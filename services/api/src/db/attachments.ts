@@ -6,11 +6,9 @@ export interface Attachment {
   filename: string;
   contentType: string;
   sizeBytes: number;
+  /** Nyckeln i objektlagringen. Innehållet ligger inte i databasen. */
+  storageKey: string;
   uploadedAt: Date;
-}
-
-export interface AttachmentWithContent extends Attachment {
-  content: Uint8Array;
 }
 
 interface AttachmentRow {
@@ -19,10 +17,12 @@ interface AttachmentRow {
   filename: string;
   content_type: string;
   size_bytes: number;
+  storage_key: string;
   uploaded_at: Date;
 }
 
-const META_COLUMNS = 'id, bid_id, filename, content_type, size_bytes, uploaded_at';
+const META_COLUMNS =
+  'id, bid_id, filename, content_type, size_bytes, storage_key, uploaded_at';
 
 const toAttachment = (row: AttachmentRow): Attachment => ({
   id: row.id,
@@ -30,23 +30,32 @@ const toAttachment = (row: AttachmentRow): Attachment => ({
   filename: row.filename,
   contentType: row.content_type,
   sizeBytes: row.size_bytes,
+  storageKey: row.storage_key,
   uploadedAt: row.uploaded_at,
 });
 
-/** Returnerar null om filnamnet redan är upptaget i anbudet. */
+/**
+ * Returnerar null om filnamnet redan är upptaget i anbudet.
+ *
+ * Raden skrivs efter att objektet lagts upp; anroparen städar bort objektet om det här
+ * ger null. Ordningen är medveten: ett objekt utan rad är skräp, en rad utan objekt är
+ * ett trasigt dokument.
+ */
 export async function insertAttachment(
   sql: SQL,
   input: {
+    id: string;
     bidId: string;
     filename: string;
     contentType: string;
-    content: Uint8Array;
+    sizeBytes: number;
+    storageKey: string;
   },
 ): Promise<Attachment | null> {
   const rows = (await sql`
-    INSERT INTO bid_attachments (bid_id, filename, content_type, size_bytes, content)
-    VALUES (${input.bidId}, ${input.filename}, ${input.contentType},
-            ${input.content.byteLength}, ${Buffer.from(input.content)})
+    INSERT INTO bid_attachments (id, bid_id, filename, content_type, size_bytes, storage_key)
+    VALUES (${input.id}, ${input.bidId}, ${input.filename}, ${input.contentType},
+            ${input.sizeBytes}, ${input.storageKey})
     ON CONFLICT (bid_id, filename) DO NOTHING
     RETURNING ${sql.unsafe(META_COLUMNS)}
   `) as AttachmentRow[];
@@ -88,22 +97,19 @@ export async function findAttachment(
   return row ? toAttachment(row) : null;
 }
 
-/** Hämtar innehållet för hela anbudet — underlaget till ZIP-arkivet. */
-export async function loadAttachmentContents(
+/** Dokumenten i arkivordning. Innehållet hämtas ur objektlagringen av anroparen. */
+export async function listAttachmentsForArchive(
   sql: SQL,
   bidId: string,
-): Promise<AttachmentWithContent[]> {
+): Promise<Attachment[]> {
   const rows = (await sql`
-    SELECT ${sql.unsafe(META_COLUMNS)}, content
+    SELECT ${sql.unsafe(META_COLUMNS)}
     FROM bid_attachments
     WHERE bid_id = ${bidId}
     ORDER BY filename
-  `) as (AttachmentRow & { content: Uint8Array | Buffer })[];
+  `) as AttachmentRow[];
 
-  return rows.map((row) => ({
-    ...toAttachment(row),
-    content: new Uint8Array(row.content),
-  }));
+  return rows.map(toAttachment);
 }
 
 /** Returnerar null om namnet är upptaget, false om dokumentet inte finns. */
@@ -128,15 +134,16 @@ export async function renameAttachment(
   return row ? toAttachment(row) : null;
 }
 
+/** Returnerar nyckeln som ska städas bort ur lagringen, eller null om raden inte fanns. */
 export async function deleteAttachment(
   sql: SQL,
   input: { bidId: string; attachmentId: string },
-): Promise<boolean> {
+): Promise<string | null> {
   const rows = (await sql`
     DELETE FROM bid_attachments
     WHERE id = ${input.attachmentId} AND bid_id = ${input.bidId}
-    RETURNING id
-  `) as { id: string }[];
+    RETURNING storage_key
+  `) as { storage_key: string }[];
 
-  return rows.length > 0;
+  return rows[0]?.storage_key ?? null;
 }

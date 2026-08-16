@@ -24,6 +24,25 @@ const jwtSecret = await builder.addParameterWithGeneratedValue('jwt-secret', {
 // som egen URL i dashboarden — det är där verifieringsmailen läses.
 const mailpit = await builder.addMailPit('mailpit').withSessionLifetime();
 
+// Objektlagring för anbudsdokument. Ingen volym: filerna delar livscykel med databasen,
+// och bucketen skapas av API:et vid uppstart eftersom MinIO startar tom.
+//
+// Uppgifterna genereras som parametrar i stället för att låta MinIO hitta på ett
+// lösenord — API:et behöver samma värde, och utan specialtecken slipper vi
+// escapning i signeringen.
+const minioUser = await builder.addParameterWithGeneratedValue('minio-user', {
+  minLength: 12,
+  special: false,
+});
+const minioPassword = await builder.addParameterWithGeneratedValue('minio-password', {
+  minLength: 24,
+  special: false,
+});
+
+const minio = await builder
+  .addMinioContainer('minio', { rootUser: minioUser, rootPassword: minioPassword })
+  .withSessionLifetime();
+
 // addBunApp kör `bun src/index.ts` direkt — inget bygg- eller transpileringssteg.
 const api = await builder
   .addBunApp('api', './services/api', 'src/index.ts')
@@ -33,9 +52,14 @@ const api = await builder
   .withEnvironment('JWT_SECRET', jwtSecret)
   .withEnvironment('SMTP_HOST', await mailpit.host())
   .withEnvironment('SMTP_PORT', await mailpit.port())
+  .withEnvironment('S3_ENDPOINT', await minio.uriExpression())
+  .withEnvironment('S3_BUCKET', 'fastgig-attachments')
+  .withEnvironment('S3_ACCESS_KEY_ID', minioUser)
+  .withEnvironment('S3_SECRET_ACCESS_KEY', minioPassword)
   .withHttpHealthCheck({ path: '/health' })
   .waitFor(db)
-  .waitFor(mailpit);
+  .waitFor(mailpit)
+  .waitFor(minio);
 
 // Verifieringslänkarna måste peka på den port Aspire faktiskt tilldelat API:et.
 await api.withEnvironment('PUBLIC_BASE_URL', await api.getEndpoint('http'));

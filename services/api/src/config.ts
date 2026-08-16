@@ -15,6 +15,12 @@ const ConfigSchema = Type.Object({
    * bär koden i klartext istället för en länk — se mail/password-reset-email.ts.
    */
   PASSWORD_RESET_URL: Type.String({ default: '' }),
+  /** Objektlagring för anbudsdokument. Sätts av AppHosten från MinIO-resursen. */
+  S3_ENDPOINT: Type.String({ default: 'http://127.0.0.1:9000' }),
+  S3_BUCKET: Type.String({ default: 'fastgig-attachments' }),
+  S3_ACCESS_KEY_ID: Type.String({ default: 'minioadmin' }),
+  S3_SECRET_ACCESS_KEY: Type.String({ default: 'minioadmin' }),
+  S3_REGION: Type.String({ default: 'us-east-1' }),
   JWT_SECRET: Type.String({ minLength: 32 }),
   LOG_LEVEL: Type.Union(
     [

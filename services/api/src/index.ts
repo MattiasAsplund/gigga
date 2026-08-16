@@ -7,6 +7,9 @@ const app = await buildServer();
 const applied = await migrate(app.sql);
 if (applied.length > 0) app.log.info({ applied }, 'migrationer applicerade');
 
+// MinIO startar tom vid varje `aspire run`, så bucketen skapas här.
+await app.objects.ensureReady();
+
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {
     app.log.info(`${signal} mottagen, stänger ned`);

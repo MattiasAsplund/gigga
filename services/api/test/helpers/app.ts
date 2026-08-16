@@ -1,6 +1,10 @@
 import { SQL } from 'bun';
 import { buildServer, type App } from '../../src/server.ts';
 import { createMemoryMailer, type MemoryMailer } from '../../src/mail/mailer.ts';
+import {
+  createMemoryObjectStore,
+  type MemoryObjectStore,
+} from '../../src/storage/object-store.ts';
 import { freshDatabase, type TestDatabase } from './postgres.ts';
 
 export interface TestApp {
@@ -8,6 +12,8 @@ export interface TestApp {
   sql: SQL;
   /** Utgående post. Testernas motsvarighet till mailpits inkorg. */
   mail: MemoryMailer;
+  /** Lagrade objekt. Testernas motsvarighet till att titta i MinIO-bucketen. */
+  objects: MemoryObjectStore;
   /** Direktåtkomst till databasen för assertions som ska förbi API:et. */
   db: TestDatabase;
   close(): Promise<void>;
@@ -30,6 +36,7 @@ export interface BuildTestAppOptions {
 export async function buildTestApp(options: BuildTestAppOptions = {}): Promise<TestApp> {
   const db = await freshDatabase();
   const mail = createMemoryMailer();
+  const objects = createMemoryObjectStore();
 
   const app = await buildServer({
     config: {
@@ -44,9 +51,15 @@ export async function buildTestApp(options: BuildTestAppOptions = {}): Promise<T
       PUBLIC_BASE_URL: 'http://fastgig.test',
       // Tomt: återställningsmailen bär koden i klartext, som utan frontend.
       PASSWORD_RESET_URL: '',
+      S3_ENDPOINT: 'http://minne',
+      S3_BUCKET: 'test',
+      S3_ACCESS_KEY_ID: 'test',
+      S3_SECRET_ACCESS_KEY: 'test',
+      S3_REGION: 'us-east-1',
     },
     sql: db.sql,
     mailer: mail,
+    objects,
   });
 
   await options.extraRoutes?.(app);
@@ -56,6 +69,7 @@ export async function buildTestApp(options: BuildTestAppOptions = {}): Promise<T
     app,
     sql: db.sql,
     mail,
+    objects,
     db,
     close: async () => {
       await app.close();
@@ -71,6 +85,7 @@ export async function buildTestApp(options: BuildTestAppOptions = {}): Promise<T
 export async function buildTestAppWithBrokenDatabase(url: string): Promise<TestApp> {
   const sql = new SQL(url);
   const mail = createMemoryMailer();
+  const objects = createMemoryObjectStore();
   const app = await buildServer({
     config: {
       PORT: 0,
@@ -84,9 +99,15 @@ export async function buildTestAppWithBrokenDatabase(url: string): Promise<TestA
       PUBLIC_BASE_URL: 'http://fastgig.test',
       // Tomt: återställningsmailen bär koden i klartext, som utan frontend.
       PASSWORD_RESET_URL: '',
+      S3_ENDPOINT: 'http://minne',
+      S3_BUCKET: 'test',
+      S3_ACCESS_KEY_ID: 'test',
+      S3_SECRET_ACCESS_KEY: 'test',
+      S3_REGION: 'us-east-1',
     },
     sql,
     mailer: mail,
+    objects,
   });
   await app.ready();
 
@@ -94,6 +115,7 @@ export async function buildTestAppWithBrokenDatabase(url: string): Promise<TestA
     app,
     sql,
     mail,
+    objects,
     db: { url, sql, close: () => sql.end() },
     close: async () => {
       await app.close();

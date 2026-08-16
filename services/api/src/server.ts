@@ -6,6 +6,7 @@ import { createSql } from './db/sql.ts';
 import { registerSwagger } from './plugins/swagger.ts';
 import { registerErrorHandling } from './plugins/errors.ts';
 import { createSmtpMailer, type Mailer } from './mail/mailer.ts';
+import { createS3ObjectStore, type ObjectStore } from './storage/object-store.ts';
 import { registerAuth } from './plugins/auth.ts';
 import { healthRoutes } from './routes/health.ts';
 import { authRoutes } from './routes/auth.ts';
@@ -26,6 +27,7 @@ declare module 'fastify' {
     config: Config;
     sql: SQL;
     mailer: Mailer;
+    objects: ObjectStore;
     /** Basadressen som verifieringslänkar byggs på. */
     publicBaseUrl(): string;
   }
@@ -38,6 +40,8 @@ export interface BuildServerOptions {
   sql?: SQL;
   /** Testerna skickar in en minnesmailer istället för att prata SMTP. */
   mailer?: Mailer;
+  /** Och en Map i stället för att prata S3. */
+  objects?: ObjectStore;
 }
 
 /**
@@ -50,6 +54,15 @@ export async function buildServer(options: BuildServerOptions = {}) {
   const mailer =
     options.mailer ??
     createSmtpMailer({ host: config.SMTP_HOST, port: config.SMTP_PORT, from: config.MAIL_FROM });
+  const objects =
+    options.objects ??
+    createS3ObjectStore({
+      endpoint: config.S3_ENDPOINT,
+      bucket: config.S3_BUCKET,
+      accessKeyId: config.S3_ACCESS_KEY_ID,
+      secretAccessKey: config.S3_SECRET_ACCESS_KEY,
+      region: config.S3_REGION,
+    });
 
   const app = Fastify({
     logger: { level: config.LOG_LEVEL },
@@ -59,6 +72,7 @@ export async function buildServer(options: BuildServerOptions = {}) {
   app.decorate('config', config);
   app.decorate('sql', sql);
   app.decorate('mailer', mailer);
+  app.decorate('objects', objects);
 
   // PUBLIC_BASE_URL sätts av AppHosten. Utan den faller vi tillbaka på den port vi
   // faktiskt lyssnar på, så länkarna fungerar även när tjänsten körs för hand.

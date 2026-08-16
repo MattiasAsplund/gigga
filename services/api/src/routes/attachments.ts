@@ -26,10 +26,12 @@ import {
   findAttachment,
   insertAttachment,
   listAttachments,
-  loadAttachmentContents,
+  listAttachmentsForArchive,
   renameAttachment,
   type Attachment,
 } from '../db/attachments.ts';
+import { attachmentKey } from '../storage/object-store.ts';
+import { randomUUID } from 'node:crypto';
 import { findBidById } from '../db/bids.ts';
 import { findRequestById } from '../db/requests.ts';
 import { hasReadPermission } from '../db/permissions.ts';
@@ -164,13 +166,25 @@ export const attachmentRoutes: FastifyPluginAsyncTypebox = async (app) => {
         throw tooManyFiles(MAX_FILES_PER_BID);
       }
 
+      // Objektet först, raden sedan: ett objekt utan rad är skräp som går att städa,
+      // en rad utan objekt är ett dokument som inte går att ladda ner.
+      const id = randomUUID();
+      const storageKey = attachmentKey(req.params.bidId, id);
+      await app.objects.put(storageKey, content, contentType);
+
       const attachment = await insertAttachment(app.sql, {
+        id,
         bidId: req.params.bidId,
         filename,
         contentType,
-        content,
+        sizeBytes: content.byteLength,
+        storageKey,
       });
-      if (!attachment) throw filenameTaken();
+
+      if (!attachment) {
+        await app.objects.delete(storageKey);
+        throw filenameTaken();
+      }
 
       return reply.code(201).send(attachmentToResponse(attachment));
     },
@@ -238,13 +252,22 @@ export const attachmentRoutes: FastifyPluginAsyncTypebox = async (app) => {
     async (req, reply) => {
       await requireReader(req.params.bidId, req.user.sub);
 
-      const files = await loadAttachmentContents(app.sql, req.params.bidId);
+      const files = await listAttachmentsForArchive(app.sql, req.params.bidId);
 
       // JSZip och inte fflate: fflate sätter inte UTF-8-flaggan (bit 11) i ZIP-huvudet,
       // så `unzip` tolkar filnamnen som CP437 och "förslag.md" blir "f├╢rslag.md".
       // Att läsa tillbaka arkivet med samma bibliotek döljer felet helt.
       const zip = new JSZip();
-      for (const file of files) zip.file(file.filename, file.content);
+      for (const file of files) {
+        const content = await app.objects.get(file.storageKey);
+        // Saknat objekt hoppas över hellre än att fälla hela nedladdningen: resten av
+        // dokumenten är fortfarande vad mottagaren bad om.
+        if (!content) {
+          req.log.error({ storageKey: file.storageKey }, 'dokument saknas i lagringen');
+          continue;
+        }
+        zip.file(file.filename, content);
+      }
 
       const archive = await zip.generateAsync({
         type: 'uint8array',
@@ -338,11 +361,13 @@ export const attachmentRoutes: FastifyPluginAsyncTypebox = async (app) => {
     async (req) => {
       await requireBidOwner(req.params.bidId, req.user.sub);
 
-      const deleted = await deleteAttachment(app.sql, {
+      const storageKey = await deleteAttachment(app.sql, {
         bidId: req.params.bidId,
         attachmentId: req.params.attachmentId,
       });
-      if (!deleted) throw attachmentNotFound();
+      if (!storageKey) throw attachmentNotFound();
+
+      await app.objects.delete(storageKey);
 
       return { deleted: true };
     },

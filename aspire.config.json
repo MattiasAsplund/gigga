@@ -18,6 +18,7 @@
   "packages": {
     "Aspire.Hosting.PostgreSQL": "13.4.6",
     "Aspire.Hosting.JavaScript": "13.4.6",
-    "CommunityToolkit.Aspire.Hosting.MailPit": "13.4.1-beta.706"
+    "CommunityToolkit.Aspire.Hosting.MailPit": "13.4.1-beta.706",
+    "CommunityToolkit.Aspire.Hosting.Minio": "13.4.1-beta.706"
   }
 }

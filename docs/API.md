@@ -166,6 +166,9 @@ curl -X POST $API/bids/$BID/attachments -H "authorization: Bearer $ST" \
   -F "file=@förslag.md"
 ```
 
+Filerna lagras i objektlagring (MinIO i utvecklingsmiljön), inte i databasen — men det
+märks inte utifrån: API:et är detsamma.
+
 Högst 10 MB per fil och 20 filer per anbud. **Filtypen avgörs av innehållet**, inte av
 ändelsen: en `.pdf` som inte börjar med `%PDF-` avvisas med `415`. Filnamn saneras från
 sökvägar och måste vara unika inom anbudet (`409` annars). Ett namnbyte får inte ändra

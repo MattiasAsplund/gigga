@@ -21,6 +21,7 @@ paketinstallation och testkörning.
 | API-dokumentation | `@fastify/swagger` + `@fastify/swagger-ui` | Swagger UI på `/docs`, OpenAPI 3.1 på `/docs/json` — genereras ur route-scheman, skrivs aldrig för hand. |
 | Typer/scheman | TypeBox + `@fastify/type-provider-typebox` | Ett schema ⇒ runtime-validering + TS-typer + OpenAPI. Ingen dubbelspecifikation. |
 | Databas | PostgreSQL 17 i container, **icke-persistent** | Krav. Ingen volym ⇒ tom databas vid varje uppstart. |
+| Objektlagring | MinIO i container, `Bun.S3Client` | Anbudsdokument hör inte hemma i en anslutningspool. S3-klienten är inbyggd i Bun. |
 | DB-klient | **`Bun.SQL`** (inbyggd) | Ingen `pg`-dependency. Taggade template-literals är parametriserade som standard, `sql.begin()` ger transaktioner. Verifierat mot Postgres 17 (§2.2). |
 | Migrationer | Numrerade `.sql`-filer som körs idempotent vid boot | Eftersom databasen ändå är tom vid start är boot-migrering både enklast och alltid korrekt. |
 | Lösenord | **`Bun.password.hash/verify`** (argon2id) | Inbyggt, inget native-bygge, bättre än scrypt-varianten och kräver ingen dependency. |
@@ -624,6 +625,20 @@ medietypen som inte duger. Ett *filnamn* som inte duger är däremot ett vanligt
 ett arkiv som packas upp på någon annans dator. Åäö behålls — arkivet ska vara läsbart.
 Namnet är unikt inom anbudet, annars kolliderar två filer i samma ZIP.
 
+**Innehållet ligger i objektlagring**, inte i databasen. `bid_attachments` bär bara
+`storage_key`, och nyckeln är `bids/{bidId}/{attachmentId}` — utan filnamnet, så ett
+namnbyte är en ren databasoperation som aldrig rör lagringen (B.18).
+
+Ordningen vid uppladdning är objekt först, rad sedan: **ett objekt utan rad är skräp som
+går att städa, en rad utan objekt är ett dokument som inte går att ladda ner.** Avvisas
+raden — filnamnet upptaget — städas objektet bort direkt (B.19). Skulle de ändå glida isär
+hoppas ett saknat objekt över i arkivet i stället för att fälla hela nedladdningen (B.20);
+resten av dokumenten är fortfarande vad mottagaren bad om.
+
+`Bun.S3Client` hanterar objekten, men inte buckets, och MinIO startar tom vid varje
+`aspire run`. Bucketen skapas därför vid boot med en signerad `PUT` via `aws4fetch` —
+`409` betyder att den redan finns, vilket är precis vad vi ville uppnå.
+
 **Rättighetsmatrisen:** skriva (ladda upp, byta namn, radera) är säljarens ensak. Läsa och
 ladda ner ZIP kan säljaren, förfrågans köpare, och den som tilldelats läsrätt. Ett anbud
 utan dokument ger ett **tomt arkiv med `200`**, inte `404`: frågan "vad har säljaren
@@ -909,6 +924,11 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | B.13 | Radering fungerar, frigör namnet, är säljarens ensak, och andra gången ⇒ 404 |
 | B.14 | Dokument följer med anbudet när det raderas |
 | B.15 | Dokument går att lägga till även efter signerat avtal |
+| B.16 | Innehållet ligger i objektlagringen; `bid_attachments` har ingen `content`-kolumn |
+| B.17 | Radering tar bort objektet, inte bara raden |
+| B.18 | Namnbyte rör inte lagringen — nyckeln bär inte filnamnet |
+| B.19 | En avvisad uppladdning lämnar inget skräp i lagringen |
+| B.20 | Ett saknat objekt fäller inte hela arkivet |
 | **X** | **Tvärsnitt** |
 | X.1 | `/docs/json` är OpenAPI 3.1 med ifylld `info` |
 | X.1b | Alla sju API:erna finns på rätt metod och väg, med rätt `operationId` |
@@ -923,7 +943,7 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | X.4b | Fel metod på en känd väg ⇒ 404 i samma format |
 | X.4c | Felsvar från en riktig route är också `application/problem+json` |
 
-Totalt 237 testfall, **alla gröna**. Matrisen är levande — den *ska* ändras i
+Totalt 242 testfall, **alla gröna**. Matrisen är levande — den *ska* ändras i
 dialogen (§8.1).
 
 X-gruppen var grön redan när den skrevs, eftersom den beskriver tvärsnitt som byggdes upp
@@ -998,6 +1018,7 @@ Varje etapp är en pull-liknande enhet med en tydlig grön-tröskel.
 | **5** ✅ | Listnings-API:er (API 3–4) | Joins utan N+1, markörsidbrytning, filter, `004_contracts.sql` (tidigarelagd), dubbla valideringsregimer | **Klar.** L3.\*, L4.\* gröna; 68/68 i hela sviten |
 | **6** ✅ | Avtalssignering (API 7) | `domain/contract-rules.ts`, transaktionell tillståndsmaskin med `sql.begin` + `FOR UPDATE OF r`, frysta villkor, tom-kropp-parser | **Klar.** S7.\*, D.3 gröna; 92/92 i hela sviten; hela flödet kört mot levande Aspire |
 | **7** ✅ | Dokumentation & finish | OpenAPI-tvärsnittstester, `docs/API.md` | **Klar.** X.\* gröna; hela sviten 103/103; Swagger UI och hela flödet körda mot levande Aspire |
+| **17** ✅ | Objektlagring för dokument | `014_attachment_object_storage.sql`, MinIO i AppHosten, `storage/object-store.ts` | **Klar.** B.16–B.20 gröna; 242/242; uppladdning, ZIP och radering verifierade mot MinIO — objekten inspekterade med `mc` i containern |
 | **16** ✅ | Dokument och rättigheter (API 15–23) | `012_request_permissions.sql`, `013_bid_attachments.sql`, `domain/attachments.ts`, multipart, ZIP | **Klar.** P.\* och B.\* gröna; 237/237; uppladdning, rättigheter och ZIP verifierade mot levande Aspire — arkivet uppackat med systemets `unzip` |
 | **15** ✅ | Refresh-tokens (API 14) | `011_refresh_tokens.sql`, rotation med återanvändningsdetektering, `sid` som binder ihop sessionen | **Klar.** T.\* gröna; 186/186; rotation, läckagedetektering och utloggning verifierade mot levande Aspire |
 | **14** ✅ | Utloggning (API 13) | `010_revoked_tokens.sql`, `jti` per token, `db/sessions.ts` | **Klar.** U.\* gröna; 171/171; två samtidiga sessioner verifierade mot levande Aspire |
@@ -1018,9 +1039,9 @@ gör resten testdriven. Från etapp 2 gäller §8.1 utan undantag.
 - **Lista aktiva sessioner** — `refresh_tokens` har allt som behövs (`session_id`,
   `created_at`, `revoked_at`), men inget API exponerar det. Ett `GET /me/sessions` med
   möjlighet att avsluta en enskild är nästa naturliga steg.
-- **Objektlagring för dokument** — `bytea` duger i en icke-persistent databas, men en
-  driftsatt tjänst vill ha filerna någon annanstans. `bid_attachments` byter då `content`
-  mot en nyckel.
+- **Städning av föräldralösa objekt** — dör processen mellan `put` och `INSERT` blir
+  objektet kvar i lagringen utan rad. Ett sopjobb som jämför bucketen mot
+  `bid_attachments` saknas.
 - **Fler rättighetsnivåer** — `permission_level` har bara `read`. Kolumnen finns för att
   slippa en migrering den dag det behövs fler.
 - **Städning av `refresh_tokens`** — rader ligger kvar efter utgång. `revoked_tokens`
