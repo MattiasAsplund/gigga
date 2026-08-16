@@ -14,6 +14,10 @@ för att förklara konventioner som ett schema inte kan uttrycka.
 `POST /auth/register` och `POST /auth/login` ger en access-token. Skicka den som
 `Authorization: Bearer <token>`. Livslängd 1 timme; det finns inga refresh-tokens ännu.
 
+**Utloggning.** `POST /auth/logout` avslutar den session token tillhör; därefter svarar
+den `401 session-ended`. Andra sessioner för samma konto påverkas inte — logga ut på
+telefonen utan att datorn kastas ut. För att avsluta samtliga sessioner: byt lösenord.
+
 **E-postadressen måste bekräftas.** Registreringen skickar ett mail med en länk till
 `GET /validate-user?token=<uuid>`. Innan den klickats svarar `/auth/login` med
 `403 email-not-verified` — och **det gör varje skyddad endpoint också**, även med den token
@@ -101,6 +105,7 @@ bläddringen.
 | `POST /auth/login` | – | Loggar in, returnerar token |
 | `GET /validate-user` | – | Bekräftar e-postadressen via länken i mailet |
 | `POST /auth/resend-verification` | – | Begär ett nytt bekräftelsemail |
+| `POST /auth/logout` | ✔ | Avslutar den session token tillhör |
 | `POST /auth/forgot-password` | – | Begär lösenordsåterställning |
 | `POST /auth/reset-password` | – | Sätter nytt lösenord med koden ur mailet |
 | `GET /requests` | ✔ | Listar öppna uppdrag att lämna anbud på |

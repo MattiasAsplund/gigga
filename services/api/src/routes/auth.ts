@@ -7,6 +7,7 @@ import {
   RegisterResponseSchema,
   ForgotPasswordBodySchema,
   ForgotPasswordResponseSchema,
+  LogoutResponseSchema,
   ResendVerificationBodySchema,
   ResendVerificationResponseSchema,
   ResetPasswordBodySchema,
@@ -37,6 +38,7 @@ import {
 import { TOKEN_TTL_SECONDS } from '../plugins/auth.ts';
 import { verificationEmail } from '../mail/verification-email.ts';
 import { passwordResetEmail } from '../mail/password-reset-email.ts';
+import { purgeExpiredRevocations, revokeToken } from '../db/sessions.ts';
 
 /**
  * En argon2id-hash av ett kasserat lösenord. Vid inloggning mot en okänd e-postadress
@@ -268,6 +270,43 @@ export const authRoutes: FastifyPluginAsyncTypebox = async (app) => {
       if (result.outcome === 'unknown') throw resetTokenNotFound();
 
       return reply.code(200).send({ reset: true, email: result.user.email });
+    },
+  );
+
+  app.post(
+    '/auth/logout',
+    {
+      onRequest: app.requireAuth,
+      schema: {
+        operationId: 'logout',
+        tags: ['auth'],
+        summary: 'Logga ut',
+        description:
+          'Avslutar den session token tillhör. Andra sessioner för samma konto berörs ' +
+          'inte — logga ut på telefonen utan att datorn kastas ut. För att avsluta ' +
+          'samtliga sessioner: byt lösenord.',
+        security: [{ bearerAuth: [] }],
+        response: {
+          200: LogoutResponseSchema,
+          401: ProblemSchema,
+          403: ProblemSchema,
+        },
+      },
+    },
+    async (req, reply) => {
+      // Tokenens egen utgångstid, inte en ny: raden behövs bara så länge token gäller.
+      const expiresAt = req.user.exp
+        ? new Date(req.user.exp * 1000)
+        : new Date(Date.now() + TOKEN_TTL_SECONDS * 1000);
+
+      await revokeToken(app.sql, {
+        jti: req.user.jti,
+        userId: req.user.sub,
+        expiresAt,
+      });
+      await purgeExpiredRevocations(app.sql);
+
+      return reply.code(200).send({ loggedOut: true });
     },
   );
 };

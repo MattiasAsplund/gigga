@@ -38,6 +38,7 @@ const EXPECTED_OPERATIONS: Record<string, [string, string]> = {
   resendVerification: ['post', '/api/v1/auth/resend-verification'],
   forgotPassword: ['post', '/api/v1/auth/forgot-password'],
   resetPassword: ['post', '/api/v1/auth/reset-password'],
+  logout: ['post', '/api/v1/auth/logout'],
 };
 
 /** Operationer som kräver token, och därmed ska deklarera bearerAuth. */
@@ -48,6 +49,8 @@ const PROTECTED = new Set([
   'createBid',
   'signContract',
   'listOpenRequests',
+  // Kräver token — det är just den sessionen som avslutas.
+  'logout',
 ]);
 
 function operations(document: OpenApiDocument): { id: string; op: Operation; where: string }[] {

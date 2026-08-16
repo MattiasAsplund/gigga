@@ -1,15 +1,16 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest, onRequestHookHandler } from 'fastify';
 import jwt from '@fastify/jwt';
-import { emailNotVerified, tokenRevoked, unauthorized } from './errors.ts';
+import { randomUUID } from 'node:crypto';
+import { emailNotVerified, sessionEnded, tokenRevoked, unauthorized } from './errors.ts';
 
 /** Access-tokenens livslängd. Refresh-tokens är medvetet utelämnade i etapp 1 (planen §10). */
 export const TOKEN_TTL_SECONDS = 60 * 60;
 
 declare module '@fastify/jwt' {
   interface FastifyJWT {
-    /** `ver` speglar users.token_version vid utfärdandet. */
-    payload: { sub: string; ver: number };
-    user: { sub: string; ver: number };
+    /** `ver` speglar users.token_version vid utfärdandet, `jti` identifierar sessionen. */
+    payload: { sub: string; ver: number; jti: string };
+    user: { sub: string; ver: number; jti: string; exp?: number };
   }
 }
 
@@ -26,8 +27,9 @@ export async function registerAuth(app: FastifyInstance): Promise<void> {
     sign: { expiresIn: TOKEN_TTL_SECONDS },
   });
 
+  // jti gör sessionen adresserbar: utan ett id går en enskild token inte att logga ut.
   app.decorate('issueToken', (userId: string, tokenVersion: number) =>
-    app.jwt.sign({ sub: userId, ver: tokenVersion }),
+    app.jwt.sign({ sub: userId, ver: tokenVersion, jti: randomUUID() }),
   );
 
   /**
@@ -46,9 +48,14 @@ export async function registerAuth(app: FastifyInstance): Promise<void> {
       throw unauthorized('Token saknas, är utgången eller ogiltig.');
     }
 
+    // Ett uppslag för alltihop: konto, tokenversion och om sessionen är utloggad.
     const rows = (await app.sql`
-      SELECT email_verified, token_version FROM users WHERE id = ${req.user.sub}
-    `) as { email_verified: boolean; token_version: number }[];
+      SELECT u.email_verified,
+             u.token_version,
+             EXISTS (SELECT 1 FROM revoked_tokens r WHERE r.jti = ${req.user.jti}) AS revoked
+      FROM users u
+      WHERE u.id = ${req.user.sub}
+    `) as { email_verified: boolean; token_version: number; revoked: boolean }[];
 
     const account = rows[0];
     // Giltig signatur men inget konto: token hör till något som inte finns längre.
@@ -57,6 +64,7 @@ export async function registerAuth(app: FastifyInstance): Promise<void> {
     // Versionen kommer gratis i samma uppslag som verifieringskontrollen. En token utan
     // `ver` — utfärdad innan versionerna fanns — matchar aldrig och avvisas.
     if (req.user.ver !== account.token_version) throw tokenRevoked();
+    if (account.revoked) throw sessionEnded();
 
     if (!account.email_verified) throw emailNotVerified();
   });

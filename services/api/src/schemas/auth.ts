@@ -63,6 +63,10 @@ export const ResendVerificationResponseSchema = Type.Object({
   }),
 });
 
+export const LogoutResponseSchema = Type.Object({
+  loggedOut: Type.Boolean(),
+});
+
 export const ForgotPasswordBodySchema = Type.Object(
   { email: EmailSchema },
   { additionalProperties: false },

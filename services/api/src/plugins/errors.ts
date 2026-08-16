@@ -105,6 +105,14 @@ export const tokenRevoked = () =>
     detail: 'Lösenordet har ändrats sedan token utfärdades. Logga in igen.',
   });
 
+export const sessionEnded = () =>
+  new ProblemError({
+    status: 401,
+    slug: 'session-ended',
+    title: 'Sessionen är avslutad',
+    detail: 'Du har loggat ut. Logga in igen för att fortsätta.',
+  });
+
 export const resetTokenNotFound = () =>
   new ProblemError({
     status: 404,

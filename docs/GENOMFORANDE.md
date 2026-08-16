@@ -372,6 +372,7 @@ och vid valideringsfel `errors[]`.
 | 10 | `POST /api/v1/auth/resend-verification` | – | Begär ett nytt bekräftelsemail |
 | 11 | `POST /api/v1/auth/forgot-password` | – | Begär lösenordsåterställning |
 | 12 | `POST /api/v1/auth/reset-password` | – | Sätt nytt lösenord med koden ur mailet |
+| 13 | `POST /api/v1/auth/logout` | ✔ | Avsluta den session token tillhör |
 
 ### 6.1 Detaljer per API
 
@@ -447,6 +448,21 @@ inget: bäraren har redan en giltigt signerad token för kontot.
 Det här är ett versionsnummer, inte ett sessionsregister. Det räcker för "byt lösenord och
 lås ut alla", men inte för att logga ut en enskild enhet — det kräver fortfarande arbetet
 i §10.
+
+**13. `POST /auth/logout`** → `200 { loggedOut: true }`
+Avslutar **den session token tillhör**. Andra sessioner för samma konto berörs inte — logga
+ut på telefonen utan att datorn kastas ut. Vill man avsluta samtliga: byt lösenord.
+
+En stateless JWT går inte att ta tillbaka, bara att neka. Varje token bär därför ett eget
+`jti`, och utloggningen lägger det i `revoked_tokens` **till tokenens egen utgångstid** —
+inte längre, raden behövs inte efter det.
+
+Kontrollen kostar ingenting extra: `EXISTS`-uttrycket ryms i samma uppslag som redan görs
+för tokenversion och e-postbekräftelse. Tabellen städas opportunistiskt vid varje
+utloggning, vilket är precis när den växer — inget bakgrundsjobb behövs.
+
+Andra gången samma token loggas ut ger `401 session-ended`; den är redan avslutad och
+kommer aldrig förbi `requireAuth`.
 
 **2. `POST /auth/login`** → `200`
 `{ email, password }` → `{ token, expiresIn }`. Fel användare *och* fel lösenord ger
@@ -763,6 +779,15 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | R.17 | Andra användares tokens påverkas inte |
 | R.18 | En token utan `ver`-claim avvisas |
 | R.19 | Varje återställning ogiltigförklarar den föregående sessionen |
+| **U** | **Utloggning** (API 13) |
+| U.1 | Utloggning ⇒ 200, och token ger sedan 401 `session-ended` |
+| U.2 | Utloggning utan token ⇒ 401 |
+| U.3 | Samma token loggar inte ut två gånger ⇒ 401 |
+| U.4 | Andra sessioner för samma användare påverkas inte |
+| U.5 | Andra användare påverkas inte |
+| U.6 | Ny inloggning efter utloggning fungerar |
+| U.7 | Utloggning städar bort utgångna rader ur `revoked_tokens` |
+| U.8 | Utloggning och lösenordsbyte krockar inte |
 | **X** | **Tvärsnitt** |
 | X.1 | `/docs/json` är OpenAPI 3.1 med ifylld `info` |
 | X.1b | Alla sju API:erna finns på rätt metod och väg, med rätt `operationId` |
@@ -777,7 +802,7 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | X.4b | Fel metod på en känd väg ⇒ 404 i samma format |
 | X.4c | Felsvar från en riktig route är också `application/problem+json` |
 
-Totalt 163 testfall, **alla gröna**. Matrisen är levande — den *ska* ändras i
+Totalt 171 testfall, **alla gröna**. Matrisen är levande — den *ska* ändras i
 dialogen (§8.1).
 
 X-gruppen var grön redan när den skrevs, eftersom den beskriver tvärsnitt som byggdes upp
@@ -852,6 +877,7 @@ Varje etapp är en pull-liknande enhet med en tydlig grön-tröskel.
 | **5** ✅ | Listnings-API:er (API 3–4) | Joins utan N+1, markörsidbrytning, filter, `004_contracts.sql` (tidigarelagd), dubbla valideringsregimer | **Klar.** L3.\*, L4.\* gröna; 68/68 i hela sviten |
 | **6** ✅ | Avtalssignering (API 7) | `domain/contract-rules.ts`, transaktionell tillståndsmaskin med `sql.begin` + `FOR UPDATE OF r`, frysta villkor, tom-kropp-parser | **Klar.** S7.\*, D.3 gröna; 92/92 i hela sviten; hela flödet kört mot levande Aspire |
 | **7** ✅ | Dokumentation & finish | OpenAPI-tvärsnittstester, `docs/API.md` | **Klar.** X.\* gröna; hela sviten 103/103; Swagger UI och hela flödet körda mot levande Aspire |
+| **14** ✅ | Utloggning (API 13) | `010_revoked_tokens.sql`, `jti` per token, `db/sessions.ts` | **Klar.** U.\* gröna; 171/171; två samtidiga sessioner verifierade mot levande Aspire |
 | **13** ✅ | Revokering vid lösenordsbyte | `009_token_version.sql`, `ver`-claim, jämförelse i `requireAuth` | **Klar.** R.15–R.19 gröna; 163/163; verifierat mot levande Aspire |
 | **12** ✅ | Lösenordsåterställning (API 11–12) | `008_password_reset.sql`, engångskod med 1 h giltighet, `mail/password-reset-email.ts` | **Klar.** R.\* gröna; 158/158; hela flödet kört mot mailpit i levande Aspire |
 | **11** ✅ | Utgångstid på verifieringslänken | `007_verification_expiry.sql`, tre utfall ur `verifyUserByToken` | **Klar.** V.21–V.25 gröna; 144/144; 410-vägen och återhämtningen via nytt mail körda mot levande Aspire |
@@ -866,9 +892,11 @@ gör resten testdriven. Från etapp 2 gäller §8.1 utan undantag.
 
 ## 10. Medvetet utelämnat (skuld, inte glömska)
 
-- **Refresh-tokens och utloggning** — access-token med 1 h livslängd i etapp 1.
-  `token_version` löser "lås ut alla vid lösenordsbyte", men att logga ut en enskild enhet
-  kräver ett sessionsregister.
+- **Refresh-tokens** — access-token med 1 h livslängd, och användaren måste logga in på
+  nytt när den går ut. Utloggning och revokering finns (`revoked_tokens`, `token_version`),
+  men det finns ingen väg att förlänga en session utan lösenord.
+- **Lista aktiva sessioner** — `revoked_tokens` vet vad som är avslutat, inte vad som
+  pågår. En sessionstabell skulle behöva skrivas vid varje inloggning i stället.
 - **Rate limiting** på `/auth/*` — `@fastify/rate-limit` är ett endagsjobb när det behövs.
   `/auth/resend-verification` har en egen kylperiod per konto, men inget skydd mot en
   angripare som varierar adressen.
