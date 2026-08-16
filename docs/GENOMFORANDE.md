@@ -639,6 +639,21 @@ resten av dokumenten är fortfarande vad mottagaren bad om.
 `aspire run`. Bucketen skapas därför vid boot med en signerad `PUT` via `aws4fetch` —
 `409` betyder att den redan finns, vilket är precis vad vi ville uppnå.
 
+**Föräldralösa objekt städas av ett sopjobb** (`storage/sweeper.ts`), som var 60:e minut
+listar bucketen och raderar objekt utan rad i `bid_attachments`. Två skydd gör det ofarligt:
+
+- **En frist på en timme.** Objekt yngre än så rörs inte — annars kunde jobbet radera en
+  fil som just nu ligger mellan `put` och `INSERT`.
+- **Tomt dokumentregister stoppar allt.** Noll rader plus objekt i lagringen är mycket
+  troligare en felkonfiguration — tjänsten pekar på fel databas — än en bucket som råkar
+  bestå av enbart skräp. Raderingen är oåterkallelig, så jobbet avstår och säger ifrån.
+  Priset är att "alla dokument raderade, skräp kvar" inte städas; det felar åt rätt håll.
+
+Jobbet startas i `index.ts` och inte i `buildServer`: en timer hör till processen, inte
+till appen, och testerna ska aldrig få en bakgrundstråd på köpet. Databasen frågas en gång
+per sida om vilka nycklar som är kända — aldrig hela registret i minnet, aldrig en fråga
+per objekt.
+
 **Rättighetsmatrisen:** skriva (ladda upp, byta namn, radera) är säljarens ensak. Läsa och
 ladda ner ZIP kan säljaren, förfrågans köpare, och den som tilldelats läsrätt. Ett anbud
 utan dokument ger ett **tomt arkiv med `200`**, inte `404`: frågan "vad har säljaren
@@ -929,6 +944,14 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | B.18 | Namnbyte rör inte lagringen — nyckeln bär inte filnamnet |
 | B.19 | En avvisad uppladdning lämnar inget skräp i lagringen |
 | B.20 | Ett saknat objekt fäller inte hela arkivet |
+| **G** | **Städning av föräldralösa objekt** |
+| G.1 | Ett föräldralöst objekt äldre än fristen raderas |
+| G.2 | Ett objekt med rad i databasen rörs inte |
+| G.3 | Ett nyligen uppladdat objekt rörs inte, även utan rad |
+| G.4 | Objekt utanför prefixet rörs inte |
+| G.5 | En tom dokumenttabell stoppar städningen helt |
+| G.6 | Städningen klarar fler objekt än en sida |
+| G.7 | En körning utan skräp rapporterar noll raderade |
 | **X** | **Tvärsnitt** |
 | X.1 | `/docs/json` är OpenAPI 3.1 med ifylld `info` |
 | X.1b | Alla sju API:erna finns på rätt metod och väg, med rätt `operationId` |
@@ -943,7 +966,7 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | X.4b | Fel metod på en känd väg ⇒ 404 i samma format |
 | X.4c | Felsvar från en riktig route är också `application/problem+json` |
 
-Totalt 242 testfall, **alla gröna**. Matrisen är levande — den *ska* ändras i
+Totalt 249 testfall, **alla gröna**. Matrisen är levande — den *ska* ändras i
 dialogen (§8.1).
 
 X-gruppen var grön redan när den skrevs, eftersom den beskriver tvärsnitt som byggdes upp
@@ -1018,6 +1041,7 @@ Varje etapp är en pull-liknande enhet med en tydlig grön-tröskel.
 | **5** ✅ | Listnings-API:er (API 3–4) | Joins utan N+1, markörsidbrytning, filter, `004_contracts.sql` (tidigarelagd), dubbla valideringsregimer | **Klar.** L3.\*, L4.\* gröna; 68/68 i hela sviten |
 | **6** ✅ | Avtalssignering (API 7) | `domain/contract-rules.ts`, transaktionell tillståndsmaskin med `sql.begin` + `FOR UPDATE OF r`, frysta villkor, tom-kropp-parser | **Klar.** S7.\*, D.3 gröna; 92/92 i hela sviten; hela flödet kört mot levande Aspire |
 | **7** ✅ | Dokumentation & finish | OpenAPI-tvärsnittstester, `docs/API.md` | **Klar.** X.\* gröna; hela sviten 103/103; Swagger UI och hela flödet körda mot levande Aspire |
+| **18** ✅ | Städning av föräldralösa objekt | `storage/sweeper.ts`, listning i `ObjectStore`, periodiskt jobb i `index.ts` | **Klar.** G.\* gröna; 249/249; körd mot levande MinIO med planterade skräpobjekt — fristen skonade allt, utan frist försvann bara skräpet |
 | **17** ✅ | Objektlagring för dokument | `014_attachment_object_storage.sql`, MinIO i AppHosten, `storage/object-store.ts` | **Klar.** B.16–B.20 gröna; 242/242; uppladdning, ZIP och radering verifierade mot MinIO — objekten inspekterade med `mc` i containern |
 | **16** ✅ | Dokument och rättigheter (API 15–23) | `012_request_permissions.sql`, `013_bid_attachments.sql`, `domain/attachments.ts`, multipart, ZIP | **Klar.** P.\* och B.\* gröna; 237/237; uppladdning, rättigheter och ZIP verifierade mot levande Aspire — arkivet uppackat med systemets `unzip` |
 | **15** ✅ | Refresh-tokens (API 14) | `011_refresh_tokens.sql`, rotation med återanvändningsdetektering, `sid` som binder ihop sessionen | **Klar.** T.\* gröna; 186/186; rotation, läckagedetektering och utloggning verifierade mot levande Aspire |
@@ -1039,9 +1063,8 @@ gör resten testdriven. Från etapp 2 gäller §8.1 utan undantag.
 - **Lista aktiva sessioner** — `refresh_tokens` har allt som behövs (`session_id`,
   `created_at`, `revoked_at`), men inget API exponerar det. Ett `GET /me/sessions` med
   möjlighet att avsluta en enskild är nästa naturliga steg.
-- **Städning av föräldralösa objekt** — dör processen mellan `put` och `INSERT` blir
-  objektet kvar i lagringen utan rad. Ett sopjobb som jämför bucketen mot
-  `bid_attachments` saknas.
+- **Rader utan objekt** — motsatsen till föräldralösa objekt. Arkivet hoppar över dem
+  (B.20), men ingen larmar och inget städar. Kräver ett beslut om vad raden ska bli.
 - **Fler rättighetsnivåer** — `permission_level` har bara `read`. Kolumnen finns för att
   slippa en migrering den dag det behövs fler.
 - **Städning av `refresh_tokens`** — rader ligger kvar efter utgång. `revoked_tokens`
