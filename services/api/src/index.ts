@@ -1,6 +1,6 @@
 import { buildServer } from './server.ts';
 import { migrate } from './db/migrate.ts';
-import { sweepOrphanedObjects } from './storage/sweeper.ts';
+import { runStorageSweep } from './storage/sweep-job.ts';
 
 const app = await buildServer();
 
@@ -22,9 +22,19 @@ const sweepMinutes = app.config.ORPHAN_SWEEP_INTERVAL_MINUTES;
 if (sweepMinutes > 0) {
   const sweep = async () => {
     try {
-      const result = await sweepOrphanedObjects(app.sql, app.objects);
-      if (result.deleted > 0 || result.skippedReason) {
-        app.log.info({ ...result }, 'städning av föräldralösa objekt');
+      const { marked, ...result } = await runStorageSweep({
+        sql: app.sql,
+        objects: app.objects,
+        mailer: app.mailer,
+        alertEmail: app.config.STORAGE_ALERT_EMAIL,
+      });
+
+      // Ett markerat dokument betyder att lagringen tappat data — det är ett fel,
+      // inte en notis, oavsett om larmet gick fram.
+      if (result.markedMissing > 0) {
+        app.log.error({ ...result }, 'innehåll saknas för anbudsdokument');
+      } else if (result.deleted > 0 || result.restored > 0 || result.skippedReason) {
+        app.log.info({ ...result }, 'städning av objektlagringen');
       }
     } catch (err) {
       // Ett misslyckat sopjobb får aldrig fälla tjänsten — skräpet ligger kvar

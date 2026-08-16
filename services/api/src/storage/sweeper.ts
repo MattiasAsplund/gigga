@@ -32,12 +32,21 @@ export interface SweepOptions {
   now?: Date;
 }
 
+/** Ett dokument som just konstaterats sakna sitt innehåll. */
+export interface MarkedAttachment {
+  id: string;
+  bidId: string;
+  filename: string;
+}
+
 export interface SweepResult {
   /** Objekt under prefixet som var äldre än fristen och alltså prövades. */
   scanned: number;
   deleted: number;
   /** Rader vars objekt saknades och som nu är markerade som otillgängliga. */
   markedMissing: number;
+  /** Vilka de var — underlaget till larmet. */
+  marked: MarkedAttachment[];
   /** Rader som var markerade men vars objekt kommit tillbaka. */
   restored: number;
   /** Satt när något av stegen avstod från att göra något alls. */
@@ -79,6 +88,7 @@ export async function sweepOrphanedObjects(
       scanned: 0,
       deleted: 0,
       markedMissing: 0,
+      marked: [],
       restored: 0,
       skippedReason: 'empty-attachment-table',
     };
@@ -121,7 +131,14 @@ export async function sweepOrphanedObjects(
    * markera allt som trasigt vore lika fel som att radera allt.
    */
   if (seen.size === 0) {
-    return { scanned, deleted, markedMissing: 0, restored: 0, skippedReason: 'empty-bucket' };
+    return {
+      scanned,
+      deleted,
+      markedMissing: 0,
+      marked: [],
+      restored: 0,
+      skippedReason: 'empty-bucket',
+    };
   }
 
   const keys = [...seen];
@@ -131,8 +148,8 @@ export async function sweepOrphanedObjects(
     SET content_missing_since = now()
     WHERE content_missing_since IS NULL
       AND storage_key NOT IN ${sql(keys)}
-    RETURNING id
-  `) as { id: string }[];
+    RETURNING id, bid_id, filename
+  `) as { id: string; bid_id: string; filename: string }[];
 
   const restored = (await sql`
     UPDATE bid_attachments
@@ -146,6 +163,11 @@ export async function sweepOrphanedObjects(
     scanned,
     deleted,
     markedMissing: marked.length,
+    marked: marked.map((row) => ({
+      id: row.id,
+      bidId: row.bid_id,
+      filename: row.filename,
+    })),
     restored: restored.length,
   };
 }

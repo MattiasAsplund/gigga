@@ -672,6 +672,23 @@ Nycklarna samlas under samma genomgång som skräpletandet, så avstämningen ko
 anrop. Minnet växer med antalet objekt i bucketen — bara strängar, men värt att veta:
 alternativet vore ett HEAD-anrop per rad.
 
+**Larm när något markeras.** En markering betyder att lagringen tappat data, vilket är mer
+än en loggrad värt. `STORAGE_ALERT_EMAIL` får ett mail som namnger dokumenten; i
+utvecklingsmiljön är det `drift@fastgig.dev` och landar i mailpit bland all annan post.
+
+**Ett mail per körning, aldrig ett per dokument.** Ett lagringsfel kan slå ut tusen
+dokument på en gång, och tusen mail är inte ett larm utan ett haveri i sig. Listan kortas
+av efter 15 poster, men antalet framgår alltid.
+
+**Ingen upprepning behövs.** Ett redan markerat dokument markeras inte en andra gång
+(G.11), så varje trasigt dokument larmar exakt en gång — utan kylperiod, utan tillstånd att
+hålla reda på. Det följer av markeringen och behövde inte byggas.
+
+Ett misslyckat larm fäller inte städningen: markeringen är gjord och står kvar i databasen,
+och `alertFailed` skiljer "posten gick inte fram" från "städningen misslyckades".
+Larmet ligger i `storage/sweep-job.ts` och inte i `index.ts`, så det går att pröva utan att
+starta en process med en timer i.
+
 **Rättighetsmatrisen:** skriva (ladda upp, byta namn, radera) är säljarens ensak. Läsa och
 ladda ner ZIP kan säljaren, förfrågans köpare, och den som tilldelats läsrätt. Ett anbud
 utan dokument ger ett **tomt arkiv med `200`**, inte `404`: frågan "vad har säljaren
@@ -977,6 +994,13 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | G.10 | Markeringen tas bort om objektet dyker upp igen |
 | G.11 | En markerad rad markeras inte om igen |
 | G.12 | En tom bucket markerar ingenting |
+| G.13 | Markerade dokument namnges i resultatet |
+| G.14 | Ett larm skickas när något markeras |
+| G.15 | Ett larm per körning, inte ett per dokument |
+| G.16 | Inget larm när inget markeras |
+| G.17 | Utan konfigurerad larmadress skickas inget |
+| G.18 | Ett misslyckat larm fäller inte städningen |
+| G.19 | Larmet är avkortat men säger hur mycket som utelämnats |
 | **X** | **Tvärsnitt** |
 | X.1 | `/docs/json` är OpenAPI 3.1 med ifylld `info` |
 | X.1b | Alla sju API:erna finns på rätt metod och väg, med rätt `operationId` |
@@ -991,7 +1015,7 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | X.4b | Fel metod på en känd väg ⇒ 404 i samma format |
 | X.4c | Felsvar från en riktig route är också `application/problem+json` |
 
-Totalt 256 testfall, **alla gröna**. Matrisen är levande — den *ska* ändras i
+Totalt 263 testfall, **alla gröna**. Matrisen är levande — den *ska* ändras i
 dialogen (§8.1).
 
 X-gruppen var grön redan när den skrevs, eftersom den beskriver tvärsnitt som byggdes upp
@@ -1066,6 +1090,7 @@ Varje etapp är en pull-liknande enhet med en tydlig grön-tröskel.
 | **5** ✅ | Listnings-API:er (API 3–4) | Joins utan N+1, markörsidbrytning, filter, `004_contracts.sql` (tidigarelagd), dubbla valideringsregimer | **Klar.** L3.\*, L4.\* gröna; 68/68 i hela sviten |
 | **6** ✅ | Avtalssignering (API 7) | `domain/contract-rules.ts`, transaktionell tillståndsmaskin med `sql.begin` + `FOR UPDATE OF r`, frysta villkor, tom-kropp-parser | **Klar.** S7.\*, D.3 gröna; 92/92 i hela sviten; hela flödet kört mot levande Aspire |
 | **7** ✅ | Dokumentation & finish | OpenAPI-tvärsnittstester, `docs/API.md` | **Klar.** X.\* gröna; hela sviten 103/103; Swagger UI och hela flödet körda mot levande Aspire |
+| **20** ✅ | Larm vid tappat innehåll | `storage/sweep-job.ts`, `mail/storage-alert-email.ts`, `STORAGE_ALERT_EMAIL` | **Klar.** G.13–G.19 gröna; 263/263; larmet läst i mailpit efter att två objekt raderats i MinIO, och andra körningen larmade inte igen |
 | **19** ✅ | Rader utan objekt | `015_attachment_missing_content.sql`, avstämning i sopjobbet, `available` i API:et | **Klar.** G.8–G.12, B.21–B.22 gröna; 256/256; verifierat mot MinIO genom att radera ett objekt bakom ryggen på tjänsten |
 | **18** ✅ | Städning av föräldralösa objekt | `storage/sweeper.ts`, listning i `ObjectStore`, periodiskt jobb i `index.ts` | **Klar.** G.\* gröna; 249/249; körd mot levande MinIO med planterade skräpobjekt — fristen skonade allt, utan frist försvann bara skräpet |
 | **17** ✅ | Objektlagring för dokument | `014_attachment_object_storage.sql`, MinIO i AppHosten, `storage/object-store.ts` | **Klar.** B.16–B.20 gröna; 242/242; uppladdning, ZIP och radering verifierade mot MinIO — objekten inspekterade med `mc` i containern |
@@ -1092,8 +1117,6 @@ gör resten testdriven. Från etapp 2 gäller §8.1 utan undantag.
 - **Åtgärd för markerade dokument** — `available: false` syns, men det finns ingen väg att
   ladda upp innehållet på nytt till en befintlig rad. Säljaren får radera och ladda upp
   igen, vilket ger ett nytt id.
-- **Larm när något markeras** — sopjobbet loggar, men ingen blir meddelad. En markering
-  betyder att lagringen tappat data, vilket är värt mer än en loggrad.
 - **Fler rättighetsnivåer** — `permission_level` har bara `read`. Kolumnen finns för att
   slippa en migrering den dag det behövs fler.
 - **Städning av `refresh_tokens`** — rader ligger kvar efter utgång. `revoked_tokens`

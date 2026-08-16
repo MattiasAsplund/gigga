@@ -23,6 +23,8 @@ const ConfigSchema = Type.Object({
   S3_REGION: Type.String({ default: 'us-east-1' }),
   /** Hur ofta föräldralösa objekt städas bort. 0 stänger av jobbet. */
   ORPHAN_SWEEP_INTERVAL_MINUTES: Type.Integer({ minimum: 0, default: 60 }),
+  /** Adress som larmas när lagringen tappat innehåll. Tom stänger av larmen. */
+  STORAGE_ALERT_EMAIL: Type.String({ default: '' }),
   JWT_SECRET: Type.String({ minLength: 32 }),
   LOG_LEVEL: Type.Union(
     [

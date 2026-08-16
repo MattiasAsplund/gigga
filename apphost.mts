@@ -56,6 +56,8 @@ const api = await builder
   .withEnvironment('S3_BUCKET', 'fastgig-attachments')
   .withEnvironment('S3_ACCESS_KEY_ID', minioUser)
   .withEnvironment('S3_SECRET_ACCESS_KEY', minioPassword)
+  // Larmen landar i mailpit tillsammans med all annan post — synliga i dashboarden.
+  .withEnvironment('STORAGE_ALERT_EMAIL', 'drift@fastgig.dev')
   .withHttpHealthCheck({ path: '/health' })
   .waitFor(db)
   .waitFor(mailpit)
