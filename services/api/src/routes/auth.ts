@@ -5,6 +5,8 @@ import {
   LoginResponseSchema,
   RegisterBodySchema,
   RegisterResponseSchema,
+  ResendVerificationBodySchema,
+  ResendVerificationResponseSchema,
   ValidateUserQuerySchema,
   ValidateUserResponseSchema,
 } from '../schemas/auth.ts';
@@ -12,6 +14,7 @@ import {
   findUserByEmail,
   insertUser,
   normalizeEmail,
+  rotateVerificationToken,
   verifyUserByToken,
 } from '../db/users.ts';
 import {
@@ -139,6 +142,45 @@ export const authRoutes: FastifyPluginAsyncTypebox = async (app) => {
       if (!user) throw verificationTokenNotFound();
 
       return reply.code(200).send({ verified: user.emailVerified, email: user.email });
+    },
+  );
+
+  app.post(
+    '/auth/resend-verification',
+    {
+      schema: {
+        operationId: 'resendVerification',
+        tags: ['auth'],
+        summary: 'Begär ett nytt bekräftelsemail',
+        description:
+          'Skickar en ny verifieringslänk och gör den föregående ogiltig. Svaret är ' +
+          'alltid 202 och identiskt oavsett om adressen finns, redan är bekräftad eller ' +
+          'nyss fått ett mail — annars gick endpointen att använda för att kartlägga ' +
+          'vilka adresser som är registrerade. En kylperiod hindrar upprepade utskick.',
+        body: ResendVerificationBodySchema,
+        response: {
+          202: ResendVerificationResponseSchema,
+          422: ProblemSchema,
+        },
+      },
+    },
+    async (req, reply) => {
+      const rotated = await rotateVerificationToken(app.sql, req.body.email);
+
+      // null betyder okänd adress, redan verifierad, eller inom kylperioden. Vilket
+      // av dem vet vi inte här — och ska inte veta, se rotateVerificationToken.
+      if (rotated) {
+        await app.mailer.send(
+          verificationEmail({
+            to: rotated.user.email,
+            displayName: rotated.user.displayName,
+            baseUrl: app.publicBaseUrl(),
+            token: rotated.verificationToken,
+          }),
+        );
+      }
+
+      return reply.code(202).send({ accepted: true });
     },
   );
 };

@@ -82,6 +82,39 @@ export async function verifyUserByToken(
   return row ? toUser(row) : null;
 }
 
+/** Hur ofta ett nytt bekräftelsemail får skickas till samma adress. */
+export const RESEND_COOLDOWN_SECONDS = 60;
+
+/**
+ * Roterar verifieringstoken inför ett nytt bekräftelsemail, och returnerar null om
+ * inget mail ska skickas.
+ *
+ * Villkoren ligger i WHERE-satsen med flit: okänd adress, redan verifierat konto och
+ * begäran inom kylperioden ger alla samma tomma resultat. Anroparen *kan* därför inte
+ * råka svara olika i de tre fallen, vilket är vad som hindrar att endpointen används
+ * för att kartlägga vilka adresser som är registrerade.
+ *
+ * Rotationen gör samtidigt att bara den senast utskickade länken gäller.
+ */
+export async function rotateVerificationToken(
+  sql: SQL,
+  email: string,
+  cooldownSeconds = RESEND_COOLDOWN_SECONDS,
+): Promise<{ user: User; verificationToken: string } | null> {
+  const rows = (await sql`
+    UPDATE users
+    SET verification_token = gen_random_uuid(),
+        verification_sent_at = now()
+    WHERE email = ${normalizeEmail(email)}
+      AND email_verified = false
+      AND verification_sent_at < now() - make_interval(secs => ${cooldownSeconds})
+    RETURNING ${sql.unsafe(USER_COLUMNS)}
+  `) as UserRow[];
+
+  const row = rows[0];
+  return row ? { user: toUser(row), verificationToken: row.verification_token } : null;
+}
+
 export async function findUserByEmail(
   sql: SQL,
   email: string,

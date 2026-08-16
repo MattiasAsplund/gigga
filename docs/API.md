@@ -22,6 +22,12 @@ registreringen returnerade. Länken är idempotent och tål att klickas flera g�
 Samma token börjar fungera direkt när länken klickats; ingen ny inloggning behövs. En token
 vars konto inte finns kvar ger `401`.
 
+**Tappat mailet?** `POST /auth/resend-verification` med `{ email }` skickar ett nytt och
+gör den gamla länken ogiltig — bara det senaste mailet gäller. Svaret är alltid
+`202 { "accepted": true }`, oavsett om adressen finns, redan är bekräftad eller nyss fått
+ett mail. Det är avsiktligt: allt annat vore ett sätt att ta reda på vilka adresser som är
+registrerade. Ett nytt mail skickas som mest en gång per minut och konto.
+
 I utvecklingsmiljön går ingen post ut på riktigt: **mailpit** fångar allt, och dess
 webbgränssnitt ligger som egen URL i Aspire-dashboarden. Det är där du hämtar länken.
 
@@ -51,6 +57,7 @@ kr. Aldrig decimaltal. `currency` är valfri och betyder `SEK` om den utelämnas
 
 | Kod | Betyder |
 |---|---|
+| 202 | Mottaget — utan besked om vad som hände (se resend-verification) |
 | 401 | Token saknas, är utgången eller ogiltig |
 | 403 | Inloggad, men fel part för resursen — eller obekräftad e-postadress |
 | 404 | Resursen finns inte |
@@ -70,6 +77,7 @@ bläddringen.
 | `POST /auth/register` | – | Skapar konto, returnerar token |
 | `POST /auth/login` | – | Loggar in, returnerar token |
 | `GET /validate-user` | – | Bekräftar e-postadressen via länken i mailet |
+| `POST /auth/resend-verification` | – | Begär ett nytt bekräftelsemail |
 | `GET /requests` | ✔ | Listar öppna uppdrag att lämna anbud på |
 | `POST /requests` | ✔ | Publicerar en uppdragsförfrågan |
 | `POST /requests/{requestId}/bids` | ✔ | Lämnar anbud med plan och ersättning |

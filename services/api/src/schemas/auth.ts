@@ -50,6 +50,19 @@ export const LoginResponseSchema = Type.Object({
   expiresIn: Type.Integer({ description: 'Tokenens livslängd i sekunder.' }),
 });
 
+export const ResendVerificationBodySchema = Type.Object(
+  { email: EmailSchema },
+  { additionalProperties: false },
+);
+
+export const ResendVerificationResponseSchema = Type.Object({
+  accepted: Type.Boolean({
+    description:
+      'Alltid true. Svaret säger inget om huruvida adressen finns, redan är bekräftad ' +
+      'eller nyss fått ett mail — det vore ett sätt att kartlägga registrerade adresser.',
+  }),
+});
+
 export const ValidateUserQuerySchema = Type.Object(
   {
     token: Type.String({

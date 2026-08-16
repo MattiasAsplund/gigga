@@ -208,6 +208,123 @@ test('V.12 en token för ett konto som inte finns kvar ger 401', async () => {
   expect(res.statusCode).toBe(401);
 });
 
+// ------------------------------------------------ V.13+ Nytt bekräftelsemail
+
+const resend = (email: unknown) =>
+  ctx.app.inject({
+    method: 'POST',
+    url: '/api/v1/auth/resend-verification',
+    payload: { email } as never,
+  });
+
+/** Flyttar kylperioden bakåt så testet kan begära igen utan att vänta. */
+const clearCooldown = (email: string) =>
+  ctx.sql`
+    UPDATE users SET verification_sent_at = now() - interval '1 hour' WHERE email = ${email}
+  `;
+
+test('V.13 begäran skickar ett nytt mail med en ny länk', async () => {
+  const email = 'v13@example.test';
+  await register(email);
+  const first = linkFrom(email);
+  await clearCooldown(email);
+
+  const res = await resend(email);
+
+  expect(res.statusCode).toBe(202);
+  const second = linkFrom(email);
+  expect(second).not.toBe(first);
+  expect(ctx.mail.sent.filter((m) => m.to === email)).toHaveLength(2);
+});
+
+test('V.14 den gamla länken slutar gälla när en ny begärts', async () => {
+  const email = 'v14@example.test';
+  await register(email);
+  const old = pathOf(linkFrom(email));
+  await clearCooldown(email);
+  await resend(email);
+
+  const res = await ctx.app.inject({ method: 'GET', url: old });
+
+  expect(res.statusCode).toBe(404);
+  expect(res.json<Problem>().type).toBe(
+    'https://fastgig.dev/problems/verification-token-not-found',
+  );
+});
+
+test('V.15 den nya länken verifierar kontot', async () => {
+  const email = 'v15@example.test';
+  await register(email);
+  await clearCooldown(email);
+  await resend(email);
+
+  const res = await ctx.app.inject({ method: 'GET', url: pathOf(linkFrom(email)) });
+
+  expect(res.statusCode).toBe(200);
+  expect((await login(email)).statusCode).toBe(200);
+});
+
+test('V.16 okänd adress ger 202 utan att något mail skickas', async () => {
+  const before = ctx.mail.sent.length;
+
+  const res = await resend('finns-inte-alls@example.test');
+
+  expect(res.statusCode).toBe(202);
+  expect(ctx.mail.sent.length).toBe(before);
+});
+
+test('V.17 ett redan verifierat konto får inget nytt mail', async () => {
+  const email = 'v17@example.test';
+  await register(email);
+  await ctx.app.inject({ method: 'GET', url: pathOf(linkFrom(email)) });
+  await clearCooldown(email);
+  const before = ctx.mail.sent.length;
+
+  const res = await resend(email);
+
+  expect(res.statusCode).toBe(202);
+  expect(ctx.mail.sent.length).toBe(before);
+});
+
+test('V.18 svaret är identiskt oavsett om kontot finns, saknas eller är verifierat', async () => {
+  const unverified = 'v18a@example.test';
+  const verified = 'v18b@example.test';
+  await register(unverified);
+  await register(verified);
+  await ctx.app.inject({ method: 'GET', url: pathOf(linkFrom(verified)) });
+  await clearCooldown(unverified);
+  await clearCooldown(verified);
+
+  const bodies = [
+    (await resend(unverified)).body,
+    (await resend(verified)).body,
+    (await resend('v18c-finns-inte@example.test')).body,
+  ];
+
+  expect(new Set(bodies).size).toBe(1);
+});
+
+test('V.19 upprepad begäran inom kylperioden skickar inte fler mail', async () => {
+  const email = 'v19@example.test';
+  await register(email);
+  await clearCooldown(email);
+
+  expect((await resend(email)).statusCode).toBe(202);
+  const afterFirst = ctx.mail.sent.filter((m) => m.to === email).length;
+
+  // Direkt igen, utan att nollställa: kylperioden ska stoppa utskicket.
+  expect((await resend(email)).statusCode).toBe(202);
+
+  expect(ctx.mail.sent.filter((m) => m.to === email)).toHaveLength(afterFirst);
+});
+
+test('V.20 trasig e-postadress ger 422', async () => {
+  const res = await resend('inte-en-adress');
+
+  expect(res.statusCode).toBe(422);
+  expect(res.json<Problem>().errors?.map((e) => e.path)).toContain('email');
+});
+
 test('V.9 mailet innehåller varken lösenord eller token i klartext utöver länken', async () => {
   const email = 'v9@example.test';
   await register(email);

@@ -34,6 +34,8 @@ const EXPECTED_OPERATIONS: Record<string, [string, string]> = {
   listOpenRequests: ['get', '/api/v1/requests'],
   // Klickas ur ett mail, alltså utan token — därför inte i PROTECTED.
   validateUser: ['get', '/api/v1/validate-user'],
+  // Anropas av någon som inte kan logga in än, alltså också öppen.
+  resendVerification: ['post', '/api/v1/auth/resend-verification'],
 };
 
 /** Operationer som kräver token, och därmed ska deklarera bearerAuth. */

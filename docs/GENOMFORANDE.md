@@ -369,6 +369,7 @@ och vid valideringsfel `errors[]`.
 | 7 | `POST /api/v1/bids/{bidId}/contract/signatures` | ✔ | Signera avtal |
 | 8 | `GET /api/v1/requests` | ✔ | Lista öppna förfrågningar (katalogen) |
 | 9 | `GET /api/v1/validate-user` | – | Bekräfta e-postadress via länken i mailet |
+| 10 | `POST /api/v1/auth/resend-verification` | – | Begär ett nytt bekräftelsemail |
 
 ### 6.1 Detaljer per API
 
@@ -388,6 +389,21 @@ uuid ⇒ `422`.
 `verification_token` är en **egen uuid på users**, inte användarens id. Id:t syns i
 API-svaren och i avtalens frysta villkor, och får därför inte kunna användas för att
 bekräfta ett konto.
+
+**10. `POST /auth/resend-verification`** → `202`
+`{ email }` → `{ accepted: true }`. Öppen, eftersom den som behöver den inte kan logga in.
+
+**Svaret är identiskt i alla utfall** — okänd adress, redan bekräftat konto, eller begäran
+inom kylperioden. Villkoren ligger i `WHERE`-satsen i `rotateVerificationToken`, så routen
+*kan* inte råka svara olika: den vet inte vilket fall det var. Utan det vore endpointen ett
+sätt att kartlägga vilka adresser som är registrerade.
+
+**Token roteras**, vilket gör den föregående länken ogiltig. Bara det senast utskickade
+mailet gäller — utan utgångstid är det den enda begränsningen som finns.
+
+**Kylperiod på 60 sekunder.** En oautentiserad endpoint som skickar mail är annars ett sätt
+att bombardera en adress. `verification_sent_at` bär tidsstämpeln; inom kylperioden skickas
+inget, men svaret är detsamma.
 
 **2. `POST /auth/login`** → `200`
 `{ email, password }` → `{ token, expiresIn }`. Fel användare *och* fel lösenord ger
@@ -671,6 +687,14 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | V.10 | Registreringens token duger inte mot ett skyddat API före verifiering ⇒ 403 |
 | V.11 | Samma token börjar fungera när adressen bekräftats, utan ny inloggning |
 | V.12 | Token för ett konto som inte finns kvar ⇒ 401 |
+| V.13 | Begäran om nytt mail skickar ett nytt mail med en ny länk |
+| V.14 | Den gamla länken slutar gälla ⇒ 404 |
+| V.15 | Den nya länken verifierar kontot, och inloggning fungerar därefter |
+| V.16 | Okänd adress ⇒ 202 utan att något mail skickas |
+| V.17 | Redan verifierat konto ⇒ 202 utan mail |
+| V.18 | Svaret är byte-identiskt i alla tre fallen |
+| V.19 | Upprepad begäran inom kylperioden skickar inte fler mail |
+| V.20 | Trasig e-postadress ⇒ 422 |
 | **X** | **Tvärsnitt** |
 | X.1 | `/docs/json` är OpenAPI 3.1 med ifylld `info` |
 | X.1b | Alla sju API:erna finns på rätt metod och väg, med rätt `operationId` |
@@ -685,7 +709,7 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | X.4b | Fel metod på en känd väg ⇒ 404 i samma format |
 | X.4c | Felsvar från en riktig route är också `application/problem+json` |
 
-Totalt 130 testfall, **alla gröna**. Matrisen är levande — den *ska* ändras i
+Totalt 138 testfall, **alla gröna**. Matrisen är levande — den *ska* ändras i
 dialogen (§8.1).
 
 X-gruppen var grön redan när den skrevs, eftersom den beskriver tvärsnitt som byggdes upp
@@ -760,6 +784,7 @@ Varje etapp är en pull-liknande enhet med en tydlig grön-tröskel.
 | **5** ✅ | Listnings-API:er (API 3–4) | Joins utan N+1, markörsidbrytning, filter, `004_contracts.sql` (tidigarelagd), dubbla valideringsregimer | **Klar.** L3.\*, L4.\* gröna; 68/68 i hela sviten |
 | **6** ✅ | Avtalssignering (API 7) | `domain/contract-rules.ts`, transaktionell tillståndsmaskin med `sql.begin` + `FOR UPDATE OF r`, frysta villkor, tom-kropp-parser | **Klar.** S7.\*, D.3 gröna; 92/92 i hela sviten; hela flödet kört mot levande Aspire |
 | **7** ✅ | Dokumentation & finish | OpenAPI-tvärsnittstester, `docs/API.md` | **Klar.** X.\* gröna; hela sviten 103/103; Swagger UI och hela flödet körda mot levande Aspire |
+| **10** ✅ | Nytt bekräftelsemail (API 10) | `006_verification_resend.sql`, `rotateVerificationToken` med kylperiod | **Klar.** V.13–V.20 gröna; 138/138; kylperiod, rotation och läckagefrihet verifierade mot mailpit |
 | **9** ✅ | E-postverifiering (API 9) | `005_email_verification.sql`, mailpit i AppHosten, `src/mail/`, spärr i både `/auth/login` och `requireAuth` | **Klar.** V.\* gröna; 130/130; hela flödet kört mot mailpit i levande Aspire |
 | **8** ✅ | Katalogen (API 8) | `GET /requests` med `bidCount`/`hasMyBid`/`canBid`, filter och sidbrytning | **Klar.** L8.\* gröna; 116/116; körd mot levande Aspire. Tillkom efter att luckan påpekats — säljare kunde bara lägga anbud på förfrågningar de kände till ID:t för |
 
@@ -772,8 +797,9 @@ gör resten testdriven. Från etapp 2 gäller §8.1 utan undantag.
 
 - **Refresh-tokens och utloggning** — access-token med 1 h livslängd i etapp 1.
 - **Rate limiting** på `/auth/*` — `@fastify/rate-limit` är ett endagsjobb när det behövs.
+  `/auth/resend-verification` har en egen kylperiod per konto, men inget skydd mot en
+  angripare som varierar adressen.
 - **Lösenordsåterställning** — samma maskineri som verifieringen, men inte byggt än.
-- **Nytt bekräftelsemail på begäran** — tappar användaren mailet finns ingen väg tillbaka.
 - **Utgångstid på verifieringstoken** — den gäller för evigt i etapp 1.
 - **Betalning, fakturering, tidrapportering** — nästa domänområde efter avtalet.
 - **Migrationsverktyg med rollback** — meningslöst mot en icke-persistent databas, men
