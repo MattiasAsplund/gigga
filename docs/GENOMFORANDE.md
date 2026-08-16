@@ -1030,7 +1030,18 @@ bun test                      # hela sviten
 bun test --watch              # primärt läge under dialogen
 bun test -t S7                # kör en grupp via ID
 bun test test/contract/bids.test.ts
+bun run test:coverage         # hela sviten med täckningsrapport
 ```
+
+**Täckningsrapporten** skrivs till `services/api/coverage/` (gitignorerad):
+`lcov.info` för verktyg och CI, `summary.txt` som läsbar tabell. Rapporten omfattar
+`src/` — testfilerna och deras hjälpare är bortfiltrerade i `bunfig.toml`, eftersom de
+per definition körs till hundra procent och bara späder ut siffran.
+
+Skriptet sätter **`set -o pipefail`**, och det är inte kosmetika: utan det ärver
+skriptet exitkoden från `tee` i stället för från `bun test`, och en körning med
+fallerande tester skulle rapportera framgång. Verifierat genom att lägga in ett
+avsiktligt trasigt test och kontrollera att exitkoden blev 1.
 
 ---
 

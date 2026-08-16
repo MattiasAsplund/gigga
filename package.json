@@ -11,7 +11,8 @@
     "lint": "eslint apphost.mts",
     "typecheck": "tsc --noEmit -p tsconfig.apphost.json",
     "dev": "aspire run",
-    "test": "cd services/api && bun test"
+    "test": "cd services/api && bun test",
+    "test:coverage": "cd services/api && bun run test:coverage"
   },
   "dependencies": {
     "vscode-jsonrpc": "^8.2.0"

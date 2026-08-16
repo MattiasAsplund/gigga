@@ -8,6 +8,7 @@
     "start": "bun src/index.ts",
     "test": "bun test",
     "test:watch": "bun test --watch",
+    "test:coverage": "set -o pipefail; mkdir -p coverage && bun test --coverage --coverage-reporter=text --coverage-reporter=lcov --coverage-dir=coverage 2>&1 | tee coverage/summary.txt",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

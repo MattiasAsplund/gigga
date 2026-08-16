@@ -1,0 +1,6 @@
+[test]
+# Täckningsrapporten ska handla om koden under test. Testfilerna och deras hjälpare
+# hör inte dit — de körs per definition till hundra procent, och att räkna med dem
+# gör siffran mindre användbar snarare än mer.
+coverageSkipTestFiles = true
+coveragePathIgnorePatterns = ["test/**"]
