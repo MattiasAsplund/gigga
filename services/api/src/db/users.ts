@@ -5,6 +5,8 @@ export interface User {
   email: string;
   displayName: string;
   emailVerified: boolean;
+  /** Höjs vid lösenordsbyte och ogiltigförklarar alla tidigare utfärdade tokens. */
+  tokenVersion: number;
   createdAt: Date;
 }
 
@@ -24,6 +26,7 @@ interface UserRow {
   password_hash: string;
   email_verified: boolean;
   verification_token: string;
+  token_version: number;
   created_at: Date;
 }
 
@@ -32,11 +35,13 @@ const toUser = (row: UserRow): User => ({
   email: row.email,
   displayName: row.display_name,
   emailVerified: row.email_verified,
+  tokenVersion: row.token_version,
   createdAt: row.created_at,
 });
 
 const USER_COLUMNS =
-  'id, email, display_name, password_hash, email_verified, verification_token, created_at';
+  'id, email, display_name, password_hash, email_verified, verification_token, ' +
+  'token_version, created_at';
 
 /** Trim + gemener. Kolumnen är citext, men vi lagrar normaliserat så svaren blir förutsägbara. */
 export const normalizeEmail = (email: string): string => email.trim().toLowerCase();
@@ -205,7 +210,9 @@ export async function resetPasswordByToken(
     UPDATE users
     SET password_hash = ${passwordHash},
         password_reset_token = NULL,
-        password_reset_expires_at = NULL
+        password_reset_expires_at = NULL,
+        -- Alla tokens utfärdade före bytet slutar gälla i och med den här raden.
+        token_version = token_version + 1
     WHERE password_reset_token = ${token}
       AND password_reset_expires_at > now()
     RETURNING ${sql.unsafe(USER_COLUMNS)}

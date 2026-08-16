@@ -217,7 +217,8 @@ test('A2.2 och A2.3 ger 401 med identisk kropp — fel lösenord och okänt kont
 test('A2.4 utgången eller manipulerad token avvisas med 401', async () => {
   const user = await actor(ctx.app, 'a2.4');
 
-  const expired = ctx.app.jwt.sign({ sub: user.id }, { expiresIn: '-1h' });
+  // ver 0: kontot är nyregistrerat och har inte bytt lösenord.
+  const expired = ctx.app.jwt.sign({ sub: user.id, ver: 0 }, { expiresIn: '-1h' });
   const tampered = `${user.token.slice(0, -3)}xyz`;
 
   for (const token of [expired, tampered, 'inte-ens-en-jwt']) {

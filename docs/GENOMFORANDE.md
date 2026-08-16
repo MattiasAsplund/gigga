@@ -436,9 +436,17 @@ den däremot inte (R.10).
 kontroll över brevlådan, men flödena hålls isär: den som glömt lösenordet före bekräftelsen
 får bekräfta separat (R.14). Enklare att resonera om, och de två koderna byter aldrig roll.
 
-**Kvarstående lucka:** en återställning ogiltigförklarar inte redan utfärdade access-tokens.
-Utan sessionsregister eller tokenversion går det inte, och det hör ihop med
-refresh-tokens och utloggning i §10.
+**Alla tidigare access-tokens slutar gälla.** `users.token_version` höjs i samma `UPDATE`
+som byter lösenordet, och varje token bär versionen som `ver`-claim. `requireAuth` jämför
+dem — uppslaget gör den ändå för verifieringskontrollen, så revokeringen kostar ingenting
+extra. En token utan `ver`, utfärdad innan versionerna fanns, matchar aldrig och avvisas.
+
+Svaret är `401 token-revoked` med besked om att lösenordet ändrats. Att säga varför röjer
+inget: bäraren har redan en giltigt signerad token för kontot.
+
+Det här är ett versionsnummer, inte ett sessionsregister. Det räcker för "byt lösenord och
+lås ut alla", men inte för att logga ut en enskild enhet — det kräver fortfarande arbetet
+i §10.
 
 **2. `POST /auth/login`** → `200`
 `{ email, password }` → `{ token, expiresIn }`. Fel användare *och* fel lösenord ger
@@ -750,6 +758,11 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | R.12 | Trasig e-postadress ⇒ 422 |
 | R.13 | Kod som inte är uuid ⇒ 422 |
 | R.14 | Återställning bekräftar inte adressen |
+| R.15 | En token utfärdad före återställningen ⇒ 401 `token-revoked` |
+| R.16 | En token utfärdad efter återställningen fungerar |
+| R.17 | Andra användares tokens påverkas inte |
+| R.18 | En token utan `ver`-claim avvisas |
+| R.19 | Varje återställning ogiltigförklarar den föregående sessionen |
 | **X** | **Tvärsnitt** |
 | X.1 | `/docs/json` är OpenAPI 3.1 med ifylld `info` |
 | X.1b | Alla sju API:erna finns på rätt metod och väg, med rätt `operationId` |
@@ -764,7 +777,7 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | X.4b | Fel metod på en känd väg ⇒ 404 i samma format |
 | X.4c | Felsvar från en riktig route är också `application/problem+json` |
 
-Totalt 158 testfall, **alla gröna**. Matrisen är levande — den *ska* ändras i
+Totalt 163 testfall, **alla gröna**. Matrisen är levande — den *ska* ändras i
 dialogen (§8.1).
 
 X-gruppen var grön redan när den skrevs, eftersom den beskriver tvärsnitt som byggdes upp
@@ -839,6 +852,7 @@ Varje etapp är en pull-liknande enhet med en tydlig grön-tröskel.
 | **5** ✅ | Listnings-API:er (API 3–4) | Joins utan N+1, markörsidbrytning, filter, `004_contracts.sql` (tidigarelagd), dubbla valideringsregimer | **Klar.** L3.\*, L4.\* gröna; 68/68 i hela sviten |
 | **6** ✅ | Avtalssignering (API 7) | `domain/contract-rules.ts`, transaktionell tillståndsmaskin med `sql.begin` + `FOR UPDATE OF r`, frysta villkor, tom-kropp-parser | **Klar.** S7.\*, D.3 gröna; 92/92 i hela sviten; hela flödet kört mot levande Aspire |
 | **7** ✅ | Dokumentation & finish | OpenAPI-tvärsnittstester, `docs/API.md` | **Klar.** X.\* gröna; hela sviten 103/103; Swagger UI och hela flödet körda mot levande Aspire |
+| **13** ✅ | Revokering vid lösenordsbyte | `009_token_version.sql`, `ver`-claim, jämförelse i `requireAuth` | **Klar.** R.15–R.19 gröna; 163/163; verifierat mot levande Aspire |
 | **12** ✅ | Lösenordsåterställning (API 11–12) | `008_password_reset.sql`, engångskod med 1 h giltighet, `mail/password-reset-email.ts` | **Klar.** R.\* gröna; 158/158; hela flödet kört mot mailpit i levande Aspire |
 | **11** ✅ | Utgångstid på verifieringslänken | `007_verification_expiry.sql`, tre utfall ur `verifyUserByToken` | **Klar.** V.21–V.25 gröna; 144/144; 410-vägen och återhämtningen via nytt mail körda mot levande Aspire |
 | **10** ✅ | Nytt bekräftelsemail (API 10) | `006_verification_resend.sql`, `rotateVerificationToken` med kylperiod | **Klar.** V.13–V.20 gröna; 138/138; kylperiod, rotation och läckagefrihet verifierade mot mailpit |
@@ -852,8 +866,9 @@ gör resten testdriven. Från etapp 2 gäller §8.1 utan undantag.
 
 ## 10. Medvetet utelämnat (skuld, inte glömska)
 
-- **Refresh-tokens och utloggning** — access-token med 1 h livslängd i etapp 1. Samma
-  lucka gör att en lösenordsåterställning inte kan ogiltigförklara redan utfärdade tokens.
+- **Refresh-tokens och utloggning** — access-token med 1 h livslängd i etapp 1.
+  `token_version` löser "lås ut alla vid lösenordsbyte", men att logga ut en enskild enhet
+  kräver ett sessionsregister.
 - **Rate limiting** på `/auth/*` — `@fastify/rate-limit` är ett endagsjobb när det behövs.
   `/auth/resend-verification` har en egen kylperiod per konto, men inget skydd mot en
   angripare som varierar adressen.

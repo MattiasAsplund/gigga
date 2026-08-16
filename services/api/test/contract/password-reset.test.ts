@@ -227,6 +227,87 @@ test('R.13 en token som inte är uuid ger 422', async () => {
   expect(res.json<Problem>().errors?.map((e) => e.path)).toContain('token');
 });
 
+/** Loggar in och returnerar en färsk access-token. */
+async function tokenFor(email: string, password: string): Promise<string> {
+  const res = await login(email, password);
+  if (res.statusCode !== 200) throw new Error(`login: ${res.statusCode} ${res.body}`);
+  return res.json<{ token: string }>().token;
+}
+
+const callProtected = (token: string) =>
+  ctx.app.inject({
+    method: 'GET',
+    url: '/api/v1/me/requests',
+    headers: { authorization: `Bearer ${token}` },
+  });
+
+test('R.15 en token utfärdad före återställningen slutar gälla', async () => {
+  const email = 'r15@example.test';
+  await account(email);
+  const oldToken = await tokenFor(email, DEFAULT_PASSWORD);
+  expect((await callProtected(oldToken)).statusCode).toBe(200);
+
+  await forgot(email);
+  await reset(tokenFrom(email), NEW_PASSWORD);
+
+  const res = await callProtected(oldToken);
+  expect(res.statusCode).toBe(401);
+  expect(res.json<Problem>().type).toBe('https://fastgig.dev/problems/token-revoked');
+});
+
+test('R.16 en token utfärdad efter återställningen fungerar', async () => {
+  const email = 'r16@example.test';
+  await account(email);
+  await forgot(email);
+  await reset(tokenFrom(email), NEW_PASSWORD);
+
+  const fresh = await tokenFor(email, NEW_PASSWORD);
+
+  expect((await callProtected(fresh)).statusCode).toBe(200);
+});
+
+test('R.17 andra användares tokens påverkas inte', async () => {
+  const mine = 'r17a@example.test';
+  const theirs = 'r17b@example.test';
+  await account(mine);
+  await account(theirs);
+  const otherToken = await tokenFor(theirs, DEFAULT_PASSWORD);
+
+  await forgot(mine);
+  await reset(tokenFrom(mine), NEW_PASSWORD);
+
+  expect((await callProtected(otherToken)).statusCode).toBe(200);
+});
+
+test('R.18 en token utan versionsanspråk avvisas', async () => {
+  const email = 'r18@example.test';
+  await account(email);
+  const rows = (await ctx.sql`SELECT id FROM users WHERE email = ${email}`) as {
+    id: string;
+  }[];
+
+  // Signerad med rätt nyckel, men utan `ver` — som en token från före den här ändringen.
+  const legacy = ctx.app.jwt.sign({ sub: rows[0]!.id } as never);
+
+  expect((await callProtected(legacy)).statusCode).toBe(401);
+});
+
+test('R.19 varje återställning ogiltigförklarar den föregående sessionen', async () => {
+  const email = 'r19@example.test';
+  await account(email);
+
+  await forgot(email);
+  await reset(tokenFrom(email), NEW_PASSWORD);
+  const afterFirst = await tokenFor(email, NEW_PASSWORD);
+  expect((await callProtected(afterFirst)).statusCode).toBe(200);
+
+  await clearCooldown(email);
+  await forgot(email);
+  await reset(tokenFrom(email), 'ett-tredje-losenord-har');
+
+  expect((await callProtected(afterFirst)).statusCode).toBe(401);
+});
+
 test('R.14 återställning bekräftar inte adressen', async () => {
   // Att kunna läsa mailen bevisar kontroll över brevlådan, men de två flödena hålls
   // isär: den som glömt lösenordet före bekräftelsen får bekräfta separat.

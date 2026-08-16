@@ -50,8 +50,11 @@ Ett misslyckat försök — för kort lösenord — bränner den inte.
 Utan frontend bär mailet koden i klartext med instruktioner. Sätt `PASSWORD_RESET_URL` när
 en sida finns, så skickas en klickbar länk i stället.
 
-Två saker att känna till: återställningen **bekräftar inte** e-postadressen (eget flöde),
-och den **ogiltigförklarar inte** redan utfärdade access-tokens.
+**Alla tidigare access-tokens slutar gälla** vid lösenordsbytet och ger `401 token-revoked`.
+Logga in igen för att få en ny. Andra användares tokens berörs förstås inte.
+
+En sak att känna till: återställningen **bekräftar inte** e-postadressen — det är ett eget
+flöde.
 
 ## Konventioner
 
@@ -77,7 +80,7 @@ kr. Aldrig decimaltal. `currency` är valfri och betyder `SEK` om den utelämnas
 | Kod | Betyder |
 |---|---|
 | 202 | Mottaget — utan besked om vad som hände (se resend-verification) |
-| 401 | Token saknas, är utgången eller ogiltig |
+| 401 | Token saknas, är utgången, ogiltig — eller återkallad av ett lösenordsbyte |
 | 403 | Inloggad, men fel part för resursen — eller obekräftad e-postadress |
 | 404 | Resursen finns inte |
 | 410 | Fanns, men gäller inte längre — utgången verifieringslänk |

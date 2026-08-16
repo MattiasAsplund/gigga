@@ -96,6 +96,15 @@ export const verificationTokenExpired = () =>
     detail: 'Begär ett nytt bekräftelsemail via /auth/resend-verification.',
   });
 
+export const tokenRevoked = () =>
+  new ProblemError({
+    status: 401,
+    slug: 'token-revoked',
+    title: 'Sessionen har avslutats',
+    // Bäraren har redan en signerad token för kontot, så det röjer inget att säga varför.
+    detail: 'Lösenordet har ändrats sedan token utfärdades. Logga in igen.',
+  });
+
 export const resetTokenNotFound = () =>
   new ProblemError({
     status: 404,

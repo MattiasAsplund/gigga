@@ -92,7 +92,7 @@ export const authRoutes: FastifyPluginAsyncTypebox = async (app) => {
         email: user.email,
         displayName: user.displayName,
         emailVerified: user.emailVerified,
-        token: app.issueToken(user.id),
+        token: app.issueToken(user.id, user.tokenVersion),
       });
     },
   );
@@ -125,7 +125,7 @@ export const authRoutes: FastifyPluginAsyncTypebox = async (app) => {
       if (!user.emailVerified) throw emailNotVerified();
 
       return reply.code(200).send({
-        token: app.issueToken(user.id),
+        token: app.issueToken(user.id, user.tokenVersion),
         expiresIn: TOKEN_TTL_SECONDS,
       });
     },
