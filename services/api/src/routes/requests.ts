@@ -43,7 +43,7 @@ export const requestRoutes: FastifyPluginAsyncTypebox = async (app) => {
           'är en av dem.',
         security: [{ bearerAuth: [] }],
         querystring: CatalogQuerySchema,
-        response: { 200: CatalogResponseSchema, 401: ProblemSchema, 422: ProblemSchema },
+        response: { 200: CatalogResponseSchema, 401: ProblemSchema, 403: ProblemSchema, 422: ProblemSchema },
       },
     },
     async (req) => {
@@ -86,6 +86,7 @@ export const requestRoutes: FastifyPluginAsyncTypebox = async (app) => {
         response: {
           201: RequestResponseSchema,
           401: ProblemSchema,
+          403: ProblemSchema,
           422: ProblemSchema,
         },
       },

@@ -169,10 +169,12 @@ test('X.2 skyddade operationer deklarerar bearerAuth, öppna gör det inte', () 
   }
 });
 
-test('X.2 varje skyddad operation dokumenterar 401', () => {
+test('X.2 varje skyddad operation dokumenterar 401 och 403', () => {
+  // 403 gäller alla skyddade routes sedan requireAuth även kräver bekräftad e-post.
   for (const { id, op, where } of operations(doc)) {
     if (!PROTECTED.has(id)) continue;
     expect(op.responses?.['401'], `${where} dokumenterar inte 401`).toBeDefined();
+    expect(op.responses?.['403'], `${where} dokumenterar inte 403`).toBeDefined();
   }
 });
 

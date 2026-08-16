@@ -55,7 +55,7 @@ async function verify(email: string): Promise<void> {
 
 // ---------------------------------------------------------------- A1 Registrering
 
-test('A1.1 giltig registrering ger 201, användbar token och läcker inte lösenordet', async () => {
+test('A1.1 giltig registrering ger 201 och läcker inte lösenordet', async () => {
   const res = await register({
     email: 'A1.1@Example.test',
     password: DEFAULT_PASSWORD,
@@ -73,13 +73,23 @@ test('A1.1 giltig registrering ger 201, användbar token och läcker inte lösen
   expect(res.body).not.toContain(DEFAULT_PASSWORD);
   expect(res.body).not.toContain('password');
 
-  const protectedRes = await ctx.app.inject({
+  // Token duger inte förrän adressen är bekräftad — se V.10 och V.11.
+  const beforeVerification = await ctx.app.inject({
     method: 'GET',
     url: '/__protected',
     headers: { authorization: `Bearer ${body.token}` },
   });
-  expect(protectedRes.statusCode).toBe(200);
-  expect(protectedRes.json<{ userId: string }>().userId).toBe(body.id);
+  expect(beforeVerification.statusCode).toBe(403);
+
+  await verify('a1.1@example.test');
+
+  const afterVerification = await ctx.app.inject({
+    method: 'GET',
+    url: '/__protected',
+    headers: { authorization: `Bearer ${body.token}` },
+  });
+  expect(afterVerification.statusCode).toBe(200);
+  expect(afterVerification.json<{ userId: string }>().userId).toBe(body.id);
 });
 
 test('A1.2 dubblett-e-post ger 409, även med annan skiftlägesform', async () => {

@@ -162,6 +162,52 @@ test('V.8 inloggning efter verifiering fungerar', async () => {
   expect(res.json<{ token: string }>().token).toBeString();
 });
 
+test('V.10 registreringens token duger inte mot ett skyddat API före verifiering', async () => {
+  const email = 'v10@example.test';
+  const token = (await register(email)).json<{ token: string }>().token;
+
+  const res = await ctx.app.inject({
+    method: 'GET',
+    url: '/api/v1/me/requests',
+    headers: { authorization: `Bearer ${token}` },
+  });
+
+  expect(res.statusCode).toBe(403);
+  expect(res.json<Problem>().type).toBe('https://fastgig.dev/problems/email-not-verified');
+});
+
+test('V.11 samma token börjar fungera när adressen bekräftats', async () => {
+  const email = 'v11@example.test';
+  const token = (await register(email)).json<{ token: string }>().token;
+  const call = () =>
+    ctx.app.inject({
+      method: 'GET',
+      url: '/api/v1/me/requests',
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+  expect((await call()).statusCode).toBe(403);
+
+  await ctx.app.inject({ method: 'GET', url: pathOf(linkFrom(email)) });
+
+  // Ingen ny inloggning krävs — spärren läser kontots läge, inte tokenens.
+  expect((await call()).statusCode).toBe(200);
+});
+
+test('V.12 en token för ett konto som inte finns kvar ger 401', async () => {
+  const email = 'v12@example.test';
+  const token = (await register(email)).json<{ token: string }>().token;
+  await ctx.sql`DELETE FROM users WHERE email = ${email}`;
+
+  const res = await ctx.app.inject({
+    method: 'GET',
+    url: '/api/v1/me/requests',
+    headers: { authorization: `Bearer ${token}` },
+  });
+
+  expect(res.statusCode).toBe(401);
+});
+
 test('V.9 mailet innehåller varken lösenord eller token i klartext utöver länken', async () => {
   const email = 'v9@example.test';
   await register(email);

@@ -26,7 +26,7 @@ export const meRoutes: FastifyPluginAsyncTypebox = async (app) => {
           'anbud som lämnats på den.',
         security: [{ bearerAuth: [] }],
         querystring: PageQuerySchema,
-        response: { 200: MyRequestsResponseSchema, 401: ProblemSchema, 422: ProblemSchema },
+        response: { 200: MyRequestsResponseSchema, 401: ProblemSchema, 403: ProblemSchema, 422: ProblemSchema },
       },
     },
     async (req) => {
@@ -69,7 +69,7 @@ export const meRoutes: FastifyPluginAsyncTypebox = async (app) => {
           'avtalets signaturläge när ett avtal har påbörjats.',
         security: [{ bearerAuth: [] }],
         querystring: BidsQuerySchema,
-        response: { 200: MyBidsResponseSchema, 401: ProblemSchema, 422: ProblemSchema },
+        response: { 200: MyBidsResponseSchema, 401: ProblemSchema, 403: ProblemSchema, 422: ProblemSchema },
       },
     },
     async (req) => {

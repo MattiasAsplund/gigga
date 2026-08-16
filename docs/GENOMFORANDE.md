@@ -402,6 +402,15 @@ ge `422` istället för `401`.
 före: annars gick det att kartlägga vilka adresser som finns registrerade genom att jämföra
 `401` mot `403`. Den som redan kan lösenordet får däremot veta exakt vad som saknas.
 
+Samma spärr gäller **varje skyddad route**, inte bara inloggningen: `requireAuth` slår upp
+kontot efter att token verifierats och avvisar obekräftade med `403`, samt token vars konto
+inte längre finns med `401`. Det kostar en primärnyckelträff per skyddad begäran.
+
+Alternativet — `email_verified` som claim i token — vore fel byte: claimen blir inaktuell i
+samma stund användaren klickar på bekräftelselänken, och registreringens token skulle då
+aldrig kunna börja fungera. Med uppslaget gäller i stället att **samma token börjar fungera
+direkt efter bekräftelsen, utan ny inloggning** (V.11).
+
 **3. `GET /me/requests`** → `200`
 `{ items: [{ …request, bids: [{ id, sellerId, sellerDisplayName, plan, compensation, estimatedTotalMinor, status, createdAt }] }], nextCursor }`.
 Endast anropande användares egna förfrågningar. Anbudens `plan`-fält ingår — köparen ska
@@ -556,7 +565,7 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | ID | Test |
 |---|---|
 | **A1** | **Registrering** |
-| A1.1 | Giltig registrering ⇒ 201, användbar token, lösenordet syns inte i svaret |
+| A1.1 | Giltig registrering ⇒ 201, lösenordet syns inte i svaret, och token duger först efter bekräftelse |
 | A1.2 | Dubblett-e-post (även med annan skiftlägesform) ⇒ 409 |
 | A1.3 | Lösenord < 12 tecken ⇒ 422 med fältpekare |
 | A1.4 | Trasig e-postadress ⇒ 422 |
@@ -659,6 +668,9 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | V.7b | Fel lösenord på ett overifierat konto ⇒ fortfarande 401, inget läckage |
 | V.8 | Inloggning efter verifiering fungerar |
 | V.9 | Mailet innehåller inte lösenordet |
+| V.10 | Registreringens token duger inte mot ett skyddat API före verifiering ⇒ 403 |
+| V.11 | Samma token börjar fungera när adressen bekräftats, utan ny inloggning |
+| V.12 | Token för ett konto som inte finns kvar ⇒ 401 |
 | **X** | **Tvärsnitt** |
 | X.1 | `/docs/json` är OpenAPI 3.1 med ifylld `info` |
 | X.1b | Alla sju API:erna finns på rätt metod och väg, med rätt `operationId` |
@@ -667,13 +679,13 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | X.2 | Varje operation har unikt `operationId`, `tags` och `summary` |
 | X.2b | Varje 4xx-svar är beskrivet och har ett kroppsschema |
 | X.2c | Skyddade operationer deklarerar `bearerAuth`, öppna gör det inte |
-| X.2d | Varje skyddad operation dokumenterar 401 |
+| X.2d | Varje skyddad operation dokumenterar 401 **och** 403 |
 | X.3 | `/health` svarar 200 när databasen är nåbar, 503 annars |
 | X.4 | Okänd väg ⇒ 404 i Problem Details-format |
 | X.4b | Fel metod på en känd väg ⇒ 404 i samma format |
 | X.4c | Felsvar från en riktig route är också `application/problem+json` |
 
-Totalt 127 testfall, **alla gröna**. Matrisen är levande — den *ska* ändras i
+Totalt 130 testfall, **alla gröna**. Matrisen är levande — den *ska* ändras i
 dialogen (§8.1).
 
 X-gruppen var grön redan när den skrevs, eftersom den beskriver tvärsnitt som byggdes upp
@@ -748,7 +760,7 @@ Varje etapp är en pull-liknande enhet med en tydlig grön-tröskel.
 | **5** ✅ | Listnings-API:er (API 3–4) | Joins utan N+1, markörsidbrytning, filter, `004_contracts.sql` (tidigarelagd), dubbla valideringsregimer | **Klar.** L3.\*, L4.\* gröna; 68/68 i hela sviten |
 | **6** ✅ | Avtalssignering (API 7) | `domain/contract-rules.ts`, transaktionell tillståndsmaskin med `sql.begin` + `FOR UPDATE OF r`, frysta villkor, tom-kropp-parser | **Klar.** S7.\*, D.3 gröna; 92/92 i hela sviten; hela flödet kört mot levande Aspire |
 | **7** ✅ | Dokumentation & finish | OpenAPI-tvärsnittstester, `docs/API.md` | **Klar.** X.\* gröna; hela sviten 103/103; Swagger UI och hela flödet körda mot levande Aspire |
-| **9** ✅ | E-postverifiering (API 9) | `005_email_verification.sql`, mailpit i AppHosten, `src/mail/`, login-spärr | **Klar.** V.\* gröna; 127/127; hela flödet kört mot mailpit i levande Aspire |
+| **9** ✅ | E-postverifiering (API 9) | `005_email_verification.sql`, mailpit i AppHosten, `src/mail/`, spärr i både `/auth/login` och `requireAuth` | **Klar.** V.\* gröna; 130/130; hela flödet kört mot mailpit i levande Aspire |
 | **8** ✅ | Katalogen (API 8) | `GET /requests` med `bidCount`/`hasMyBid`/`canBid`, filter och sidbrytning | **Klar.** L8.\* gröna; 116/116; körd mot levande Aspire. Tillkom efter att luckan påpekats — säljare kunde bara lägga anbud på förfrågningar de kände till ID:t för |
 
 Etapp 0–1 är infrastruktur och skrivs inte testdrivet i strikt mening — de *är* verktyget som

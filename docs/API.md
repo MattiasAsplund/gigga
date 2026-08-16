@@ -16,7 +16,11 @@ för att förklara konventioner som ett schema inte kan uttrycka.
 
 **E-postadressen måste bekräftas.** Registreringen skickar ett mail med en länk till
 `GET /validate-user?token=<uuid>`. Innan den klickats svarar `/auth/login` med
-`403 email-not-verified`. Länken är idempotent och tål att klickas flera gånger.
+`403 email-not-verified` — och **det gör varje skyddad endpoint också**, även med den token
+registreringen returnerade. Länken är idempotent och tål att klickas flera gånger.
+
+Samma token börjar fungera direkt när länken klickats; ingen ny inloggning behövs. En token
+vars konto inte finns kvar ger `401`.
 
 I utvecklingsmiljön går ingen post ut på riktigt: **mailpit** fångar allt, och dess
 webbgränssnitt ligger som egen URL i Aspire-dashboarden. Det är där du hämtar länken.
@@ -48,7 +52,7 @@ kr. Aldrig decimaltal. `currency` är valfri och betyder `SEK` om den utelämnas
 | Kod | Betyder |
 |---|---|
 | 401 | Token saknas, är utgången eller ogiltig |
-| 403 | Inloggad, men fel part för den här resursen |
+| 403 | Inloggad, men fel part för resursen — eller obekräftad e-postadress |
 | 404 | Resursen finns inte |
 | 409 | Konflikt med befintligt tillstånd |
 | 422 | Syntaktiskt giltig men semantiskt ogiltig indata |
