@@ -12,9 +12,11 @@
     "typecheck": "tsc --noEmit -p tsconfig.apphost.json",
     "dev": "aspire run",
     "test": "cd services/api && bun test",
-    "test:coverage": "cd services/api && bun run test:coverage"
+    "test:coverage": "cd services/api && bun run test:coverage && bun node_modules/lcoview/bin/lcoview.js coverage/lcov.info -d coverage",
+    "test:lcoview": "bun node_modules/lcoview/bin/lcoview.js services/api/coverage/lcov.info -d services/api/coverage -s services/api"
   },
   "dependencies": {
+    "lcoview": "^1.1.1",
     "vscode-jsonrpc": "^8.2.0"
   },
   "devDependencies": {
