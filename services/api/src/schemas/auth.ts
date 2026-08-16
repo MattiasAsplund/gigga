@@ -25,6 +25,14 @@ export const RegisterBodySchema = Type.Object(
   { additionalProperties: false },
 );
 
+const RefreshTokenSchema = Type.String({
+  description: 'Ogenomskinlig token som byts mot en ny access-token via /auth/refresh.',
+});
+
+const RefreshExpiresInSchema = Type.Integer({
+  description: 'Refresh-tokenens livslängd i sekunder.',
+});
+
 export const RegisterResponseSchema = Type.Object({
   id: UuidSchema,
   email: Type.String(),
@@ -33,6 +41,8 @@ export const RegisterResponseSchema = Type.Object({
     description: 'Alltid false vid registrering — bekräfta via länken i mailet.',
   }),
   token: Type.String({ description: 'Access-token att skicka som Bearer.' }),
+  refreshToken: RefreshTokenSchema,
+  refreshExpiresIn: RefreshExpiresInSchema,
 });
 
 export const LoginBodySchema = Type.Object(
@@ -47,8 +57,17 @@ export const LoginBodySchema = Type.Object(
 
 export const LoginResponseSchema = Type.Object({
   token: Type.String(),
-  expiresIn: Type.Integer({ description: 'Tokenens livslängd i sekunder.' }),
+  expiresIn: Type.Integer({ description: 'Access-tokenens livslängd i sekunder.' }),
+  refreshToken: RefreshTokenSchema,
+  refreshExpiresIn: RefreshExpiresInSchema,
 });
+
+export const RefreshBodySchema = Type.Object(
+  { refreshToken: Type.String({ minLength: 1 }) },
+  { additionalProperties: false },
+);
+
+export const RefreshResponseSchema = LoginResponseSchema;
 
 export const ResendVerificationBodySchema = Type.Object(
   { email: EmailSchema },

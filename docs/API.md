@@ -11,8 +11,13 @@ för att förklara konventioner som ett schema inte kan uttrycka.
 
 ## Autentisering
 
-`POST /auth/register` och `POST /auth/login` ger en access-token. Skicka den som
-`Authorization: Bearer <token>`. Livslängd 1 timme; det finns inga refresh-tokens ännu.
+`POST /auth/register` och `POST /auth/login` ger en **access-token** (1 timme) och en
+**refresh-token** (30 dagar). Skicka access-token som `Authorization: Bearer <token>`.
+
+När access-token gått ut: `POST /auth/refresh` med `{ refreshToken }` ger ett nytt par.
+Den gamla refresh-token förbrukas i samma anrop — **spara alltid den nya**. Använder du en
+redan förbrukad token antas den ha läckt, och hela sessionen avslutas (`401
+refresh-token-reused`); då återstår inloggning med lösenord.
 
 **Utloggning.** `POST /auth/logout` avslutar den session token tillhör; därefter svarar
 den `401 session-ended`. Andra sessioner för samma konto påverkas inte — logga ut på
@@ -105,6 +110,7 @@ bläddringen.
 | `POST /auth/login` | – | Loggar in, returnerar token |
 | `GET /validate-user` | – | Bekräftar e-postadressen via länken i mailet |
 | `POST /auth/resend-verification` | – | Begär ett nytt bekräftelsemail |
+| `POST /auth/refresh` | – | Byter refresh-token mot en ny access-token |
 | `POST /auth/logout` | ✔ | Avslutar den session token tillhör |
 | `POST /auth/forgot-password` | – | Begär lösenordsåterställning |
 | `POST /auth/reset-password` | – | Sätter nytt lösenord med koden ur mailet |

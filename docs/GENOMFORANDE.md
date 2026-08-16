@@ -373,6 +373,7 @@ och vid valideringsfel `errors[]`.
 | 11 | `POST /api/v1/auth/forgot-password` | – | Begär lösenordsåterställning |
 | 12 | `POST /api/v1/auth/reset-password` | – | Sätt nytt lösenord med koden ur mailet |
 | 13 | `POST /api/v1/auth/logout` | ✔ | Avsluta den session token tillhör |
+| 14 | `POST /api/v1/auth/refresh` | – | Byt refresh-token mot en ny access-token |
 
 ### 6.1 Detaljer per API
 
@@ -463,6 +464,32 @@ utloggning, vilket är precis när den växer — inget bakgrundsjobb behövs.
 
 Andra gången samma token loggas ut ger `401 session-ended`; den är redan avslutad och
 kommer aldrig förbi `requireAuth`.
+
+**14. `POST /auth/refresh`** → `200 { token, expiresIn, refreshToken, refreshExpiresIn }`
+Öppen: den som behöver refresha har per definition ingen giltig access-token.
+Registrering och inloggning returnerar nu också `refreshToken` (30 dagar).
+
+**Ogenomskinliga slumpsträngar, aldrig JWT.** De lever länge och måste gå att återkalla,
+vilket en stateless token inte kan. Lagras som SHA-256 — värdet är redan 256 bitar slump,
+så det finns inget att brute-forca, och uppslaget måste vara en indexträff (argon2 vore
+fel verktyg här, till skillnad från för lösenord).
+
+**Rotation med återanvändningsdetektering.** Varje token duger en gång. Dyker en redan
+förbrukad upp igen finns den på två ställen — den ursprungliga klienten och någon annan —
+och då avslutas hela sessionen. Den bestulne får logga in igen, tjuven kommer ingenstans.
+
+**`session_id` överlever rotationen** och binder ihop kedjan med access-tokens `sid`-claim.
+Det är så utloggning kan avsluta hela sessionen; utan den kopplingen räcker det att refresha
+för att komma tillbaka in efter utloggning, och API 13 vore verkningslös.
+
+**Lösenordsbyte återkallar alla sessioner.** `token_version` stänger access-tokens, men
+refresh-tokens har ingen version att jämföra mot och måste återkallas var för sig.
+
+**`consumed_at` och `revoked_at` är skilda kolumner**, för de betyder olika saker för den
+som presenterar token: förbrukad-och-återanvänd betyder att den läckt, återkallad betyder
+att sessionen avslutats. Slås de ihop får den som *loggat ut normalt* beskedet att deras
+token blivit stulen. Det upptäcktes först när flödet kördes mot levande Aspire — testerna
+kontrollerade bara statuskoden, som är 401 i båda fallen.
 
 **2. `POST /auth/login`** → `200`
 `{ email, password }` → `{ token, expiresIn }`. Fel användare *och* fel lösenord ger
@@ -788,6 +815,19 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | U.6 | Ny inloggning efter utloggning fungerar |
 | U.7 | Utloggning städar bort utgångna rader ur `revoked_tokens` |
 | U.8 | Utloggning och lösenordsbyte krockar inte |
+| **T** | **Refresh-tokens** (API 14) |
+| T.1 | Inloggning returnerar en refresh-token med egen, längre livslängd |
+| T.2 | Registrering returnerar också en |
+| T.3 | Refresh ger en ny fungerande access-token, utan att kräva någon |
+| T.4 | Rotation: den förbrukade token slutar gälla, den nya fungerar |
+| T.5 | Återanvänd token ⇒ 401 `refresh-token-reused`, och hela kedjan dör |
+| T.6 | Okänd token ⇒ 401; tom ⇒ 422 |
+| T.7 | Utgången token ⇒ 401 |
+| T.8 | Utloggning hindrar refresh — och ger `invalid`, inte `reused` |
+| T.9 | Utloggning berör bara sin egen session |
+| T.10 | Lösenordsbyte dödar alla refresh-tokens, utan att anklaga någon |
+| T.11 | Token lagras aldrig i klartext |
+| T.12 | En token ger access till sitt eget konto, inte anroparens |
 | **X** | **Tvärsnitt** |
 | X.1 | `/docs/json` är OpenAPI 3.1 med ifylld `info` |
 | X.1b | Alla sju API:erna finns på rätt metod och väg, med rätt `operationId` |
@@ -802,7 +842,7 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | X.4b | Fel metod på en känd väg ⇒ 404 i samma format |
 | X.4c | Felsvar från en riktig route är också `application/problem+json` |
 
-Totalt 171 testfall, **alla gröna**. Matrisen är levande — den *ska* ändras i
+Totalt 186 testfall, **alla gröna**. Matrisen är levande — den *ska* ändras i
 dialogen (§8.1).
 
 X-gruppen var grön redan när den skrevs, eftersom den beskriver tvärsnitt som byggdes upp
@@ -877,6 +917,7 @@ Varje etapp är en pull-liknande enhet med en tydlig grön-tröskel.
 | **5** ✅ | Listnings-API:er (API 3–4) | Joins utan N+1, markörsidbrytning, filter, `004_contracts.sql` (tidigarelagd), dubbla valideringsregimer | **Klar.** L3.\*, L4.\* gröna; 68/68 i hela sviten |
 | **6** ✅ | Avtalssignering (API 7) | `domain/contract-rules.ts`, transaktionell tillståndsmaskin med `sql.begin` + `FOR UPDATE OF r`, frysta villkor, tom-kropp-parser | **Klar.** S7.\*, D.3 gröna; 92/92 i hela sviten; hela flödet kört mot levande Aspire |
 | **7** ✅ | Dokumentation & finish | OpenAPI-tvärsnittstester, `docs/API.md` | **Klar.** X.\* gröna; hela sviten 103/103; Swagger UI och hela flödet körda mot levande Aspire |
+| **15** ✅ | Refresh-tokens (API 14) | `011_refresh_tokens.sql`, rotation med återanvändningsdetektering, `sid` som binder ihop sessionen | **Klar.** T.\* gröna; 186/186; rotation, läckagedetektering och utloggning verifierade mot levande Aspire |
 | **14** ✅ | Utloggning (API 13) | `010_revoked_tokens.sql`, `jti` per token, `db/sessions.ts` | **Klar.** U.\* gröna; 171/171; två samtidiga sessioner verifierade mot levande Aspire |
 | **13** ✅ | Revokering vid lösenordsbyte | `009_token_version.sql`, `ver`-claim, jämförelse i `requireAuth` | **Klar.** R.15–R.19 gröna; 163/163; verifierat mot levande Aspire |
 | **12** ✅ | Lösenordsåterställning (API 11–12) | `008_password_reset.sql`, engångskod med 1 h giltighet, `mail/password-reset-email.ts` | **Klar.** R.\* gröna; 158/158; hela flödet kört mot mailpit i levande Aspire |
@@ -892,11 +933,11 @@ gör resten testdriven. Från etapp 2 gäller §8.1 utan undantag.
 
 ## 10. Medvetet utelämnat (skuld, inte glömska)
 
-- **Refresh-tokens** — access-token med 1 h livslängd, och användaren måste logga in på
-  nytt när den går ut. Utloggning och revokering finns (`revoked_tokens`, `token_version`),
-  men det finns ingen väg att förlänga en session utan lösenord.
-- **Lista aktiva sessioner** — `revoked_tokens` vet vad som är avslutat, inte vad som
-  pågår. En sessionstabell skulle behöva skrivas vid varje inloggning i stället.
+- **Lista aktiva sessioner** — `refresh_tokens` har allt som behövs (`session_id`,
+  `created_at`, `revoked_at`), men inget API exponerar det. Ett `GET /me/sessions` med
+  möjlighet att avsluta en enskild är nästa naturliga steg.
+- **Städning av `refresh_tokens`** — rader ligger kvar efter utgång. `revoked_tokens`
+  städas vid utloggning; motsvarande saknas här.
 - **Rate limiting** på `/auth/*` — `@fastify/rate-limit` är ett endagsjobb när det behövs.
   `/auth/resend-verification` har en egen kylperiod per konto, men inget skydd mot en
   angripare som varierar adressen.

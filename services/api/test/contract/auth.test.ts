@@ -219,7 +219,12 @@ test('A2.4 utgången eller manipulerad token avvisas med 401', async () => {
 
   // ver 0: kontot är nyregistrerat och har inte bytt lösenord.
   const expired = ctx.app.jwt.sign(
-    { sub: user.id, ver: 0, jti: '22222222-2222-4222-8222-222222222222' },
+    {
+      sub: user.id,
+      ver: 0,
+      jti: '22222222-2222-4222-8222-222222222222',
+      sid: '33333333-3333-4333-8333-333333333333',
+    },
     { expiresIn: '-1h' },
   );
   const tampered = `${user.token.slice(0, -3)}xyz`;

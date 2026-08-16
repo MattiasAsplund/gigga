@@ -105,6 +105,25 @@ export const tokenRevoked = () =>
     detail: 'Lösenordet har ändrats sedan token utfärdades. Logga in igen.',
   });
 
+export const refreshTokenInvalid = () =>
+  new ProblemError({
+    status: 401,
+    slug: 'refresh-token-invalid',
+    title: 'Refresh-token gäller inte',
+    // Okänd, utgången och avslutad ger samma svar: skillnaden angår inte bäraren.
+    detail: 'Token är okänd, utgången eller tillhör en avslutad session. Logga in igen.',
+  });
+
+export const refreshTokenReused = () =>
+  new ProblemError({
+    status: 401,
+    slug: 'refresh-token-reused',
+    title: 'Refresh-token har återanvänts',
+    detail:
+      'En redan förbrukad token användes igen, vilket tyder på att den läckt. Hela ' +
+      'sessionen har avslutats. Logga in igen.',
+  });
+
 export const sessionEnded = () =>
   new ProblemError({
     status: 401,

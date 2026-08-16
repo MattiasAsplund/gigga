@@ -8,16 +8,19 @@ export const TOKEN_TTL_SECONDS = 60 * 60;
 
 declare module '@fastify/jwt' {
   interface FastifyJWT {
-    /** `ver` speglar users.token_version vid utfärdandet, `jti` identifierar sessionen. */
-    payload: { sub: string; ver: number; jti: string };
-    user: { sub: string; ver: number; jti: string; exp?: number };
+    /**
+     * `ver` speglar users.token_version, `jti` identifierar den enskilda token och
+     * `sid` sessionen den tillhör — den senare överlever refresh-rotationen.
+     */
+    payload: { sub: string; ver: number; jti: string; sid: string };
+    user: { sub: string; ver: number; jti: string; sid: string; exp?: number };
   }
 }
 
 declare module 'fastify' {
   interface FastifyInstance {
     requireAuth: onRequestHookHandler;
-    issueToken(userId: string, tokenVersion: number): string;
+    issueToken(userId: string, tokenVersion: number, sessionId: string): string;
   }
 }
 
@@ -27,9 +30,9 @@ export async function registerAuth(app: FastifyInstance): Promise<void> {
     sign: { expiresIn: TOKEN_TTL_SECONDS },
   });
 
-  // jti gör sessionen adresserbar: utan ett id går en enskild token inte att logga ut.
-  app.decorate('issueToken', (userId: string, tokenVersion: number) =>
-    app.jwt.sign({ sub: userId, ver: tokenVersion, jti: randomUUID() }),
+  // jti gör den enskilda token adresserbar, sid hela sessionen.
+  app.decorate('issueToken', (userId: string, tokenVersion: number, sessionId: string) =>
+    app.jwt.sign({ sub: userId, ver: tokenVersion, jti: randomUUID(), sid: sessionId }),
   );
 
   /**

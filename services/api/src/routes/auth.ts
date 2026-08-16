@@ -8,6 +8,8 @@ import {
   ForgotPasswordBodySchema,
   ForgotPasswordResponseSchema,
   LogoutResponseSchema,
+  RefreshBodySchema,
+  RefreshResponseSchema,
   ResendVerificationBodySchema,
   ResendVerificationResponseSchema,
   ResetPasswordBodySchema,
@@ -30,6 +32,8 @@ import {
   emailNotVerified,
   emailTaken,
   invalidCredentials,
+  refreshTokenInvalid,
+  refreshTokenReused,
   resetTokenExpired,
   resetTokenNotFound,
   verificationTokenExpired,
@@ -38,7 +42,16 @@ import {
 import { TOKEN_TTL_SECONDS } from '../plugins/auth.ts';
 import { verificationEmail } from '../mail/verification-email.ts';
 import { passwordResetEmail } from '../mail/password-reset-email.ts';
-import { purgeExpiredRevocations, revokeToken } from '../db/sessions.ts';
+import {
+  issueRefreshToken,
+  purgeExpiredRevocations,
+  revokeAllSessions,
+  revokeSession,
+  revokeToken,
+  rotateRefreshToken,
+  REFRESH_TTL_SECONDS,
+} from '../db/sessions.ts';
+import { randomUUID } from 'node:crypto';
 
 /**
  * En argon2id-hash av ett kasserat lösenord. Vid inloggning mot en okänd e-postadress
@@ -89,12 +102,19 @@ export const authRoutes: FastifyPluginAsyncTypebox = async (app) => {
         }),
       );
 
+      const session = await issueRefreshToken(app.sql, {
+        userId: user.id,
+        sessionId: randomUUID(),
+      });
+
       return reply.code(201).send({
         id: user.id,
         email: user.email,
         displayName: user.displayName,
         emailVerified: user.emailVerified,
-        token: app.issueToken(user.id, user.tokenVersion),
+        token: app.issueToken(user.id, user.tokenVersion, session.sessionId),
+        refreshToken: session.secret,
+        refreshExpiresIn: REFRESH_TTL_SECONDS,
       });
     },
   );
@@ -126,9 +146,16 @@ export const authRoutes: FastifyPluginAsyncTypebox = async (app) => {
       // finns registrerade genom att jämföra 401 mot 403.
       if (!user.emailVerified) throw emailNotVerified();
 
+      const session = await issueRefreshToken(app.sql, {
+        userId: user.id,
+        sessionId: randomUUID(),
+      });
+
       return reply.code(200).send({
-        token: app.issueToken(user.id, user.tokenVersion),
+        token: app.issueToken(user.id, user.tokenVersion, session.sessionId),
         expiresIn: TOKEN_TTL_SECONDS,
+        refreshToken: session.secret,
+        refreshExpiresIn: REFRESH_TTL_SECONDS,
       });
     },
   );
@@ -269,6 +296,10 @@ export const authRoutes: FastifyPluginAsyncTypebox = async (app) => {
       if (result.outcome === 'expired') throw resetTokenExpired();
       if (result.outcome === 'unknown') throw resetTokenNotFound();
 
+      // token_version stänger access-tokens; refresh-tokens har ingen version att
+      // jämföra mot och måste återkallas var för sig.
+      await revokeAllSessions(app.sql, result.user.id);
+
       return reply.code(200).send({ reset: true, email: result.user.email });
     },
   );
@@ -304,9 +335,51 @@ export const authRoutes: FastifyPluginAsyncTypebox = async (app) => {
         userId: req.user.sub,
         expiresAt,
       });
+      // Utan detta räcker det att refresha för att komma tillbaka in.
+      await revokeSession(app.sql, req.user.sid);
       await purgeExpiredRevocations(app.sql);
 
       return reply.code(200).send({ loggedOut: true });
+    },
+  );
+
+  app.post(
+    '/auth/refresh',
+    {
+      schema: {
+        operationId: 'refreshSession',
+        tags: ['auth'],
+        summary: 'Byt refresh-token mot en ny access-token',
+        description:
+          'Öppen: den som behöver den har per definition ingen giltig access-token. ' +
+          'Varje refresh-token duger en gång och byts mot en ny. Dyker en redan ' +
+          'förbrukad token upp igen avslutas hela sessionen — den har läckt.',
+        body: RefreshBodySchema,
+        response: {
+          200: RefreshResponseSchema,
+          401: ProblemSchema,
+          422: ProblemSchema,
+        },
+      },
+    },
+    async (req, reply) => {
+      const result = await rotateRefreshToken(app.sql, req.body.refreshToken);
+      if (result.outcome === 'reused') throw refreshTokenReused();
+      if (result.outcome === 'invalid') throw refreshTokenInvalid();
+
+      // Kontot kan ha ändrats sedan sessionen började — versionen läses om här.
+      const rows = (await app.sql`
+        SELECT token_version FROM users WHERE id = ${result.userId}
+      `) as { token_version: number }[];
+      const account = rows[0];
+      if (!account) throw refreshTokenInvalid();
+
+      return reply.code(200).send({
+        token: app.issueToken(result.userId, account.token_version, result.sessionId),
+        expiresIn: TOKEN_TTL_SECONDS,
+        refreshToken: result.issued.secret,
+        refreshExpiresIn: REFRESH_TTL_SECONDS,
+      });
     },
   );
 };

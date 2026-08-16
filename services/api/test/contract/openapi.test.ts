@@ -39,6 +39,8 @@ const EXPECTED_OPERATIONS: Record<string, [string, string]> = {
   forgotPassword: ['post', '/api/v1/auth/forgot-password'],
   resetPassword: ['post', '/api/v1/auth/reset-password'],
   logout: ['post', '/api/v1/auth/logout'],
+  // Öppen: den som behöver refresha har ingen giltig access-token.
+  refreshSession: ['post', '/api/v1/auth/refresh'],
 };
 
 /** Operationer som kräver token, och därmed ska deklarera bearerAuth. */
