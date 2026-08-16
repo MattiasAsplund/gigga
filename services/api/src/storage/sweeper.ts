@@ -6,7 +6,13 @@ import type { ObjectStore } from './object-store.ts';
  *
  * Ett anbudsdokument skrivs i två steg: objektet först, raden sedan. Dör processen
  * däremellan blir objektet kvar utan rad — skräp som ingen kan nå och som ingen städar.
- * Det här är sopjobbet.
+ *
+ * Motsatsen finns också: en rad vars objekt saknas. Den behandlas helt annorlunda.
+ * Ett föräldralöst objekt är skräp och kan raderas; en rad utan objekt är ett *fel* som
+ * någon behöver få veta om. Raden är beviset på att säljaren bifogat något, så den
+ * markeras i stället för att raderas, och API:et redovisar dokumentet som otillgängligt.
+ *
+ * Båda avgörs i samma genomgång av bucketen.
  */
 
 export const ATTACHMENT_PREFIX = 'bids/';
@@ -30,8 +36,12 @@ export interface SweepResult {
   /** Objekt under prefixet som var äldre än fristen och alltså prövades. */
   scanned: number;
   deleted: number;
-  /** Satt när städningen avstod från att göra något alls. */
-  skippedReason?: 'empty-attachment-table';
+  /** Rader vars objekt saknades och som nu är markerade som otillgängliga. */
+  markedMissing: number;
+  /** Rader som var markerade men vars objekt kommit tillbaka. */
+  restored: number;
+  /** Satt när något av stegen avstod från att göra något alls. */
+  skippedReason?: 'empty-attachment-table' | 'empty-bucket';
 }
 
 /** Vilka av nycklarna som faktiskt hör till ett dokument. */
@@ -65,13 +75,28 @@ export async function sweepOrphanedObjects(
   `) as { n: number }[];
 
   if ((counted?.n ?? 0) === 0) {
-    return { scanned: 0, deleted: 0, skippedReason: 'empty-attachment-table' };
+    return {
+      scanned: 0,
+      deleted: 0,
+      markedMissing: 0,
+      restored: 0,
+      skippedReason: 'empty-attachment-table',
+    };
   }
 
   let scanned = 0;
   let deleted = 0;
 
+  /*
+   * Nycklarna samlas under samma genomgång som skräpletandet, så avstämningen mot
+   * databasen kostar inga extra anrop. Minnet växer med antalet objekt i bucketen —
+   * bara strängar, men värt att veta: alternativet vore ett HEAD-anrop per rad.
+   */
+  const seen = new Set<string>();
+
   for await (const page of store.listPages(ATTACHMENT_PREFIX, options.pageSize)) {
+    for (const object of page) seen.add(object.key);
+
     const candidates = page
       .filter((object) => object.lastModified.getTime() <= cutoff)
       .map((object) => object.key);
@@ -86,8 +111,41 @@ export async function sweepOrphanedObjects(
       if (known.has(key)) continue;
       await store.delete(key);
       deleted++;
+      seen.delete(key);
     }
   }
 
-  return { scanned, deleted };
+  /*
+   * Spegelvänt skydd mot det i början: en bucket utan ett enda objekt, medan databasen
+   * har dokumentrader, är troligare fel bucket än att varenda fil försvunnit. Att
+   * markera allt som trasigt vore lika fel som att radera allt.
+   */
+  if (seen.size === 0) {
+    return { scanned, deleted, markedMissing: 0, restored: 0, skippedReason: 'empty-bucket' };
+  }
+
+  const keys = [...seen];
+
+  const marked = (await sql`
+    UPDATE bid_attachments
+    SET content_missing_since = now()
+    WHERE content_missing_since IS NULL
+      AND storage_key NOT IN ${sql(keys)}
+    RETURNING id
+  `) as { id: string }[];
+
+  const restored = (await sql`
+    UPDATE bid_attachments
+    SET content_missing_since = NULL
+    WHERE content_missing_since IS NOT NULL
+      AND storage_key IN ${sql(keys)}
+    RETURNING id
+  `) as { id: string }[];
+
+  return {
+    scanned,
+    deleted,
+    markedMissing: marked.length,
+    restored: restored.length,
+  };
 }

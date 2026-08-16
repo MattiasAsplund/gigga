@@ -654,6 +654,24 @@ till appen, och testerna ska aldrig få en bakgrundstråd på köpet. Databasen 
 per sida om vilka nycklar som är kända — aldrig hela registret i minnet, aldrig en fråga
 per objekt.
 
+**Rader utan objekt behandlas tvärtom.** Samma genomgång stämmer av åt andra hållet: en rad
+vars innehåll saknas i lagringen **markeras, aldrig raderas**. Ett föräldralöst objekt är
+skräp; en rad utan objekt är ett *fel* någon behöver få veta om. Raden är beviset på att
+säljaren bifogat något, och att tyst ta bort den vore att låta ett lagringsfel se ut som om
+dokumentet aldrig funnits.
+
+Markeringen (`content_missing_since`) syns i API:et som `available: false` — köparen ser
+att dokumentet finns, att det saknas, och slipper undra varför det inte ligger i ZIP-filen.
+Kommer objektet tillbaka, till exempel efter en återläsning, tas markeringen bort igen.
+
+Skyddet är spegelvänt mot det första: **en bucket utan ett enda objekt markerar ingenting.**
+Rader men noll objekt är troligare fel bucket än att varenda fil försvunnit, och att
+markera allt som trasigt vore lika fel som att radera allt.
+
+Nycklarna samlas under samma genomgång som skräpletandet, så avstämningen kostar inga extra
+anrop. Minnet växer med antalet objekt i bucketen — bara strängar, men värt att veta:
+alternativet vore ett HEAD-anrop per rad.
+
 **Rättighetsmatrisen:** skriva (ladda upp, byta namn, radera) är säljarens ensak. Läsa och
 ladda ner ZIP kan säljaren, förfrågans köpare, och den som tilldelats läsrätt. Ett anbud
 utan dokument ger ett **tomt arkiv med `200`**, inte `404`: frågan "vad har säljaren
@@ -944,6 +962,8 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | B.18 | Namnbyte rör inte lagringen — nyckeln bär inte filnamnet |
 | B.19 | En avvisad uppladdning lämnar inget skräp i lagringen |
 | B.20 | Ett saknat objekt fäller inte hela arkivet |
+| B.21 | Ett dokument redovisas som `available: true` |
+| B.22 | Ett dokument vars innehåll saknas redovisas som `available: false`, med metadata kvar, och utelämnas ur arkivet |
 | **G** | **Städning av föräldralösa objekt** |
 | G.1 | Ett föräldralöst objekt äldre än fristen raderas |
 | G.2 | Ett objekt med rad i databasen rörs inte |
@@ -952,6 +972,11 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | G.5 | En tom dokumenttabell stoppar städningen helt |
 | G.6 | Städningen klarar fler objekt än en sida |
 | G.7 | En körning utan skräp rapporterar noll raderade |
+| G.8 | En rad vars objekt saknas markeras |
+| G.9 | En markerad rad raderas aldrig automatiskt |
+| G.10 | Markeringen tas bort om objektet dyker upp igen |
+| G.11 | En markerad rad markeras inte om igen |
+| G.12 | En tom bucket markerar ingenting |
 | **X** | **Tvärsnitt** |
 | X.1 | `/docs/json` är OpenAPI 3.1 med ifylld `info` |
 | X.1b | Alla sju API:erna finns på rätt metod och väg, med rätt `operationId` |
@@ -966,7 +991,7 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | X.4b | Fel metod på en känd väg ⇒ 404 i samma format |
 | X.4c | Felsvar från en riktig route är också `application/problem+json` |
 
-Totalt 249 testfall, **alla gröna**. Matrisen är levande — den *ska* ändras i
+Totalt 256 testfall, **alla gröna**. Matrisen är levande — den *ska* ändras i
 dialogen (§8.1).
 
 X-gruppen var grön redan när den skrevs, eftersom den beskriver tvärsnitt som byggdes upp
@@ -1041,6 +1066,7 @@ Varje etapp är en pull-liknande enhet med en tydlig grön-tröskel.
 | **5** ✅ | Listnings-API:er (API 3–4) | Joins utan N+1, markörsidbrytning, filter, `004_contracts.sql` (tidigarelagd), dubbla valideringsregimer | **Klar.** L3.\*, L4.\* gröna; 68/68 i hela sviten |
 | **6** ✅ | Avtalssignering (API 7) | `domain/contract-rules.ts`, transaktionell tillståndsmaskin med `sql.begin` + `FOR UPDATE OF r`, frysta villkor, tom-kropp-parser | **Klar.** S7.\*, D.3 gröna; 92/92 i hela sviten; hela flödet kört mot levande Aspire |
 | **7** ✅ | Dokumentation & finish | OpenAPI-tvärsnittstester, `docs/API.md` | **Klar.** X.\* gröna; hela sviten 103/103; Swagger UI och hela flödet körda mot levande Aspire |
+| **19** ✅ | Rader utan objekt | `015_attachment_missing_content.sql`, avstämning i sopjobbet, `available` i API:et | **Klar.** G.8–G.12, B.21–B.22 gröna; 256/256; verifierat mot MinIO genom att radera ett objekt bakom ryggen på tjänsten |
 | **18** ✅ | Städning av föräldralösa objekt | `storage/sweeper.ts`, listning i `ObjectStore`, periodiskt jobb i `index.ts` | **Klar.** G.\* gröna; 249/249; körd mot levande MinIO med planterade skräpobjekt — fristen skonade allt, utan frist försvann bara skräpet |
 | **17** ✅ | Objektlagring för dokument | `014_attachment_object_storage.sql`, MinIO i AppHosten, `storage/object-store.ts` | **Klar.** B.16–B.20 gröna; 242/242; uppladdning, ZIP och radering verifierade mot MinIO — objekten inspekterade med `mc` i containern |
 | **16** ✅ | Dokument och rättigheter (API 15–23) | `012_request_permissions.sql`, `013_bid_attachments.sql`, `domain/attachments.ts`, multipart, ZIP | **Klar.** P.\* och B.\* gröna; 237/237; uppladdning, rättigheter och ZIP verifierade mot levande Aspire — arkivet uppackat med systemets `unzip` |
@@ -1063,8 +1089,11 @@ gör resten testdriven. Från etapp 2 gäller §8.1 utan undantag.
 - **Lista aktiva sessioner** — `refresh_tokens` har allt som behövs (`session_id`,
   `created_at`, `revoked_at`), men inget API exponerar det. Ett `GET /me/sessions` med
   möjlighet att avsluta en enskild är nästa naturliga steg.
-- **Rader utan objekt** — motsatsen till föräldralösa objekt. Arkivet hoppar över dem
-  (B.20), men ingen larmar och inget städar. Kräver ett beslut om vad raden ska bli.
+- **Åtgärd för markerade dokument** — `available: false` syns, men det finns ingen väg att
+  ladda upp innehållet på nytt till en befintlig rad. Säljaren får radera och ladda upp
+  igen, vilket ger ett nytt id.
+- **Larm när något markeras** — sopjobbet loggar, men ingen blir meddelad. En markering
+  betyder att lagringen tappat data, vilket är värt mer än en loggrad.
 - **Fler rättighetsnivåer** — `permission_level` har bara `read`. Kolumnen finns för att
   slippa en migrering den dag det behövs fler.
 - **Städning av `refresh_tokens`** — rader ligger kvar efter utgång. `revoked_tokens`

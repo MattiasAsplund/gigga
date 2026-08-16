@@ -8,6 +8,8 @@ export interface Attachment {
   sizeBytes: number;
   /** Nyckeln i objektlagringen. Innehållet ligger inte i databasen. */
   storageKey: string;
+  /** Satt när sopjobbet konstaterat att innehållet saknas i lagringen. */
+  contentMissingSince: Date | null;
   uploadedAt: Date;
 }
 
@@ -18,11 +20,13 @@ interface AttachmentRow {
   content_type: string;
   size_bytes: number;
   storage_key: string;
+  content_missing_since: Date | null;
   uploaded_at: Date;
 }
 
 const META_COLUMNS =
-  'id, bid_id, filename, content_type, size_bytes, storage_key, uploaded_at';
+  'id, bid_id, filename, content_type, size_bytes, storage_key, ' +
+  'content_missing_since, uploaded_at';
 
 const toAttachment = (row: AttachmentRow): Attachment => ({
   id: row.id,
@@ -31,6 +35,7 @@ const toAttachment = (row: AttachmentRow): Attachment => ({
   contentType: row.content_type,
   sizeBytes: row.size_bytes,
   storageKey: row.storage_key,
+  contentMissingSince: row.content_missing_since,
   uploadedAt: row.uploaded_at,
 });
 

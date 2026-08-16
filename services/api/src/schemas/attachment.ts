@@ -15,6 +15,11 @@ export const AttachmentResponseSchema = Type.Object({
   filename: Type.String(),
   contentType: Type.String({ examples: ['text/markdown', 'application/pdf'] }),
   sizeBytes: Type.Integer(),
+  available: Type.Boolean({
+    description:
+      'Falskt om innehållet saknas i lagringen. Metadata finns kvar — raden är beviset ' +
+      'på att dokumentet bifogats — men filen går inte att ladda ner.',
+  }),
   uploadedAt: Type.String({ format: 'date-time' }),
 });
 

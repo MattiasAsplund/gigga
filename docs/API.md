@@ -174,6 +174,11 @@ Högst 10 MB per fil och 20 filer per anbud. **Filtypen avgörs av innehållet**
 sökvägar och måste vara unika inom anbudet (`409` annars). Ett namnbyte får inte ändra
 filändelsen.
 
+Varje dokument i listan har `available`. Är det `false` har innehållet försvunnit ur
+lagringen — metadata finns kvar, så du ser att dokumentet bifogats, men filen går inte att
+hämta och utelämnas ur ZIP-arkivet. Raden raderas aldrig automatiskt; säljaren får ladda
+upp dokumentet på nytt.
+
 Ladda ner allt på en gång:
 
 ```bash

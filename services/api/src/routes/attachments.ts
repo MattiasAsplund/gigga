@@ -54,6 +54,7 @@ function attachmentToResponse(attachment: Attachment) {
     filename: attachment.filename,
     contentType: attachment.contentType,
     sizeBytes: attachment.sizeBytes,
+    available: attachment.contentMissingSince === null,
     uploadedAt: attachment.uploadedAt.toISOString(),
   };
 }
@@ -261,7 +262,8 @@ export const attachmentRoutes: FastifyPluginAsyncTypebox = async (app) => {
       for (const file of files) {
         const content = await app.objects.get(file.storageKey);
         // Saknat objekt hoppas över hellre än att fälla hela nedladdningen: resten av
-        // dokumenten är fortfarande vad mottagaren bad om.
+        // dokumenten är fortfarande vad mottagaren bad om. Sopjobbet markerar raden,
+        // och `available: false` i dokumentlistan förklarar varför filen saknas.
         if (!content) {
           req.log.error({ storageKey: file.storageKey }, 'dokument saknas i lagringen');
           continue;

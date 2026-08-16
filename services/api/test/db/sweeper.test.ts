@@ -156,6 +156,116 @@ test('G.6 städningen klarar fler objekt än en sida', async () => {
   expect(memory.objects.size).toBe(1);
 });
 
+// ------------------------------------------------ Rader utan objekt
+
+/** Raden som databasen känner till, men vars innehåll saknas i lagringen. */
+async function missingRow(bidId: string, filename: string): Promise<string> {
+  const key = await attachment(bidId, filename);
+  return key;
+}
+
+const missingSince = async (key: string): Promise<Date | null> => {
+  const [row] = (await db.sql`
+    SELECT content_missing_since FROM bid_attachments WHERE storage_key = ${key}
+  `) as { content_missing_since: Date | null }[];
+  return row?.content_missing_since ?? null;
+};
+
+test('G.8 en rad vars objekt saknas markeras', async () => {
+  const bidId = await bid();
+  const present = await attachment(bidId, 'finns.md');
+  const absent = await missingRow(bidId, 'saknas.md');
+  const memory = store([{ key: present, ageMs: 5 * HOUR }]);
+
+  const result = await sweepOrphanedObjects(db.sql, memory, { olderThanMs: HOUR });
+
+  // Jobbet stämmer av hela tabellen, så det globala talet räknar även rader som
+  // tidigare testfall lämnat efter sig. Assertionen gäller det här anbudet.
+  expect(result.markedMissing).toBeGreaterThanOrEqual(1);
+  expect(await missingSince(absent)).toBeInstanceOf(Date);
+  expect(await missingSince(present)).toBeNull();
+
+  const marked = (await db.sql`
+    SELECT count(*)::int AS n FROM bid_attachments
+    WHERE bid_id = ${bidId} AND content_missing_since IS NOT NULL
+  `) as { n: number }[];
+  expect(marked[0]!.n).toBe(1);
+});
+
+test('G.9 en markerad rad raderas aldrig automatiskt', async () => {
+  // Raden är beviset på att dokumentet funnits. Att tyst radera den vore att låta
+  // ett lagringsfel se ut som om säljaren aldrig bifogat något.
+  const bidId = await bid();
+  const absent = await missingRow(bidId, 'kvar-trots-allt.md');
+  await attachment(bidId, 'annan.md');
+  const memory = store([]);
+
+  await sweepOrphanedObjects(db.sql, memory, { olderThanMs: HOUR });
+
+  const kept = (await db.sql`
+    SELECT count(*)::int AS n FROM bid_attachments WHERE storage_key = ${absent}
+  `) as { n: number }[];
+  expect(kept[0]!.n).toBe(1);
+});
+
+test('G.10 markeringen tas bort om objektet dyker upp igen', async () => {
+  const bidId = await bid();
+  const key = await missingRow(bidId, 'aterfunnen.md');
+  await db.sql`
+    UPDATE bid_attachments SET content_missing_since = now() - interval '1 day'
+    WHERE storage_key = ${key}
+  `;
+  const memory = store([{ key, ageMs: 5 * HOUR }]);
+
+  const result = await sweepOrphanedObjects(db.sql, memory, { olderThanMs: HOUR });
+
+  expect(result.restored).toBe(1);
+  expect(await missingSince(key)).toBeNull();
+});
+
+test('G.11 en markerad rad markeras inte om igen', async () => {
+  const bidId = await bid();
+  const key = await missingRow(bidId, 'redan-markerad.md');
+  await sweepOrphanedObjects(db.sql, store([]), { olderThanMs: HOUR });
+  const first = await missingSince(key);
+
+  const result = await sweepOrphanedObjects(db.sql, store([]), { olderThanMs: HOUR });
+
+  expect(result.markedMissing).toBe(0);
+  expect(await missingSince(key)).toEqual(first);
+});
+
+test('G.12 en tom bucket markerar ingenting', async () => {
+  // Rader utan ett enda objekt i lagringen är troligare fel bucket än att varenda
+  // fil försvunnit. Att markera allt som trasigt vore lika fel som att radera.
+  const scratch = await freshDatabase();
+  try {
+    const [user] = (await scratch.sql`
+      INSERT INTO users (email, password_hash, display_name)
+      VALUES ('tom@example.test', 'h', 'T') RETURNING id
+    `) as { id: string }[];
+    const [request] = (await scratch.sql`
+      INSERT INTO requests (buyer_id, title, description, compensation_pref)
+      VALUES (${user!.id}, 'T', 'D', 'any') RETURNING id
+    `) as { id: string }[];
+    const [row] = (await scratch.sql`
+      INSERT INTO bids (request_id, seller_id, plan, compensation_type, fixed_amount_minor)
+      VALUES (${request!.id}, ${user!.id}, 'P', 'fixed', 1000) RETURNING id
+    `) as { id: string }[];
+    await scratch.sql`
+      INSERT INTO bid_attachments (bid_id, filename, content_type, size_bytes, storage_key)
+      VALUES (${row!.id}, 'a.md', 'text/markdown', 3, ${`bids/${row!.id}/x`})
+    `;
+
+    const result = await sweepOrphanedObjects(scratch.sql, store([]), { olderThanMs: HOUR });
+
+    expect(result.markedMissing).toBe(0);
+    expect(result.skippedReason).toBe('empty-bucket');
+  } finally {
+    await scratch.close();
+  }
+});
+
 test('G.7 en körning utan skräp rapporterar noll raderade', async () => {
   const bidId = await bid();
   const key = await attachment(bidId, 'enda.md');
