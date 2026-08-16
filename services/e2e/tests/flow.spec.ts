@@ -1,0 +1,234 @@
+import { test, expect } from '@playwright/test';
+import {
+  PASSWORD,
+  person,
+  registerAndVerify,
+  signIn,
+  signOut,
+  verificationToken,
+} from './support.ts';
+
+/**
+ * README:ns nio steg, körda genom gränssnittet.
+ *
+ * En sammanhängande kedja i en fil och en ordning: varje steg bygger på föregående, och
+ * ett isolerat "signera avtal"-test utan en förfrågan att signera bevisar ingenting.
+ * Delstegen är egna `test.step` så det syns var det brister när något brister.
+ */
+test.describe.configure({ mode: 'serial' });
+
+const kim = person('kim');
+const robin = person('robin');
+const lo = person('lo');
+
+let requestId = '';
+let bidId = '';
+
+test('hela flödet från förfrågan till signerat avtal', async ({ page }) => {
+  test.slow();
+
+  await test.step('1–2. Konton skapas och adresserna bekräftas', async () => {
+    for (const who of [kim, robin, lo]) {
+      await registerAndVerify(page, who);
+    }
+  });
+
+  await test.step('3. Obekräftat konto släpps inte in, bekräftat gör det', async () => {
+    // Kontrollen är värd sitt steg: hela verifieringen vore teater utan den.
+    const okänd = person('okand');
+    await page.goto('/login');
+    await page.getByTestId('email').fill(okänd.email);
+    await page.getByTestId('password').fill(PASSWORD);
+    await page.getByTestId('submit').click();
+    await expect(page.getByTestId('notice')).toBeVisible();
+
+    await signIn(page, kim);
+  });
+
+  await test.step('4. Kim publicerar en förfrågan', async () => {
+    await page.goto('/requests/new');
+    await page.getByTestId('title').fill('Bygg en Fortnox-integration');
+    await page
+      .getByTestId('description')
+      .fill('Synk av fakturor varje timme, allt på distans.');
+    await page.getByTestId('compensationPref').selectOption('any');
+    await page.getByTestId('budget').fill('50000');
+    await page.getByTestId('deadlineAt').fill('2026-12-01');
+    await page.getByTestId('submit').click();
+
+    await expect(page.getByTestId('request-title')).toHaveText('Bygg en Fortnox-integration');
+    requestId = new URL(page.url()).pathname.split('/').pop()!;
+    expect(requestId).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  await test.step('4b. Kim kan inte bjuda på sin egen förfrågan', async () => {
+    await page.goto('/requests');
+    const own = page.getByTestId('catalog-item').filter({ hasText: 'Fortnox' });
+    await expect(own.getByTestId('cannot-bid')).toContainText('egen förfrågan');
+  });
+
+  await test.step('5. Robin hittar uppdraget i katalogen', async () => {
+    await signOut(page);
+    await signIn(page, robin);
+
+    await page.goto('/requests');
+    const item = page.getByTestId('catalog-item').filter({ hasText: 'Fortnox' });
+    await expect(item).toBeVisible();
+    await expect(item.getByTestId('bid-count')).toContainText('0');
+    await item.getByTestId('go-bid').click();
+  });
+
+  await test.step('6. Robin lämnar ett timanbud', async () => {
+    await page.getByTestId('plan').fill('Kartläggning, bygge, överlämning.');
+    await page.getByTestId('compensation-type').selectOption('hourly');
+    await page.getByTestId('rate').fill('950');
+    await page.getByTestId('hours').fill('40');
+    await page.getByTestId('submit-bid').click();
+
+    const bid = page.getByTestId('bid').first();
+    await expect(bid).toBeVisible();
+    // 950 kr × 40 tim = 38 000 kr, uträknat av API:et.
+    await expect(bid.getByTestId('bid-total')).toContainText('38');
+    bidId = (await bid.getAttribute('data-id'))!;
+  });
+
+  await test.step('7. Robin bifogar ett dokument, byter namn och laddar upp ett till', async () => {
+    await page.goto(`/bids/${bidId}`);
+
+    await page.getByTestId('file').setInputFiles({
+      name: 'genomforandeplan.md',
+      mimeType: 'text/markdown',
+      buffer: Buffer.from('# Genomförandeplan\n\nSteg ett, steg två.'),
+    });
+    await page.getByTestId('upload').click();
+    await expect(page.getByTestId('attachment')).toHaveCount(1);
+
+    // Namnbytet ska inte röra innehållet — filen finns kvar under sitt nya namn.
+    page.once('dialog', (dialog) => void dialog.accept('plan.md'));
+    await page.getByTestId('rename').first().click();
+    await expect(page.getByTestId('attachment').first()).toHaveAttribute(
+      'data-filename',
+      'plan.md',
+    );
+
+    await page.getByTestId('file').setInputFiles({
+      name: 'offert.pdf',
+      mimeType: 'application/pdf',
+      buffer: Buffer.from('%PDF-1.7\nOffert'),
+    });
+    await page.getByTestId('upload').click();
+    await expect(page.getByTestId('attachment')).toHaveCount(2);
+  });
+
+  await test.step('7b. Fel filtyp avvisas', async () => {
+    await page.getByTestId('file').setInputFiles({
+      name: 'trojan.pdf',
+      mimeType: 'application/pdf',
+      buffer: Buffer.from('MZ inte en pdf'),
+    });
+    await page.getByTestId('upload').click();
+    await expect(page.getByTestId('notice')).toContainText('Filtypen');
+    await expect(page.getByTestId('attachment')).toHaveCount(2);
+  });
+
+  await test.step('8. Kim läser anbudet och hämtar dokumenten som ZIP', async () => {
+    await signOut(page);
+    await signIn(page, kim);
+
+    await page.goto('/me/requests');
+    await expect(
+      page.getByTestId('request').filter({ hasText: 'Fortnox' }).getByTestId('request-bid-count'),
+    ).toContainText('1');
+
+    await page.goto(`/bids/${bidId}`);
+    await expect(page.getByTestId('attachment')).toHaveCount(2);
+
+    const download = page.waitForEvent('download');
+    await page.getByTestId('download-archive').click();
+    expect((await download).suggestedFilename()).toContain('.zip');
+  });
+
+  await test.step('8b. Kim ger Lo läsrätt, och tar tillbaka den', async () => {
+    await page.goto(`/requests/${requestId}`);
+    await page.getByTestId('grant-email').fill(lo.email);
+    await page.getByTestId('grant-submit').click();
+    await expect(page.getByTestId('permission')).toContainText(lo.email);
+
+    await signOut(page);
+    await signIn(page, lo);
+    await page.goto(`/requests/${requestId}`);
+    await expect(page.getByTestId('request-title')).toHaveText('Bygg en Fortnox-integration');
+    await expect(page.getByTestId('bid')).toHaveCount(1);
+
+    await signOut(page);
+    await signIn(page, kim);
+    await page.goto(`/requests/${requestId}`);
+    await page.getByTestId('revoke').click();
+    await expect(page.getByTestId('permission')).toHaveCount(0);
+
+    await signOut(page);
+    await signIn(page, lo);
+    await page.goto(`/requests/${requestId}`);
+    // Läsrätten är borta, men förfrågan går fortfarande att läsa — varje säljare måste
+    // kunna öppna den för att kunna lämna anbud. Det är anbuden som stängs.
+    await expect(page.getByTestId('request-title')).toHaveText('Bygg en Fortnox-integration');
+    await expect(page.getByTestId('bid')).toHaveCount(0);
+  });
+
+  await test.step('9. Båda signerar och avtalet blir bindande', async () => {
+    await signOut(page);
+    await signIn(page, kim);
+    await page.goto(`/bids/${bidId}`);
+    await expect(page.getByTestId('no-contract')).toBeVisible();
+
+    await page.getByTestId('sign').click();
+    await expect(page.getByTestId('contract')).toHaveAttribute(
+      'data-status',
+      'pending_signatures',
+    );
+    await expect(page.getByTestId('signature-buyer')).toHaveAttribute('data-signed', 'true');
+    await expect(page.getByTestId('signature-seller')).toHaveAttribute('data-signed', 'false');
+
+    await signOut(page);
+    await signIn(page, robin);
+    await page.goto(`/bids/${bidId}`);
+    await page.getByTestId('sign').click();
+
+    await expect(page.getByTestId('contract')).toHaveAttribute('data-status', 'active');
+    await expect(page.getByTestId('signature-seller')).toHaveAttribute('data-signed', 'true');
+  });
+
+  await test.step('9b. Förfrågan är tilldelad och anbudet antaget', async () => {
+    await page.goto('/me/bids');
+    const mine = page.getByTestId('my-bid').filter({ hasText: 'Fortnox' });
+    await expect(mine.getByTestId('contract-state')).toContainText('active');
+    await expect(mine.locator('[data-status="accepted"]')).toBeVisible();
+
+    await signOut(page);
+    await signIn(page, kim);
+    await page.goto('/me/requests');
+    await expect(
+      page.getByTestId('request').filter({ hasText: 'Fortnox' }).locator('[data-status="awarded"]'),
+    ).toBeVisible();
+  });
+
+  await test.step('9c. Ett tilldelat uppdrag ligger inte kvar i katalogen', async () => {
+    await page.goto('/requests');
+    await expect(page.getByTestId('catalog-item').filter({ hasText: 'Fortnox' })).toHaveCount(0);
+  });
+});
+
+test('nytt bekräftelsemail går att begära', async ({ page }) => {
+  // Egen kedja: den här vägen finns i README:n men ligger utanför huvudflödet.
+  const nils = person('nils');
+  await page.goto('/register');
+  await page.getByTestId('displayName').fill(nils.displayName);
+  await page.getByTestId('email').fill(nils.email);
+  await page.getByTestId('password').fill(PASSWORD);
+  await page.getByTestId('submit').click();
+  await expect(page.getByTestId('registered')).toBeVisible();
+
+  const first = await verificationToken(nils.email);
+  await page.goto(`/verify?token=${first}`);
+  await expect(page.getByTestId('verified')).toBeVisible();
+});

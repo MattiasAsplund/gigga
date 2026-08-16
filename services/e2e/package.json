@@ -1,0 +1,9 @@
+{
+  "name": "@fastgig/e2e",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Playwright-svit som går README:ns flöde från förfrågan till signerat avtal.",
+  "devDependencies": {
+    "@playwright/test": "1.56.0"
+  }
+}

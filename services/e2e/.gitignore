@@ -1,0 +1,5 @@
+node_modules/
+report/
+# Playwrights testartefakter: video, spår och skärmbilder (outputDir i konfigurationen).
+recordings/
+test-results/
