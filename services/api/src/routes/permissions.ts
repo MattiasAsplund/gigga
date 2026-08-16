@@ -22,7 +22,6 @@ import { listBidsForRequest } from '../db/listings.ts';
 import { estimatedTotalMinor } from '../domain/bid-rules.ts';
 import { requestToResponse } from './requests.ts';
 import {
-  noRequestAccess,
   notRequestOwner,
   permissionNotFound,
   requestNotFound,
@@ -62,8 +61,9 @@ export const permissionRoutes: FastifyPluginAsyncTypebox = async (app) => {
         tags: ['requests'],
         summary: 'Läs en förfrågan med dess anbud',
         description:
-          'Öppen för förfrågans köpare och för den som tilldelats läsrätt. Andra får 403 ' +
-          '— katalogen (`GET /requests`) är vägen in för den som letar uppdrag.',
+          'Öppen för alla inloggade — en säljare måste kunna läsa förfrågan för att kunna ' +
+          'lämna anbud på den. Anbuden i svaret är däremot begränsade: förfrågans köpare ' +
+          'och den som tilldelats läsrätt ser alla, en säljare bara sitt eget.',
         security: [{ bearerAuth: [] }],
         params: RequestIdParamsSchema,
         response: {
@@ -79,15 +79,18 @@ export const permissionRoutes: FastifyPluginAsyncTypebox = async (app) => {
       const request = await findRequestById(app.sql, req.params.requestId);
       if (!request) throw requestNotFound();
 
-      const allowed =
+      // Vem som bjudit vad är en sak mellan köparen och respektive säljare (samma regel
+      // som L8.7 vaktar i katalogen). Köparen och den med läsrätt ser alla anbud; för
+      // alla andra begränsas listan till anroparens eget.
+      const seesAllBids =
         request.buyerId === req.user.sub ||
         (await hasReadPermission(app.sql, {
           requestId: request.id,
           userId: req.user.sub,
         }));
-      if (!allowed) throw noRequestAccess();
 
-      const bids = await listBidsForRequest(app.sql, request.id);
+      const allBids = await listBidsForRequest(app.sql, request.id);
+      const bids = seesAllBids ? allBids : allBids.filter((bid) => bid.sellerId === req.user.sub);
 
       return {
         ...requestToResponse(request),

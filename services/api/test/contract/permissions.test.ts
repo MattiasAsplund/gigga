@@ -200,23 +200,35 @@ test('P.10 en behörig kan läsa förfrågan och dess anbud', async () => {
   expect(res.json<{ bids: { plan: string }[] }>().bids[0]!.plan).toBe('Synlig för behörig.');
 });
 
-test('P.11 utan rättighet går förfrågan inte att läsa', async () => {
+test('P.11 utan rättighet går förfrågan att läsa, men utan andras anbud', async () => {
   const requestId = await createRequest();
+  await seller.post(`/api/v1/requests/${requestId}/bids`, {
+    plan: 'Ska inte synas för utomstående.',
+    compensation: { type: 'fixed', amountMinor: 100000, currency: 'SEK' },
+  });
 
   const res = await readRequest(outsider, requestId);
 
-  expect(res.statusCode).toBe(403);
-  expect(res.json<Problem>().type).toBe('https://fastgig.dev/problems/no-request-access');
+  expect(res.statusCode).toBe(200);
+  const body = res.json<{ id: string; bids: unknown[] }>();
+  expect(body.id).toBe(requestId);
+  expect(body.bids).toHaveLength(0);
 });
 
-test('P.12 återkallad rättighet stänger läsningen omedelbart', async () => {
+test('P.12 återkallad rättighet stänger anbuden omedelbart', async () => {
   const requestId = await createRequest();
+  await seller.post(`/api/v1/requests/${requestId}/bids`, {
+    plan: 'Synlig så länge läsrätten gäller.',
+    compensation: { type: 'fixed', amountMinor: 100000, currency: 'SEK' },
+  });
   await grant(buyer, requestId, colleague.email);
-  expect((await readRequest(colleague, requestId)).statusCode).toBe(200);
+  expect((await readRequest(colleague, requestId)).json<{ bids: unknown[] }>().bids).toHaveLength(1);
 
   await revoke(buyer, requestId, colleague.id);
 
-  expect((await readRequest(colleague, requestId)).statusCode).toBe(403);
+  const after = await readRequest(colleague, requestId);
+  expect(after.statusCode).toBe(200);
+  expect(after.json<{ bids: unknown[] }>().bids).toHaveLength(0);
 });
 
 test('P.13 läsrätt påverkar inte rätten att lägga anbud', async () => {
@@ -231,6 +243,26 @@ test('P.13 läsrätt påverkar inte rätten att lägga anbud', async () => {
   // Behörigheten gäller läsning och ger varken extra rättigheter eller hinder:
   // anbud styrs av sina egna regler (F6), och kollegan är inte köpare.
   expect(res.statusCode).toBe(201);
+});
+
+test('P.15 säljaren ser sitt eget anbud men inte en annan säljares', async () => {
+  const requestId = await createRequest();
+  await seller.post(`/api/v1/requests/${requestId}/bids`, {
+    plan: 'Mitt anbud.',
+    compensation: { type: 'fixed', amountMinor: 100000, currency: 'SEK' },
+  });
+  await outsider.post(`/api/v1/requests/${requestId}/bids`, {
+    plan: 'Konkurrentens anbud.',
+    compensation: { type: 'fixed', amountMinor: 90000, currency: 'SEK' },
+  });
+
+  const res = await readRequest(seller, requestId);
+
+  expect(res.statusCode).toBe(200);
+  const bids = res.json<{ bids: { sellerId: string; plan: string }[] }>().bids;
+  expect(bids).toHaveLength(1);
+  expect(bids[0]!.sellerId).toBe(seller.id);
+  expect(bids[0]!.plan).toBe('Mitt anbud.');
 });
 
 test('P.14 rättigheter försvinner med förfrågan', async () => {

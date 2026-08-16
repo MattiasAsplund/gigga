@@ -230,14 +230,6 @@ export const notRequestOwner = () =>
     detail: 'Bara köparen som publicerat förfrågan kan hantera dess rättigheter.',
   });
 
-export const noRequestAccess = () =>
-  new ProblemError({
-    status: 403,
-    slug: 'no-request-access',
-    title: 'Saknar åtkomst till förfrågan',
-    detail: 'Du är varken förfrågans köpare eller tilldelad läsrätt.',
-  });
-
 export const permissionNotFound = () =>
   new ProblemError({
     status: 404,

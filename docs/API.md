@@ -197,7 +197,9 @@ curl -X POST $API/requests/$REQ/permissions -H "authorization: Bearer $KT" \
   -H 'content-type: application/json' -d '{"email":"kollega@example.se"}'
 ```
 
-Läsrätt ger `GET /requests/{id}` med anbuden, dokumentlistan och ZIP-arkiven. Den ger
+`GET /requests/{id}` är öppen för alla inloggade — en säljare måste kunna läsa förfrågan
+för att lämna anbud på den — men visar bara anroparens *eget* anbud. Läsrätten är det som
+ger **alla** anbud, med dokumentlistan och ZIP-arkiven. Den ger
 **inte** rätt att dela vidare, signera eller ändra något. Ta tillbaka med
 `DELETE /requests/{id}/permissions/{userId}` — åtkomsten stängs vid nästa anrop.
 

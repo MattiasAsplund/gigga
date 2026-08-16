@@ -611,6 +611,13 @@ varken se vilka anbud som finns eller nå deras id:n, och rättigheten öppnar b
 man inte hittar. Katalogen (`GET /requests`) är fortfarande vägen in för den som *letar*
 uppdrag; den här är för den som redan vet vilken förfrågan det gäller.
 
+**Läsningen är öppen för alla inloggade, anbuden är det inte.** Endpointen nekade först
+alla utom köparen och den med läsrätt, men då kunde en säljare aldrig öppna förfrågan hen
+just hittat i katalogen — och alla säljare får lämna anbud till vilken köpare som helst.
+Det är *anbuden* som är känsliga, inte förfrågan: köparen och den med läsrätt ser alla,
+alla andra ser bara sitt eget. Samma regel som L8.7 vaktar i katalogen, och rättigheten
+behåller sitt värde — den handlar om att få se anbuden.
+
 **19–23. Anbudsdokument**
 Markdown och PDF, högst 10 MB per fil och 20 per anbud. Får läggas till **när som helst**,
 även efter signerat avtal — villkoren i `contracts.terms` är fortfarande frysta (S7.7),
@@ -954,10 +961,11 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | P.8 | Rättigheten går att ta tillbaka; okänd ⇒ 404; bara ägaren får ⇒ 403 |
 | P.9 | Ägaren kan läsa sin förfrågan med anbud |
 | P.10 | En behörig kan läsa förfrågan och dess anbud |
-| P.11 | Utan rättighet ⇒ 403 |
-| P.12 | Återkallad rättighet stänger läsningen omedelbart |
+| P.11 | Utan rättighet ⇒ 200, men utan andras anbud |
+| P.12 | Återkallad rättighet stänger anbuden omedelbart |
 | P.13 | Läsrätt påverkar inte rätten att lägga anbud |
 | P.14 | Rättigheter försvinner med förfrågan |
+| P.15 | Säljaren ser sitt eget anbud men inte en annan säljares |
 | **B** | **Anbudsdokument** (API 19–23) |
 | B.1 | Säljaren kan ladda upp PDF och Markdown ⇒ 201 |
 | B.2 | Filtypen avgörs av innehållet: falsk PDF, trasig UTF-8 och andra typer ⇒ 415 |
