@@ -14,6 +14,13 @@ för att förklara konventioner som ett schema inte kan uttrycka.
 `POST /auth/register` och `POST /auth/login` ger en access-token. Skicka den som
 `Authorization: Bearer <token>`. Livslängd 1 timme; det finns inga refresh-tokens ännu.
 
+**E-postadressen måste bekräftas.** Registreringen skickar ett mail med en länk till
+`GET /validate-user?token=<uuid>`. Innan den klickats svarar `/auth/login` med
+`403 email-not-verified`. Länken är idempotent och tål att klickas flera gånger.
+
+I utvecklingsmiljön går ingen post ut på riktigt: **mailpit** fångar allt, och dess
+webbgränssnitt ligger som egen URL i Aspire-dashboarden. Det är där du hämtar länken.
+
 **Rollerna är inte fasta.** Samma konto kan vara köpare i en förfrågan och säljare i en
 annan. Behörighet avgörs alltid av ägarskap i just den raden, aldrig av en roll på kontot.
 
@@ -58,6 +65,7 @@ bläddringen.
 |---|---|---|
 | `POST /auth/register` | – | Skapar konto, returnerar token |
 | `POST /auth/login` | – | Loggar in, returnerar token |
+| `GET /validate-user` | – | Bekräftar e-postadressen via länken i mailet |
 | `GET /requests` | ✔ | Listar öppna uppdrag att lämna anbud på |
 | `POST /requests` | ✔ | Publicerar en uppdragsförfrågan |
 | `POST /requests/{requestId}/bids` | ✔ | Lämnar anbud med plan och ersättning |
@@ -116,6 +124,9 @@ kopare=$(curl -s -X POST $API/auth/register -H 'content-type: application/json' 
 saljare=$(curl -s -X POST $API/auth/register -H 'content-type: application/json' \
   -d '{"email":"robin@example.se","password":"ett-langt-losenord","displayName":"Robin"}')
 
+# Hämta bekräftelselänkarna ur mailpit (URL:en syns i Aspire-dashboarden) och klicka dem
+# innan inloggning. Registreringens token fungerar direkt, men /auth/login kräver bekräftelse.
+
 KT=$(echo "$kopare"  | bun -e 'console.log((await Bun.stdin.json()).token)')
 ST=$(echo "$saljare" | bun -e 'console.log((await Bun.stdin.json()).token)')
 
@@ -143,5 +154,6 @@ Signeringsanropen har ingen kropp. `content-type: application/json` utan kropp �
 ## Vad som inte finns än
 
 Fritextsökning och sortering i katalogen, ändra eller dra tillbaka anbud, refresh-tokens,
-utloggning, e-postverifiering, betalning och tidrapportering. Se §10 i
+utloggning, nytt bekräftelsemail på begäran, lösenordsåterställning, betalning och
+tidrapportering. Se §10 i
 [GENOMFORANDE.md](GENOMFORANDE.md).

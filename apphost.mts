@@ -20,14 +20,24 @@ const jwtSecret = await builder.addParameterWithGeneratedValue('jwt-secret', {
   minLength: 48,
 });
 
+// Mailpit fångar all utgående post och skickar aldrig vidare. Webbgränssnittet ligger
+// som egen URL i dashboarden — det är där verifieringsmailen läses.
+const mailpit = await builder.addMailPit('mailpit').withSessionLifetime();
+
 // addBunApp kör `bun src/index.ts` direkt — inget bygg- eller transpileringssteg.
-await builder
+const api = await builder
   .addBunApp('api', './services/api', 'src/index.ts')
   .withBun()
   .withHttpEndpoint({ env: 'PORT' })
   .withEnvironment('DATABASE_URL', await db.uriExpression())
   .withEnvironment('JWT_SECRET', jwtSecret)
+  .withEnvironment('SMTP_HOST', await mailpit.host())
+  .withEnvironment('SMTP_PORT', await mailpit.port())
   .withHttpHealthCheck({ path: '/health' })
-  .waitFor(db);
+  .waitFor(db)
+  .waitFor(mailpit);
+
+// Verifieringslänkarna måste peka på den port Aspire faktiskt tilldelat API:et.
+await api.withEnvironment('PUBLIC_BASE_URL', await api.getEndpoint('http'));
 
 await builder.build().run();

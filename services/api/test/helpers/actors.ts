@@ -42,6 +42,21 @@ export async function actor(app: App, name: string, password = DEFAULT_PASSWORD)
     throw new Error(`Kunde inte registrera ${email}: ${res.statusCode} ${res.body}`);
   }
 
+  // Kontot måste bekräftas för att kunna logga in. Vi går den riktiga vägen — hämtar
+  // token ur databasen och anropar /validate-user — så varje test kör med en användare
+  // som passerat verifieringen på riktigt.
+  const rows = (await app.sql`
+    SELECT verification_token FROM users WHERE email = ${email}
+  `) as { verification_token: string }[];
+
+  const verified = await app.inject({
+    method: 'GET',
+    url: `/api/v1/validate-user?token=${rows[0]!.verification_token}`,
+  });
+  if (verified.statusCode !== 200) {
+    throw new Error(`Kunde inte verifiera ${email}: ${verified.statusCode} ${verified.body}`);
+  }
+
   const body = res.json<RegisterBody>();
   const headers = { authorization: `Bearer ${body.token}` };
 

@@ -5,10 +5,23 @@ import {
   LoginResponseSchema,
   RegisterBodySchema,
   RegisterResponseSchema,
+  ValidateUserQuerySchema,
+  ValidateUserResponseSchema,
 } from '../schemas/auth.ts';
-import { findUserByEmail, insertUser, normalizeEmail } from '../db/users.ts';
-import { emailTaken, invalidCredentials } from '../plugins/errors.ts';
+import {
+  findUserByEmail,
+  insertUser,
+  normalizeEmail,
+  verifyUserByToken,
+} from '../db/users.ts';
+import {
+  emailNotVerified,
+  emailTaken,
+  invalidCredentials,
+  verificationTokenNotFound,
+} from '../plugins/errors.ts';
 import { TOKEN_TTL_SECONDS } from '../plugins/auth.ts';
+import { verificationEmail } from '../mail/verification-email.ts';
 
 /**
  * En argon2id-hash av ett kasserat lösenord. Vid inloggning mot en okänd e-postadress
@@ -48,10 +61,22 @@ export const authRoutes: FastifyPluginAsyncTypebox = async (app) => {
 
       if (!user) throw emailTaken();
 
+      // Mailen skickas efter att kontot skapats, men innan svaret går ut: går den inte
+      // fram är registreringen inte klar, och användaren ska få veta det direkt.
+      await app.mailer.send(
+        verificationEmail({
+          to: user.email,
+          displayName: user.displayName,
+          baseUrl: app.publicBaseUrl(),
+          token: user.verificationToken,
+        }),
+      );
+
       return reply.code(201).send({
         id: user.id,
         email: user.email,
         displayName: user.displayName,
+        emailVerified: user.emailVerified,
         token: app.issueToken(user.id),
       });
     },
@@ -68,6 +93,7 @@ export const authRoutes: FastifyPluginAsyncTypebox = async (app) => {
         response: {
           200: LoginResponseSchema,
           401: ProblemSchema,
+          403: ProblemSchema,
           422: ProblemSchema,
         },
       },
@@ -79,10 +105,40 @@ export const authRoutes: FastifyPluginAsyncTypebox = async (app) => {
       const matches = await Bun.password.verify(password, user?.passwordHash ?? (await getDummyHash()));
       if (!user || !matches) throw invalidCredentials();
 
+      // Först efter rätt lösenord — annars gick det att kartlägga vilka adresser som
+      // finns registrerade genom att jämföra 401 mot 403.
+      if (!user.emailVerified) throw emailNotVerified();
+
       return reply.code(200).send({
         token: app.issueToken(user.id),
         expiresIn: TOKEN_TTL_SECONDS,
       });
+    },
+  );
+
+  app.get(
+    '/validate-user',
+    {
+      schema: {
+        operationId: 'validateUser',
+        tags: ['auth'],
+        summary: 'Bekräfta e-postadress',
+        description:
+          'Målet för länken i bekräftelsemailet. Sätter kontot som verifierat, vilket ' +
+          'krävs för att kunna logga in. Idempotent — länken tål att klickas flera gånger.',
+        querystring: ValidateUserQuerySchema,
+        response: {
+          200: ValidateUserResponseSchema,
+          404: ProblemSchema,
+          422: ProblemSchema,
+        },
+      },
+    },
+    async (req, reply) => {
+      const user = await verifyUserByToken(app.sql, req.query.token);
+      if (!user) throw verificationTokenNotFound();
+
+      return reply.code(200).send({ verified: user.emailVerified, email: user.email });
     },
   );
 };

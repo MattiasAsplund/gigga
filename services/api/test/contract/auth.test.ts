@@ -41,6 +41,18 @@ const register = (payload: unknown) =>
 const login = (payload: unknown) =>
   ctx.app.inject({ method: 'POST', url: '/api/v1/auth/login', payload: payload as never });
 
+/** Bekräftar adressen via den riktiga länken — inloggning kräver det sedan V-gruppen. */
+async function verify(email: string): Promise<void> {
+  const rows = (await ctx.sql`
+    SELECT verification_token FROM users WHERE email = ${email}
+  `) as { verification_token: string }[];
+  const res = await ctx.app.inject({
+    method: 'GET',
+    url: `/api/v1/validate-user?token=${rows[0]!.verification_token}`,
+  });
+  if (res.statusCode !== 200) throw new Error(`verifiering misslyckades: ${res.body}`);
+}
+
 // ---------------------------------------------------------------- A1 Registrering
 
 test('A1.1 giltig registrering ger 201, användbar token och läcker inte lösenordet', async () => {
@@ -142,6 +154,7 @@ test('A2.1 rätt uppgifter ger 200 och en token som ett skyddat API accepterar',
     displayName: 'Inloggad',
   });
   expect(registered.statusCode).toBe(201);
+  await verify('a2.1@example.test');
 
   const res = await login({ email: 'a2.1@example.test', password: DEFAULT_PASSWORD });
 
@@ -167,6 +180,8 @@ test('A2.2 och A2.3 ger 401 med identisk kropp — fel lösenord och okänt kont
     displayName: 'Finns',
   });
   expect(registered.statusCode).toBe(201);
+
+  await verify('a2.2@example.test');
 
   // A2.2: kontot finns, lösenordet är fel.
   const wrongPassword = await login({

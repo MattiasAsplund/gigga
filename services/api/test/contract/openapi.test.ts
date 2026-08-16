@@ -32,6 +32,8 @@ const EXPECTED_OPERATIONS: Record<string, [string, string]> = {
   createBid: ['post', '/api/v1/requests/{requestId}/bids'],
   signContract: ['post', '/api/v1/bids/{bidId}/contract/signatures'],
   listOpenRequests: ['get', '/api/v1/requests'],
+  // Klickas ur ett mail, alltså utan token — därför inte i PROTECTED.
+  validateUser: ['get', '/api/v1/validate-user'],
 };
 
 /** Operationer som kräver token, och därmed ska deklarera bearerAuth. */

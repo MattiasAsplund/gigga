@@ -5,6 +5,11 @@ const ConfigSchema = Type.Object({
   PORT: Type.Integer({ minimum: 0, maximum: 65535, default: 3000 }),
   HOST: Type.String({ default: '0.0.0.0' }),
   DATABASE_URL: Type.String({ minLength: 1 }),
+  SMTP_HOST: Type.String({ default: '127.0.0.1' }),
+  SMTP_PORT: Type.Integer({ minimum: 1, maximum: 65535, default: 1025 }),
+  MAIL_FROM: Type.String({ default: 'fastgig <no-reply@fastgig.dev>' }),
+  /** Basadress som verifieringslänkarna byggs på. Sätts av AppHosten. */
+  PUBLIC_BASE_URL: Type.String({ default: '' }),
   JWT_SECRET: Type.String({ minLength: 32 }),
   LOG_LEVEL: Type.Union(
     [

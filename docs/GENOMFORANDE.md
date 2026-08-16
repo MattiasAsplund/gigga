@@ -368,13 +368,26 @@ och vid valideringsfel `errors[]`.
 | 6 | `POST /api/v1/requests/{requestId}/bids` | ✔ | Registrera anbud |
 | 7 | `POST /api/v1/bids/{bidId}/contract/signatures` | ✔ | Signera avtal |
 | 8 | `GET /api/v1/requests` | ✔ | Lista öppna förfrågningar (katalogen) |
+| 9 | `GET /api/v1/validate-user` | – | Bekräfta e-postadress via länken i mailet |
 
 ### 6.1 Detaljer per API
 
 **1. `POST /auth/register`** → `201`
-`{ email, password, displayName }` → `{ id, email, displayName, token }`.
+`{ email, password, displayName }` → `{ id, email, displayName, emailVerified, token }`.
+Skickar ett bekräftelsemail med en verifieringslänk. Går mailet inte fram misslyckas
+registreringen — bättre än ett konto som aldrig går att logga in på.
 Lösenord ≥ 12 tecken, hashas med `Bun.password.hash` (argon2id). Dubblett-e-post ⇒ `409`.
 E-post normaliseras (trim + lowercase, `citext`).
+
+**9. `GET /validate-user?token=<uuid>`** → `200`
+Målet för länken i bekräftelsemailet, och därför öppen — den klickas ur ett mailprogram
+utan token. Sätter `email_verified = true` och svarar `{ verified, email }`.
+Idempotent: länken tål att klickas flera gånger. Okänd token ⇒ `404`, token som inte är en
+uuid ⇒ `422`.
+
+`verification_token` är en **egen uuid på users**, inte användarens id. Id:t syns i
+API-svaren och i avtalens frysta villkor, och får därför inte kunna användas för att
+bekräfta ett konto.
 
 **2. `POST /auth/login`** → `200`
 `{ email, password }` → `{ token, expiresIn }`. Fel användare *och* fel lösenord ger
@@ -384,6 +397,10 @@ e-post — se testfall A2.3).
 Login-schemat har medvetet **ingen** `minLength` på lösenordet, till skillnad från
 register-schemat: annars kan man läsa ut lösenordsreglerna genom att se ett kort lösenord
 ge `422` istället för `401`.
+
+**Obekräftad adress ⇒ `403 email-not-verified`.** Kontrollen sker *efter* lösenordet, inte
+före: annars gick det att kartlägga vilka adresser som finns registrerade genom att jämföra
+`401` mot `403`. Den som redan kan lösenordet får däremot veta exakt vad som saknas.
 
 **3. `GET /me/requests`** → `200`
 `{ items: [{ …request, bids: [{ id, sellerId, sellerDisplayName, plan, compensation, estimatedTotalMinor, status, createdAt }] }], nextCursor }`.
@@ -631,6 +648,17 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | L8.7 | Inga anbudsdetaljer läcker — varken plan eller belopp |
 | L8.8 | `?compensationPref` filtrerar; okänt värde ⇒ 422 |
 | L8.9 | Sidbrytning utan dubbletter, nyaste först |
+| **V** | **E-postverifiering** (API 9) |
+| V.1 | Registrering skickar ett mail till adressen med en verifieringslänk |
+| V.2 | Ett nytt konto är overifierat och bär en egen token, skild från användarens id |
+| V.3 | Länken ur mailet sätter `email_verified` och svarar `{ verified, email }` |
+| V.4 | Samma länk igen är ofarlig — 200 och oförändrat svar |
+| V.5 | Okänd token ⇒ 404 |
+| V.6 | Token som inte är uuid ⇒ 422; helt utan token ⇒ 422 |
+| V.7 | Inloggning före verifiering ⇒ 403 `email-not-verified` |
+| V.7b | Fel lösenord på ett overifierat konto ⇒ fortfarande 401, inget läckage |
+| V.8 | Inloggning efter verifiering fungerar |
+| V.9 | Mailet innehåller inte lösenordet |
 | **X** | **Tvärsnitt** |
 | X.1 | `/docs/json` är OpenAPI 3.1 med ifylld `info` |
 | X.1b | Alla sju API:erna finns på rätt metod och väg, med rätt `operationId` |
@@ -645,7 +673,7 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | X.4b | Fel metod på en känd väg ⇒ 404 i samma format |
 | X.4c | Felsvar från en riktig route är också `application/problem+json` |
 
-Totalt 116 testfall, **alla gröna**. Matrisen är levande — den *ska* ändras i
+Totalt 127 testfall, **alla gröna**. Matrisen är levande — den *ska* ändras i
 dialogen (§8.1).
 
 X-gruppen var grön redan när den skrevs, eftersom den beskriver tvärsnitt som byggdes upp
@@ -720,6 +748,7 @@ Varje etapp är en pull-liknande enhet med en tydlig grön-tröskel.
 | **5** ✅ | Listnings-API:er (API 3–4) | Joins utan N+1, markörsidbrytning, filter, `004_contracts.sql` (tidigarelagd), dubbla valideringsregimer | **Klar.** L3.\*, L4.\* gröna; 68/68 i hela sviten |
 | **6** ✅ | Avtalssignering (API 7) | `domain/contract-rules.ts`, transaktionell tillståndsmaskin med `sql.begin` + `FOR UPDATE OF r`, frysta villkor, tom-kropp-parser | **Klar.** S7.\*, D.3 gröna; 92/92 i hela sviten; hela flödet kört mot levande Aspire |
 | **7** ✅ | Dokumentation & finish | OpenAPI-tvärsnittstester, `docs/API.md` | **Klar.** X.\* gröna; hela sviten 103/103; Swagger UI och hela flödet körda mot levande Aspire |
+| **9** ✅ | E-postverifiering (API 9) | `005_email_verification.sql`, mailpit i AppHosten, `src/mail/`, login-spärr | **Klar.** V.\* gröna; 127/127; hela flödet kört mot mailpit i levande Aspire |
 | **8** ✅ | Katalogen (API 8) | `GET /requests` med `bidCount`/`hasMyBid`/`canBid`, filter och sidbrytning | **Klar.** L8.\* gröna; 116/116; körd mot levande Aspire. Tillkom efter att luckan påpekats — säljare kunde bara lägga anbud på förfrågningar de kände till ID:t för |
 
 Etapp 0–1 är infrastruktur och skrivs inte testdrivet i strikt mening — de *är* verktyget som
@@ -731,7 +760,9 @@ gör resten testdriven. Från etapp 2 gäller §8.1 utan undantag.
 
 - **Refresh-tokens och utloggning** — access-token med 1 h livslängd i etapp 1.
 - **Rate limiting** på `/auth/*` — `@fastify/rate-limit` är ett endagsjobb när det behövs.
-- **E-postverifiering och lösenordsåterställning** — kräver utgående e-post.
+- **Lösenordsåterställning** — samma maskineri som verifieringen, men inte byggt än.
+- **Nytt bekräftelsemail på begäran** — tappar användaren mailet finns ingen väg tillbaka.
+- **Utgångstid på verifieringstoken** — den gäller för evigt i etapp 1.
 - **Betalning, fakturering, tidrapportering** — nästa domänområde efter avtalet.
 - **Migrationsverktyg med rollback** — meningslöst mot en icke-persistent databas, men
   krävs innan någon persistent miljö sätts upp. Detta är den skuld som förfaller först.

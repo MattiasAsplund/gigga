@@ -29,6 +29,9 @@ export const RegisterResponseSchema = Type.Object({
   id: UuidSchema,
   email: Type.String(),
   displayName: Type.String(),
+  emailVerified: Type.Boolean({
+    description: 'Alltid false vid registrering — bekräfta via länken i mailet.',
+  }),
   token: Type.String({ description: 'Access-token att skicka som Bearer.' }),
 });
 
@@ -45,4 +48,19 @@ export const LoginBodySchema = Type.Object(
 export const LoginResponseSchema = Type.Object({
   token: Type.String(),
   expiresIn: Type.Integer({ description: 'Tokenens livslängd i sekunder.' }),
+});
+
+export const ValidateUserQuerySchema = Type.Object(
+  {
+    token: Type.String({
+      format: 'uuid',
+      description: 'Token ur bekräftelsemailets länk.',
+    }),
+  },
+  { additionalProperties: false },
+);
+
+export const ValidateUserResponseSchema = Type.Object({
+  verified: Type.Boolean(),
+  email: Type.String(),
 });

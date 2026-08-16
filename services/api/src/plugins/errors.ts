@@ -71,6 +71,23 @@ export const validationFailed = (errors: FieldError[], detail?: string) =>
     errors,
   });
 
+export const emailNotVerified = () =>
+  new ProblemError({
+    status: 403,
+    slug: 'email-not-verified',
+    title: 'E-postadressen är inte bekräftad',
+    // Röjs först efter rätt lösenord, så det säger inget till den som gissar.
+    detail: 'Klicka på länken i bekräftelsemailet innan du loggar in.',
+  });
+
+export const verificationTokenNotFound = () =>
+  new ProblemError({
+    status: 404,
+    slug: 'verification-token-not-found',
+    title: 'Verifieringslänken gäller inte',
+    detail: 'Länken hör inte till något konto. Begär ett nytt bekräftelsemail.',
+  });
+
 export const emailTaken = () =>
   new ProblemError({
     status: 409,

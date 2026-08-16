@@ -5,6 +5,7 @@ import { loadConfig, type Config } from './config.ts';
 import { createSql } from './db/sql.ts';
 import { registerSwagger } from './plugins/swagger.ts';
 import { registerErrorHandling } from './plugins/errors.ts';
+import { createSmtpMailer, type Mailer } from './mail/mailer.ts';
 import { registerAuth } from './plugins/auth.ts';
 import { healthRoutes } from './routes/health.ts';
 import { authRoutes } from './routes/auth.ts';
@@ -20,6 +21,9 @@ declare module 'fastify' {
   interface FastifyInstance {
     config: Config;
     sql: SQL;
+    mailer: Mailer;
+    /** Basadressen som verifieringslänkar byggs på. */
+    publicBaseUrl(): string;
   }
 }
 
@@ -28,6 +32,8 @@ export type App = Awaited<ReturnType<typeof buildServer>>;
 export interface BuildServerOptions {
   config?: Config;
   sql?: SQL;
+  /** Testerna skickar in en minnesmailer istället för att prata SMTP. */
+  mailer?: Mailer;
 }
 
 /**
@@ -37,6 +43,9 @@ export interface BuildServerOptions {
 export async function buildServer(options: BuildServerOptions = {}) {
   const config = options.config ?? loadConfig();
   const sql = options.sql ?? createSql(config.DATABASE_URL);
+  const mailer =
+    options.mailer ??
+    createSmtpMailer({ host: config.SMTP_HOST, port: config.SMTP_PORT, from: config.MAIL_FROM });
 
   const app = Fastify({
     logger: { level: config.LOG_LEVEL },
@@ -45,11 +54,24 @@ export async function buildServer(options: BuildServerOptions = {}) {
 
   app.decorate('config', config);
   app.decorate('sql', sql);
+  app.decorate('mailer', mailer);
+
+  // PUBLIC_BASE_URL sätts av AppHosten. Utan den faller vi tillbaka på den port vi
+  // faktiskt lyssnar på, så länkarna fungerar även när tjänsten körs för hand.
+  app.decorate(
+    'publicBaseUrl',
+    () => config.PUBLIC_BASE_URL || `http://localhost:${config.PORT}`,
+  );
 
   // Stäng bara anslutningen om vi öppnade den själva; testerna äger sin egen.
   if (!options.sql) {
     app.addHook('onClose', async () => {
       await sql.end();
+    });
+  }
+  if (!options.mailer) {
+    app.addHook('onClose', async () => {
+      await mailer.close();
     });
   }
 
