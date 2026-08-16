@@ -42,6 +42,8 @@ export async function buildTestApp(options: BuildTestAppOptions = {}): Promise<T
       SMTP_PORT: 1025,
       MAIL_FROM: 'fastgig <no-reply@test>',
       PUBLIC_BASE_URL: 'http://fastgig.test',
+      // Tomt: återställningsmailen bär koden i klartext, som utan frontend.
+      PASSWORD_RESET_URL: '',
     },
     sql: db.sql,
     mailer: mail,
@@ -80,6 +82,8 @@ export async function buildTestAppWithBrokenDatabase(url: string): Promise<TestA
       SMTP_PORT: 1025,
       MAIL_FROM: 'fastgig <no-reply@test>',
       PUBLIC_BASE_URL: 'http://fastgig.test',
+      // Tomt: återställningsmailen bär koden i klartext, som utan frontend.
+      PASSWORD_RESET_URL: '',
     },
     sql,
     mailer: mail,

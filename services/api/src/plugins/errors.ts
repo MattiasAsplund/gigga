@@ -96,6 +96,22 @@ export const verificationTokenExpired = () =>
     detail: 'Begär ett nytt bekräftelsemail via /auth/resend-verification.',
   });
 
+export const resetTokenNotFound = () =>
+  new ProblemError({
+    status: 404,
+    slug: 'reset-token-not-found',
+    title: 'Återställningskoden gäller inte',
+    detail: 'Koden är okänd eller redan använd. Begär en ny återställning.',
+  });
+
+export const resetTokenExpired = () =>
+  new ProblemError({
+    status: 410,
+    slug: 'reset-token-expired',
+    title: 'Återställningskoden har gått ut',
+    detail: 'Begär en ny via /auth/forgot-password.',
+  });
+
 export const emailTaken = () =>
   new ProblemError({
     status: 409,

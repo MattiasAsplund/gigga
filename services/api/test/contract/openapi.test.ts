@@ -36,6 +36,8 @@ const EXPECTED_OPERATIONS: Record<string, [string, string]> = {
   validateUser: ['get', '/api/v1/validate-user'],
   // Anropas av någon som inte kan logga in än, alltså också öppen.
   resendVerification: ['post', '/api/v1/auth/resend-verification'],
+  forgotPassword: ['post', '/api/v1/auth/forgot-password'],
+  resetPassword: ['post', '/api/v1/auth/reset-password'],
 };
 
 /** Operationer som kräver token, och därmed ska deklarera bearerAuth. */

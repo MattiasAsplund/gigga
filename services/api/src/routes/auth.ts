@@ -5,8 +5,12 @@ import {
   LoginResponseSchema,
   RegisterBodySchema,
   RegisterResponseSchema,
+  ForgotPasswordBodySchema,
+  ForgotPasswordResponseSchema,
   ResendVerificationBodySchema,
   ResendVerificationResponseSchema,
+  ResetPasswordBodySchema,
+  ResetPasswordResponseSchema,
   ValidateUserQuerySchema,
   ValidateUserResponseSchema,
 } from '../schemas/auth.ts';
@@ -14,19 +18,25 @@ import {
   findUserByEmail,
   insertUser,
   normalizeEmail,
+  resetPasswordByToken,
   rotateVerificationToken,
+  startPasswordReset,
   verifyUserByToken,
+  PASSWORD_RESET_TTL_HOURS,
   VERIFICATION_TTL_HOURS,
 } from '../db/users.ts';
 import {
   emailNotVerified,
   emailTaken,
   invalidCredentials,
+  resetTokenExpired,
+  resetTokenNotFound,
   verificationTokenExpired,
   verificationTokenNotFound,
 } from '../plugins/errors.ts';
 import { TOKEN_TTL_SECONDS } from '../plugins/auth.ts';
 import { verificationEmail } from '../mail/verification-email.ts';
+import { passwordResetEmail } from '../mail/password-reset-email.ts';
 
 /**
  * En argon2id-hash av ett kasserat lösenord. Vid inloggning mot en okänd e-postadress
@@ -189,6 +199,75 @@ export const authRoutes: FastifyPluginAsyncTypebox = async (app) => {
       }
 
       return reply.code(202).send({ accepted: true });
+    },
+  );
+
+  app.post(
+    '/auth/forgot-password',
+    {
+      schema: {
+        operationId: 'forgotPassword',
+        tags: ['auth'],
+        summary: 'Begär lösenordsåterställning',
+        description:
+          'Skickar en återställningskod och gör en tidigare kod ogiltig. Svaret är alltid ' +
+          '202 och identiskt oavsett om adressen finns — annars gick endpointen att ' +
+          'använda för att kartlägga registrerade adresser. Samma kylperiod som för ' +
+          'bekräftelsemail.',
+        body: ForgotPasswordBodySchema,
+        response: { 202: ForgotPasswordResponseSchema, 422: ProblemSchema },
+      },
+    },
+    async (req, reply) => {
+      const started = await startPasswordReset(app.sql, req.body.email);
+
+      if (started) {
+        await app.mailer.send(
+          passwordResetEmail({
+            to: started.user.email,
+            displayName: started.user.displayName,
+            token: started.resetToken,
+            resetUrl: app.config.PASSWORD_RESET_URL || null,
+            ttlHours: PASSWORD_RESET_TTL_HOURS,
+          }),
+        );
+      }
+
+      return reply.code(202).send({ accepted: true });
+    },
+  );
+
+  app.post(
+    '/auth/reset-password',
+    {
+      schema: {
+        operationId: 'resetPassword',
+        tags: ['auth'],
+        summary: 'Sätt nytt lösenord med återställningskod',
+        description:
+          `Koden gäller i ${PASSWORD_RESET_TTL_HOURS} timme och bara en gång. Utgången ` +
+          'kod ger 410, okänd eller redan använd ger 404. Bekräftar inte e-postadressen ' +
+          '— det är ett eget flöde.',
+        body: ResetPasswordBodySchema,
+        response: {
+          200: ResetPasswordResponseSchema,
+          404: ProblemSchema,
+          410: ProblemSchema,
+          422: ProblemSchema,
+        },
+      },
+    },
+    async (req, reply) => {
+      const result = await resetPasswordByToken(
+        app.sql,
+        req.body.token,
+        await Bun.password.hash(req.body.password),
+      );
+
+      if (result.outcome === 'expired') throw resetTokenExpired();
+      if (result.outcome === 'unknown') throw resetTokenNotFound();
+
+      return reply.code(200).send({ reset: true, email: result.user.email });
     },
   );
 };

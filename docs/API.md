@@ -38,6 +38,21 @@ webbgränssnitt ligger som egen URL i Aspire-dashboarden. Det är där du hämta
 **Rollerna är inte fasta.** Samma konto kan vara köpare i en förfrågan och säljare i en
 annan. Behörighet avgörs alltid av ägarskap i just den raden, aldrig av en roll på kontot.
 
+### Glömt lösenord
+
+`POST /auth/forgot-password` med `{ email }` skickar en kod och svarar alltid
+`202 { "accepted": true }` — samma läckagefria mönster och kylperiod som bekräftelsemailen.
+
+`POST /auth/reset-password` med `{ token, password }` sätter det nya lösenordet. Koden
+gäller i **en timme** och **en gång**: efter användning ger den `404`, efter utgången `410`.
+Ett misslyckat försök — för kort lösenord — bränner den inte.
+
+Utan frontend bär mailet koden i klartext med instruktioner. Sätt `PASSWORD_RESET_URL` när
+en sida finns, så skickas en klickbar länk i stället.
+
+Två saker att känna till: återställningen **bekräftar inte** e-postadressen (eget flöde),
+och den **ogiltigförklarar inte** redan utfärdade access-tokens.
+
 ## Konventioner
 
 **Belopp** anges som heltal i minorenhet (öre) med separat valuta — `4500000` är 45 000,00
@@ -83,6 +98,8 @@ bläddringen.
 | `POST /auth/login` | – | Loggar in, returnerar token |
 | `GET /validate-user` | – | Bekräftar e-postadressen via länken i mailet |
 | `POST /auth/resend-verification` | – | Begär ett nytt bekräftelsemail |
+| `POST /auth/forgot-password` | – | Begär lösenordsåterställning |
+| `POST /auth/reset-password` | – | Sätter nytt lösenord med koden ur mailet |
 | `GET /requests` | ✔ | Listar öppna uppdrag att lämna anbud på |
 | `POST /requests` | ✔ | Publicerar en uppdragsförfrågan |
 | `POST /requests/{requestId}/bids` | ✔ | Lämnar anbud med plan och ersättning |

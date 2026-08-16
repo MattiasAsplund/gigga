@@ -151,3 +151,72 @@ export async function findUserByEmail(
   const row = rows[0];
   return row ? { ...toUser(row), passwordHash: row.password_hash } : null;
 }
+
+/** Hur länge en återställningskod gäller. Kortare än verifieringen — den är känsligare. */
+export const PASSWORD_RESET_TTL_HOURS = 1;
+
+export type PasswordResetResult =
+  | { outcome: 'reset'; user: User }
+  | { outcome: 'expired' }
+  | { outcome: 'unknown' };
+
+/**
+ * Startar en återställning och returnerar null om inget mail ska skickas.
+ *
+ * Samma mönster som rotateVerificationToken: okänd adress och begäran inom kylperioden
+ * ger båda tomt resultat, så routen kan inte råka svara olika och därmed inte användas
+ * för att kartlägga registrerade adresser.
+ *
+ * Till skillnad från verifieringen görs ingen kontroll av `email_verified` — den som
+ * glömt sitt lösenord ska kunna återställa det oavsett.
+ */
+export async function startPasswordReset(
+  sql: SQL,
+  email: string,
+  cooldownSeconds = RESEND_COOLDOWN_SECONDS,
+): Promise<{ user: User; resetToken: string } | null> {
+  const rows = (await sql`
+    UPDATE users
+    SET password_reset_token = gen_random_uuid(),
+        password_reset_sent_at = now(),
+        password_reset_expires_at = now() + make_interval(hours => ${PASSWORD_RESET_TTL_HOURS})
+    WHERE email = ${normalizeEmail(email)}
+      AND (password_reset_sent_at IS NULL
+           OR password_reset_sent_at < now() - make_interval(secs => ${cooldownSeconds}))
+    RETURNING ${sql.unsafe(USER_COLUMNS)}, password_reset_token AS issued_token
+  `) as (UserRow & { issued_token: string })[];
+
+  const row = rows[0];
+  return row ? { user: toUser(row), resetToken: row.issued_token } : null;
+}
+
+/**
+ * Sätter det nya lösenordet och **bränner token** — den går bara att använda en gång.
+ *
+ * Samma tre utfall som verifieringen: utgången kod är åtgärdbar med en ny begäran,
+ * okänd är det inte.
+ */
+export async function resetPasswordByToken(
+  sql: SQL,
+  token: string,
+  passwordHash: string,
+): Promise<PasswordResetResult> {
+  const rows = (await sql`
+    UPDATE users
+    SET password_hash = ${passwordHash},
+        password_reset_token = NULL,
+        password_reset_expires_at = NULL
+    WHERE password_reset_token = ${token}
+      AND password_reset_expires_at > now()
+    RETURNING ${sql.unsafe(USER_COLUMNS)}
+  `) as UserRow[];
+
+  const row = rows[0];
+  if (row) return { outcome: 'reset', user: toUser(row) };
+
+  const existing = (await sql`
+    SELECT 1 AS finns FROM users WHERE password_reset_token = ${token}
+  `) as { finns: number }[];
+
+  return existing.length > 0 ? { outcome: 'expired' } : { outcome: 'unknown' };
+}

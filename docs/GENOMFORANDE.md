@@ -370,6 +370,8 @@ och vid valideringsfel `errors[]`.
 | 8 | `GET /api/v1/requests` | ✔ | Lista öppna förfrågningar (katalogen) |
 | 9 | `GET /api/v1/validate-user` | – | Bekräfta e-postadress via länken i mailet |
 | 10 | `POST /api/v1/auth/resend-verification` | – | Begär ett nytt bekräftelsemail |
+| 11 | `POST /api/v1/auth/forgot-password` | – | Begär lösenordsåterställning |
+| 12 | `POST /api/v1/auth/reset-password` | – | Sätt nytt lösenord med koden ur mailet |
 
 ### 6.1 Detaljer per API
 
@@ -413,6 +415,30 @@ mailet gäller — utan utgångstid är det den enda begränsningen som finns.
 **Kylperiod på 60 sekunder.** En oautentiserad endpoint som skickar mail är annars ett sätt
 att bombardera en adress. `verification_sent_at` bär tidsstämpeln; inom kylperioden skickas
 inget, men svaret är detsamma.
+
+**11–12. Lösenordsåterställning**
+`POST /auth/forgot-password` `{ email }` → `202 { accepted: true }`, samma
+läckagefria mönster och kylperiod som API 10.
+`POST /auth/reset-password` `{ token, password }` → `200 { reset, email }`.
+
+**Egna kolumner, skilda från verifieringen.** En återställningskod får aldrig kunna
+användas för att bekräfta en adress, eller tvärtom — därför `password_reset_token` och inte
+återanvänd `verification_token`.
+
+**Koden gäller i 1 timme** — kortare än bekräftelselänkens 24, eftersom den är känsligare:
+den byter lösenord i stället för att bara bekräfta en adress.
+
+**Engångsbruk.** Vid lyckad återställning nollas token. Andra försöket ger `404`, inte
+`410`: koden finns inte längre alls. Ett *misslyckat* försök — för kort lösenord — bränner
+den däremot inte (R.10).
+
+**Återställning bekräftar inte adressen.** Att kunna läsa mailen bevisar visserligen
+kontroll över brevlådan, men flödena hålls isär: den som glömt lösenordet före bekräftelsen
+får bekräfta separat (R.14). Enklare att resonera om, och de två koderna byter aldrig roll.
+
+**Kvarstående lucka:** en återställning ogiltigförklarar inte redan utfärdade access-tokens.
+Utan sessionsregister eller tokenversion går det inte, och det hör ihop med
+refresh-tokens och utloggning i §10.
 
 **2. `POST /auth/login`** → `200`
 `{ email, password }` → `{ token, expiresIn }`. Fel användare *och* fel lösenord ger
@@ -709,6 +735,21 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | V.23 | Ett nytt bekräftelsemail ger en länk som fungerar igen |
 | V.24 | Rotationen flyttar fram utgångstiden |
 | V.25 | Ett redan bekräftat konto tål att länken passerat — idempotensen består |
+| **R** | **Lösenordsåterställning** (API 11–12) |
+| R.1 | Begäran skickar ett mail med en kod, och utan det gamla lösenordet |
+| R.2 | Okänd adress ⇒ 202 utan mail |
+| R.3 | Svaret är identiskt för känd och okänd adress |
+| R.4 | Kylperioden stoppar upprepade utskick |
+| R.5 | Koden sätter ett nytt lösenord, och inloggning med det fungerar |
+| R.6 | Det gamla lösenordet slutar fungera ⇒ 401 |
+| R.7 | Koden går bara att använda en gång ⇒ 404 andra gången |
+| R.8 | Utgången kod ⇒ 410, och det gamla lösenordet gäller fortfarande |
+| R.9 | Okänd kod ⇒ 404 |
+| R.10 | För kort nytt lösenord ⇒ 422, och koden bränns inte |
+| R.11 | En ny begäran ogiltigförklarar den förra koden |
+| R.12 | Trasig e-postadress ⇒ 422 |
+| R.13 | Kod som inte är uuid ⇒ 422 |
+| R.14 | Återställning bekräftar inte adressen |
 | **X** | **Tvärsnitt** |
 | X.1 | `/docs/json` är OpenAPI 3.1 med ifylld `info` |
 | X.1b | Alla sju API:erna finns på rätt metod och väg, med rätt `operationId` |
@@ -723,7 +764,7 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | X.4b | Fel metod på en känd väg ⇒ 404 i samma format |
 | X.4c | Felsvar från en riktig route är också `application/problem+json` |
 
-Totalt 144 testfall, **alla gröna**. Matrisen är levande — den *ska* ändras i
+Totalt 158 testfall, **alla gröna**. Matrisen är levande — den *ska* ändras i
 dialogen (§8.1).
 
 X-gruppen var grön redan när den skrevs, eftersom den beskriver tvärsnitt som byggdes upp
@@ -798,6 +839,7 @@ Varje etapp är en pull-liknande enhet med en tydlig grön-tröskel.
 | **5** ✅ | Listnings-API:er (API 3–4) | Joins utan N+1, markörsidbrytning, filter, `004_contracts.sql` (tidigarelagd), dubbla valideringsregimer | **Klar.** L3.\*, L4.\* gröna; 68/68 i hela sviten |
 | **6** ✅ | Avtalssignering (API 7) | `domain/contract-rules.ts`, transaktionell tillståndsmaskin med `sql.begin` + `FOR UPDATE OF r`, frysta villkor, tom-kropp-parser | **Klar.** S7.\*, D.3 gröna; 92/92 i hela sviten; hela flödet kört mot levande Aspire |
 | **7** ✅ | Dokumentation & finish | OpenAPI-tvärsnittstester, `docs/API.md` | **Klar.** X.\* gröna; hela sviten 103/103; Swagger UI och hela flödet körda mot levande Aspire |
+| **12** ✅ | Lösenordsåterställning (API 11–12) | `008_password_reset.sql`, engångskod med 1 h giltighet, `mail/password-reset-email.ts` | **Klar.** R.\* gröna; 158/158; hela flödet kört mot mailpit i levande Aspire |
 | **11** ✅ | Utgångstid på verifieringslänken | `007_verification_expiry.sql`, tre utfall ur `verifyUserByToken` | **Klar.** V.21–V.25 gröna; 144/144; 410-vägen och återhämtningen via nytt mail körda mot levande Aspire |
 | **10** ✅ | Nytt bekräftelsemail (API 10) | `006_verification_resend.sql`, `rotateVerificationToken` med kylperiod | **Klar.** V.13–V.20 gröna; 138/138; kylperiod, rotation och läckagefrihet verifierade mot mailpit |
 | **9** ✅ | E-postverifiering (API 9) | `005_email_verification.sql`, mailpit i AppHosten, `src/mail/`, spärr i både `/auth/login` och `requireAuth` | **Klar.** V.\* gröna; 130/130; hela flödet kört mot mailpit i levande Aspire |
@@ -810,11 +852,11 @@ gör resten testdriven. Från etapp 2 gäller §8.1 utan undantag.
 
 ## 10. Medvetet utelämnat (skuld, inte glömska)
 
-- **Refresh-tokens och utloggning** — access-token med 1 h livslängd i etapp 1.
+- **Refresh-tokens och utloggning** — access-token med 1 h livslängd i etapp 1. Samma
+  lucka gör att en lösenordsåterställning inte kan ogiltigförklara redan utfärdade tokens.
 - **Rate limiting** på `/auth/*` — `@fastify/rate-limit` är ett endagsjobb när det behövs.
   `/auth/resend-verification` har en egen kylperiod per konto, men inget skydd mot en
   angripare som varierar adressen.
-- **Lösenordsåterställning** — samma maskineri som verifieringen, men inte byggt än.
 - **Betalning, fakturering, tidrapportering** — nästa domänområde efter avtalet.
 - **Migrationsverktyg med rollback** — meningslöst mot en icke-persistent databas, men
   krävs innan någon persistent miljö sätts upp. Detta är den skuld som förfaller först.

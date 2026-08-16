@@ -63,6 +63,30 @@ export const ResendVerificationResponseSchema = Type.Object({
   }),
 });
 
+export const ForgotPasswordBodySchema = Type.Object(
+  { email: EmailSchema },
+  { additionalProperties: false },
+);
+
+export const ForgotPasswordResponseSchema = Type.Object({
+  accepted: Type.Boolean({
+    description: 'Alltid true. Säger inget om huruvida adressen finns registrerad.',
+  }),
+});
+
+export const ResetPasswordBodySchema = Type.Object(
+  {
+    token: Type.String({ format: 'uuid', description: 'Koden ur återställningsmailet.' }),
+    password: PasswordSchema,
+  },
+  { additionalProperties: false },
+);
+
+export const ResetPasswordResponseSchema = Type.Object({
+  reset: Type.Boolean(),
+  email: Type.String(),
+});
+
 export const ValidateUserQuerySchema = Type.Object(
   {
     token: Type.String({

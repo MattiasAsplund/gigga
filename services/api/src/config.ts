@@ -10,6 +10,11 @@ const ConfigSchema = Type.Object({
   MAIL_FROM: Type.String({ default: 'fastgig <no-reply@fastgig.dev>' }),
   /** Basadress som verifieringslänkarna byggs på. Sätts av AppHosten. */
   PUBLIC_BASE_URL: Type.String({ default: '' }),
+  /**
+   * Sida där användaren sätter nytt lösenord. Tom betyder att återställningsmailet
+   * bär koden i klartext istället för en länk — se mail/password-reset-email.ts.
+   */
+  PASSWORD_RESET_URL: Type.String({ default: '' }),
   JWT_SECRET: Type.String({ minLength: 32 }),
   LOG_LEVEL: Type.Union(
     [
