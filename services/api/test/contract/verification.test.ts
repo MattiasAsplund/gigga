@@ -325,6 +325,98 @@ test('V.20 trasig e-postadress ger 422', async () => {
   expect(res.json<Problem>().errors?.map((e) => e.path)).toContain('email');
 });
 
+// ------------------------------------------------ V.21+ Utgångstid
+
+/** Flyttar utgångstiden bakåt så länken räknas som passerad. */
+const expireToken = (email: string) =>
+  ctx.sql`
+    UPDATE users SET verification_expires_at = now() - interval '1 minute'
+    WHERE email = ${email}
+  `;
+
+test('V.21 utgångstiden sätts vid registrering och ligger i framtiden', async () => {
+  const email = 'v21@example.test';
+  await register(email);
+
+  const rows = (await ctx.sql`
+    SELECT verification_expires_at > now() AS gäller,
+           verification_expires_at > now() + interval '23 hours' AS rimlig
+    FROM users WHERE email = ${email}
+  `) as { gäller: boolean; rimlig: boolean }[];
+
+  expect(rows[0]!.gäller).toBe(true);
+  expect(rows[0]!.rimlig).toBe(true);
+});
+
+test('V.22 en utgången länk ger 410, inte 404', async () => {
+  const email = 'v22@example.test';
+  await register(email);
+  const url = pathOf(linkFrom(email));
+  await expireToken(email);
+
+  const res = await ctx.app.inject({ method: 'GET', url });
+
+  expect(res.statusCode).toBe(410);
+  expect(res.json<Problem>().type).toBe(
+    'https://fastgig.dev/problems/verification-token-expired',
+  );
+});
+
+test('V.22 en utgången länk verifierar inte kontot', async () => {
+  const email = 'v22b@example.test';
+  await register(email);
+  const url = pathOf(linkFrom(email));
+  await expireToken(email);
+  await ctx.app.inject({ method: 'GET', url });
+
+  const rows = (await ctx.sql`
+    SELECT email_verified FROM users WHERE email = ${email}
+  `) as { email_verified: boolean }[];
+  expect(rows[0]!.email_verified).toBe(false);
+  expect((await login(email)).statusCode).toBe(403);
+});
+
+test('V.23 ett nytt bekräftelsemail ger en länk som fungerar igen', async () => {
+  const email = 'v23@example.test';
+  await register(email);
+  await expireToken(email);
+  await clearCooldown(email);
+
+  expect((await resend(email)).statusCode).toBe(202);
+  const res = await ctx.app.inject({ method: 'GET', url: pathOf(linkFrom(email)) });
+
+  expect(res.statusCode).toBe(200);
+  expect((await login(email)).statusCode).toBe(200);
+});
+
+test('V.24 rotationen flyttar fram utgångstiden', async () => {
+  const email = 'v24@example.test';
+  await register(email);
+  await expireToken(email);
+  await clearCooldown(email);
+
+  await resend(email);
+
+  const rows = (await ctx.sql`
+    SELECT verification_expires_at > now() AS gäller FROM users WHERE email = ${email}
+  `) as { gäller: boolean }[];
+  expect(rows[0]!.gäller).toBe(true);
+});
+
+test('V.25 ett redan verifierat konto tål att länken passerat', async () => {
+  // Idempotensen från V.4 får inte gå förlorad bara för att tiden runnit ut.
+  const email = 'v25@example.test';
+  await register(email);
+  const url = pathOf(linkFrom(email));
+  expect((await ctx.app.inject({ method: 'GET', url })).statusCode).toBe(200);
+  await expireToken(email);
+
+  const again = await ctx.app.inject({ method: 'GET', url });
+
+  expect(again.statusCode).toBe(200);
+  expect(again.json<{ verified: boolean }>().verified).toBe(true);
+});
+
 test('V.9 mailet innehåller varken lösenord eller token i klartext utöver länken', async () => {
   const email = 'v9@example.test';
   await register(email);

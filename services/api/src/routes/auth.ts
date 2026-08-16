@@ -16,11 +16,13 @@ import {
   normalizeEmail,
   rotateVerificationToken,
   verifyUserByToken,
+  VERIFICATION_TTL_HOURS,
 } from '../db/users.ts';
 import {
   emailNotVerified,
   emailTaken,
   invalidCredentials,
+  verificationTokenExpired,
   verificationTokenNotFound,
 } from '../plugins/errors.ts';
 import { TOKEN_TTL_SECONDS } from '../plugins/auth.ts';
@@ -128,20 +130,26 @@ export const authRoutes: FastifyPluginAsyncTypebox = async (app) => {
         summary: 'Bekräfta e-postadress',
         description:
           'Målet för länken i bekräftelsemailet. Sätter kontot som verifierat, vilket ' +
-          'krävs för att kunna logga in. Idempotent — länken tål att klickas flera gånger.',
+          'krävs för att kunna logga in. Idempotent — länken tål att klickas flera gånger. ' +
+          `Gäller i ${VERIFICATION_TTL_HOURS} timmar; en passerad länk ger 410 och kan ` +
+          'ersättas via /auth/resend-verification.',
         querystring: ValidateUserQuerySchema,
         response: {
           200: ValidateUserResponseSchema,
           404: ProblemSchema,
+          410: ProblemSchema,
           422: ProblemSchema,
         },
       },
     },
     async (req, reply) => {
-      const user = await verifyUserByToken(app.sql, req.query.token);
-      if (!user) throw verificationTokenNotFound();
+      const result = await verifyUserByToken(app.sql, req.query.token);
+      if (result.outcome === 'expired') throw verificationTokenExpired();
+      if (result.outcome === 'unknown') throw verificationTokenNotFound();
 
-      return reply.code(200).send({ verified: user.emailVerified, email: user.email });
+      return reply
+        .code(200)
+        .send({ verified: result.user.emailVerified, email: result.user.email });
     },
   );
 

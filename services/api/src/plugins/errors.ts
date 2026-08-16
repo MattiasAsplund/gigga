@@ -88,6 +88,14 @@ export const verificationTokenNotFound = () =>
     detail: 'Länken hör inte till något konto. Begär ett nytt bekräftelsemail.',
   });
 
+export const verificationTokenExpired = () =>
+  new ProblemError({
+    status: 410,
+    slug: 'verification-token-expired',
+    title: 'Verifieringslänken har gått ut',
+    detail: 'Begär ett nytt bekräftelsemail via /auth/resend-verification.',
+  });
+
 export const emailTaken = () =>
   new ProblemError({
     status: 409,

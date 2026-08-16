@@ -390,6 +390,15 @@ uuid ⇒ `422`.
 API-svaren och i avtalens frysta villkor, och får därför inte kunna användas för att
 bekräfta ett konto.
 
+**Länken gäller i 24 timmar.** En passerad länk ger `410 Gone` med
+`verification-token-expired`, inte 404: skillnaden är åtgärdbar för användaren — begär ett
+nytt mail — medan en okänd token inte är det. Att skilja dem kostar en extra `SELECT`, men
+bara i missfallet.
+
+Idempotensen väger tyngre än utgångstiden för ett **redan bekräftat** konto: en länk som
+fungerade igår ska inte plötsligt bli ett fel, så `email_verified = true` kortsluter
+utgångskontrollen (V.25).
+
 **10. `POST /auth/resend-verification`** → `202`
 `{ email }` → `{ accepted: true }`. Öppen, eftersom den som behöver den inte kan logga in.
 
@@ -695,6 +704,11 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | V.18 | Svaret är byte-identiskt i alla tre fallen |
 | V.19 | Upprepad begäran inom kylperioden skickar inte fler mail |
 | V.20 | Trasig e-postadress ⇒ 422 |
+| V.21 | Utgångstiden sätts vid registrering och ligger ~24 h fram |
+| V.22 | En passerad länk ⇒ 410 `verification-token-expired`, och kontot förblir obekräftat |
+| V.23 | Ett nytt bekräftelsemail ger en länk som fungerar igen |
+| V.24 | Rotationen flyttar fram utgångstiden |
+| V.25 | Ett redan bekräftat konto tål att länken passerat — idempotensen består |
 | **X** | **Tvärsnitt** |
 | X.1 | `/docs/json` är OpenAPI 3.1 med ifylld `info` |
 | X.1b | Alla sju API:erna finns på rätt metod och väg, med rätt `operationId` |
@@ -709,7 +723,7 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | X.4b | Fel metod på en känd väg ⇒ 404 i samma format |
 | X.4c | Felsvar från en riktig route är också `application/problem+json` |
 
-Totalt 138 testfall, **alla gröna**. Matrisen är levande — den *ska* ändras i
+Totalt 144 testfall, **alla gröna**. Matrisen är levande — den *ska* ändras i
 dialogen (§8.1).
 
 X-gruppen var grön redan när den skrevs, eftersom den beskriver tvärsnitt som byggdes upp
@@ -784,6 +798,7 @@ Varje etapp är en pull-liknande enhet med en tydlig grön-tröskel.
 | **5** ✅ | Listnings-API:er (API 3–4) | Joins utan N+1, markörsidbrytning, filter, `004_contracts.sql` (tidigarelagd), dubbla valideringsregimer | **Klar.** L3.\*, L4.\* gröna; 68/68 i hela sviten |
 | **6** ✅ | Avtalssignering (API 7) | `domain/contract-rules.ts`, transaktionell tillståndsmaskin med `sql.begin` + `FOR UPDATE OF r`, frysta villkor, tom-kropp-parser | **Klar.** S7.\*, D.3 gröna; 92/92 i hela sviten; hela flödet kört mot levande Aspire |
 | **7** ✅ | Dokumentation & finish | OpenAPI-tvärsnittstester, `docs/API.md` | **Klar.** X.\* gröna; hela sviten 103/103; Swagger UI och hela flödet körda mot levande Aspire |
+| **11** ✅ | Utgångstid på verifieringslänken | `007_verification_expiry.sql`, tre utfall ur `verifyUserByToken` | **Klar.** V.21–V.25 gröna; 144/144; 410-vägen och återhämtningen via nytt mail körda mot levande Aspire |
 | **10** ✅ | Nytt bekräftelsemail (API 10) | `006_verification_resend.sql`, `rotateVerificationToken` med kylperiod | **Klar.** V.13–V.20 gröna; 138/138; kylperiod, rotation och läckagefrihet verifierade mot mailpit |
 | **9** ✅ | E-postverifiering (API 9) | `005_email_verification.sql`, mailpit i AppHosten, `src/mail/`, spärr i både `/auth/login` och `requireAuth` | **Klar.** V.\* gröna; 130/130; hela flödet kört mot mailpit i levande Aspire |
 | **8** ✅ | Katalogen (API 8) | `GET /requests` med `bidCount`/`hasMyBid`/`canBid`, filter och sidbrytning | **Klar.** L8.\* gröna; 116/116; körd mot levande Aspire. Tillkom efter att luckan påpekats — säljare kunde bara lägga anbud på förfrågningar de kände till ID:t för |
@@ -800,7 +815,6 @@ gör resten testdriven. Från etapp 2 gäller §8.1 utan undantag.
   `/auth/resend-verification` har en egen kylperiod per konto, men inget skydd mot en
   angripare som varierar adressen.
 - **Lösenordsåterställning** — samma maskineri som verifieringen, men inte byggt än.
-- **Utgångstid på verifieringstoken** — den gäller för evigt i etapp 1.
 - **Betalning, fakturering, tidrapportering** — nästa domänområde efter avtalet.
 - **Migrationsverktyg med rollback** — meningslöst mot en icke-persistent databas, men
   krävs innan någon persistent miljö sätts upp. Detta är den skuld som förfaller först.

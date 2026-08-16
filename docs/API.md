@@ -22,8 +22,12 @@ registreringen returnerade. Länken är idempotent och tål att klickas flera g�
 Samma token börjar fungera direkt när länken klickats; ingen ny inloggning behövs. En token
 vars konto inte finns kvar ger `401`.
 
-**Tappat mailet?** `POST /auth/resend-verification` med `{ email }` skickar ett nytt och
-gör den gamla länken ogiltig — bara det senaste mailet gäller. Svaret är alltid
+**Länken gäller i 24 timmar.** Därefter svarar den `410 verification-token-expired`. En
+länk som redan använts fortsätter dock svara `200` även efter utgången — kontot är ju
+bekräftat.
+
+**Tappat mailet, eller gått ut?** `POST /auth/resend-verification` med `{ email }` skickar
+ett nytt och gör den gamla länken ogiltig — bara det senaste mailet gäller. Svaret är alltid
 `202 { "accepted": true }`, oavsett om adressen finns, redan är bekräftad eller nyss fått
 ett mail. Det är avsiktligt: allt annat vore ett sätt att ta reda på vilka adresser som är
 registrerade. Ett nytt mail skickas som mest en gång per minut och konto.
@@ -61,6 +65,7 @@ kr. Aldrig decimaltal. `currency` är valfri och betyder `SEK` om den utelämnas
 | 401 | Token saknas, är utgången eller ogiltig |
 | 403 | Inloggad, men fel part för resursen — eller obekräftad e-postadress |
 | 404 | Resursen finns inte |
+| 410 | Fanns, men gäller inte längre — utgången verifieringslänk |
 | 409 | Konflikt med befintligt tillstånd |
 | 422 | Syntaktiskt giltig men semantiskt ogiltig indata |
 | 400 | Trasig JSON — inte schemabrott, de blir 422 |

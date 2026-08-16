@@ -62,24 +62,45 @@ export async function insertUser(
   return row ? { ...toUser(row), verificationToken: row.verification_token } : null;
 }
 
+/** Hur länge en verifieringslänk gäller. */
+export const VERIFICATION_TTL_HOURS = 24;
+
+export type VerificationResult =
+  | { outcome: 'verified'; user: User }
+  | { outcome: 'expired' }
+  | { outcome: 'unknown' };
+
 /**
- * Markerar adressen som verifierad. Idempotent: en redan verifierad användare
- * returneras oförändrad, så att en länk som klickas två gånger inte blir ett fel.
+ * Markerar adressen som verifierad.
+ *
+ * Tre utfall, för att "länken har gått ut" och "länken finns inte" kräver olika svar:
+ * det första går att åtgärda med ett nytt bekräftelsemail, det andra inte.
+ *
+ * Idempotent: en redan verifierad användare returneras oförändrad även om tiden runnit
+ * ut — annars skulle en länk som fungerade igår plötsligt bli ett fel (V.25).
  */
 export async function verifyUserByToken(
   sql: SQL,
   token: string,
-): Promise<User | null> {
+): Promise<VerificationResult> {
   const rows = (await sql`
     UPDATE users
     SET email_verified = true,
         verified_at = COALESCE(verified_at, now())
     WHERE verification_token = ${token}
+      AND (email_verified = true OR verification_expires_at > now())
     RETURNING ${sql.unsafe(USER_COLUMNS)}
   `) as UserRow[];
 
   const row = rows[0];
-  return row ? toUser(row) : null;
+  if (row) return { outcome: 'verified', user: toUser(row) };
+
+  // Ingen rad uppdaterades: antingen finns token inte, eller så har den gått ut.
+  const existing = (await sql`
+    SELECT 1 AS finns FROM users WHERE verification_token = ${token}
+  `) as { finns: number }[];
+
+  return existing.length > 0 ? { outcome: 'expired' } : { outcome: 'unknown' };
 }
 
 /** Hur ofta ett nytt bekräftelsemail får skickas till samma adress. */
@@ -94,7 +115,8 @@ export const RESEND_COOLDOWN_SECONDS = 60;
  * råka svara olika i de tre fallen, vilket är vad som hindrar att endpointen används
  * för att kartlägga vilka adresser som är registrerade.
  *
- * Rotationen gör samtidigt att bara den senast utskickade länken gäller.
+ * Rotationen gör samtidigt att bara den senast utskickade länken gäller, och startar om
+ * utgångstiden.
  */
 export async function rotateVerificationToken(
   sql: SQL,
@@ -104,7 +126,8 @@ export async function rotateVerificationToken(
   const rows = (await sql`
     UPDATE users
     SET verification_token = gen_random_uuid(),
-        verification_sent_at = now()
+        verification_sent_at = now(),
+        verification_expires_at = now() + make_interval(hours => ${VERIFICATION_TTL_HOURS})
     WHERE email = ${normalizeEmail(email)}
       AND email_verified = false
       AND verification_sent_at < now() - make_interval(secs => ${cooldownSeconds})
