@@ -89,6 +89,25 @@ export async function listBuyerRequests(
   }));
 }
 
+/** Anbuden på en enskild förfrågan, med säljarens namn. Samma form som i API 3. */
+export async function listBidsForRequest(
+  sql: SQL,
+  requestId: string,
+): Promise<BidWithSeller[]> {
+  const rows = (await sql`
+    SELECT b.id, b.request_id, b.seller_id, b.plan, b.compensation_type,
+           b.fixed_amount_minor, b.hourly_rate_minor, b.estimated_hours, b.currency,
+           b.status, b.created_at,
+           u.display_name
+    FROM bids b
+    JOIN users u ON u.id = b.seller_id
+    WHERE b.request_id = ${requestId}
+    ORDER BY b.created_at DESC, b.id DESC
+  `) as (BidRow & { display_name: string })[];
+
+  return rows.map((row) => ({ ...toBid(row), sellerDisplayName: row.display_name }));
+}
+
 export interface CatalogRequest extends UppdragsRequest {
   buyerDisplayName: string;
   bidCount: number;

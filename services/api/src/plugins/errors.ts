@@ -156,6 +156,96 @@ export const emailTaken = () =>
     detail: 'Det finns redan ett konto med den adressen.',
   });
 
+export const unsupportedFileType = (detail: string) =>
+  new ProblemError({
+    status: 415,
+    slug: 'unsupported-file-type',
+    title: 'Filtypen tas inte emot',
+    detail,
+  });
+
+export const fileTooLarge = (maxBytes: number) =>
+  new ProblemError({
+    status: 413,
+    slug: 'file-too-large',
+    title: 'Filen är för stor',
+    detail: `Högst ${Math.round(maxBytes / 1024 / 1024)} MB per dokument.`,
+  });
+
+export const tooManyFiles = (max: number) =>
+  new ProblemError({
+    status: 422,
+    slug: 'too-many-attachments',
+    title: 'För många dokument',
+    detail: `Ett anbud kan ha högst ${max} dokument. Radera något först.`,
+  });
+
+export const filenameTaken = () =>
+  new ProblemError({
+    status: 409,
+    slug: 'filename-taken',
+    title: 'Filnamnet är upptaget',
+    detail: 'Anbudet har redan ett dokument med det namnet.',
+  });
+
+export const attachmentNotFound = () =>
+  new ProblemError({
+    status: 404,
+    slug: 'attachment-not-found',
+    title: 'Dokumentet finns inte',
+    detail: 'Det finns inget dokument med det id:t på anbudet.',
+  });
+
+export const notBidOwner = () =>
+  new ProblemError({
+    status: 403,
+    slug: 'not-bid-owner',
+    title: 'Inte anbudets ägare',
+    detail: 'Bara säljaren som lämnat anbudet kan ändra dess dokument.',
+  });
+
+export const noAttachmentAccess = () =>
+  new ProblemError({
+    status: 403,
+    slug: 'no-attachment-access',
+    title: 'Saknar åtkomst till dokumenten',
+    detail:
+      'Anbudets dokument är öppna för säljaren, förfrågans köpare och den som ' +
+      'tilldelats läsrätt på förfrågan.',
+  });
+
+export const userNotFound = () =>
+  new ProblemError({
+    status: 404,
+    slug: 'user-not-found',
+    title: 'Användaren finns inte',
+    detail: 'Ingen användare med den e-postadressen.',
+  });
+
+export const notRequestOwner = () =>
+  new ProblemError({
+    status: 403,
+    slug: 'not-request-owner',
+    title: 'Inte förfrågans ägare',
+    detail: 'Bara köparen som publicerat förfrågan kan hantera dess rättigheter.',
+  });
+
+export const noRequestAccess = () =>
+  new ProblemError({
+    status: 403,
+    slug: 'no-request-access',
+    title: 'Saknar åtkomst till förfrågan',
+    detail: 'Du är varken förfrågans köpare eller tilldelad läsrätt.',
+  });
+
+export const permissionNotFound = () =>
+  new ProblemError({
+    status: 404,
+    slug: 'permission-not-found',
+    title: 'Rättigheten finns inte',
+    detail: 'Användaren har ingen tilldelad rättighet på förfrågan.',
+  });
+
 export const requestNotFound = () =>
   new ProblemError({
     status: 404,

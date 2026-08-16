@@ -374,6 +374,15 @@ och vid valideringsfel `errors[]`.
 | 12 | `POST /api/v1/auth/reset-password` | – | Sätt nytt lösenord med koden ur mailet |
 | 13 | `POST /api/v1/auth/logout` | ✔ | Avsluta den session token tillhör |
 | 14 | `POST /api/v1/auth/refresh` | – | Byt refresh-token mot en ny access-token |
+| 15 | `GET /api/v1/requests/{requestId}` | ✔ | Läs en förfrågan med dess anbud |
+| 16 | `POST /api/v1/requests/{requestId}/permissions` | ✔ | Ge läsrätt |
+| 17 | `GET /api/v1/requests/{requestId}/permissions` | ✔ | Lista tilldelade rättigheter |
+| 18 | `DELETE /api/v1/requests/{requestId}/permissions/{userId}` | ✔ | Ta tillbaka läsrätt |
+| 19 | `POST /api/v1/bids/{bidId}/attachments` | ✔ | Ladda upp ett dokument |
+| 20 | `GET /api/v1/bids/{bidId}/attachments` | ✔ | Lista dokumentens metadata |
+| 21 | `GET /api/v1/bids/{bidId}/attachments/archive` | ✔ | Ladda ner alla som ZIP |
+| 22 | `PATCH /api/v1/bids/{bidId}/attachments/{attachmentId}` | ✔ | Byt filnamn |
+| 23 | `DELETE /api/v1/bids/{bidId}/attachments/{attachmentId}` | ✔ | Radera dokument |
 
 ### 6.1 Detaljer per API
 
@@ -585,6 +594,47 @@ skulle ge 403 eller 409.
 
 **Anbudens innehåll lämnas aldrig ut här**, bara antalet. Vem som bjudit vad är en sak
 mellan köparen och respektive säljare, och L8.7 vaktar det.
+
+**15–18. Läsrättigheter på en förfrågan**
+Köparen äger sin förfrågan och kan låta andra läsa den — typiskt kollegor som ska bedöma
+anbuden. Tilldelas med e-postadress, för man känner sin kollegas adress och inte hens uuid.
+Okänd adress ger `404`, vilket röjer att adressen inte finns registrerad; alternativet
+vore ett id ingen kan få tag på.
+
+Bara ägaren tilldelar, listar och återkallar (`403` annars) — en behörig kan inte dela
+vidare. Dubbel tilldelning är idempotent: `200` i stället för `201`, och `granted_at` rörs
+inte. Återkallande stänger åtkomsten omedelbart, vid nästa anrop.
+
+`GET /requests/{id}` tillkom för att göra läsrätten meningsfull: utan den kan en behörig
+varken se vilka anbud som finns eller nå deras id:n, och rättigheten öppnar bara dörrar
+man inte hittar. Katalogen (`GET /requests`) är fortfarande vägen in för den som *letar*
+uppdrag; den här är för den som redan vet vilken förfrågan det gäller.
+
+**19–23. Anbudsdokument**
+Markdown och PDF, högst 10 MB per fil och 20 per anbud. Får läggas till **när som helst**,
+även efter signerat avtal — villkoren i `contracts.terms` är fortfarande frysta (S7.7),
+dokument är komplement och inte avtalsinnehåll.
+
+**Filtypen avgörs av innehållet.** En PDF måste börja med `%PDF-`, Markdown måste vara
+giltig UTF-8. Filändelsen är ett påstående från klienten; kontrollen är vad som hindrar att
+något annat smugglas in som `anbud.pdf`. Fel innehåll ger `415`, inte `422` — det är
+medietypen som inte duger. Ett *filnamn* som inte duger är däremot ett vanligt fältfel.
+
+**Filnamn saneras** från sökvägar, `..` och kontrolltecken innan de sparas: namnet hamnar i
+ett arkiv som packas upp på någon annans dator. Åäö behålls — arkivet ska vara läsbart.
+Namnet är unikt inom anbudet, annars kolliderar två filer i samma ZIP.
+
+**Rättighetsmatrisen:** skriva (ladda upp, byta namn, radera) är säljarens ensak. Läsa och
+ladda ner ZIP kan säljaren, förfrågans köpare, och den som tilldelats läsrätt. Ett anbud
+utan dokument ger ett **tomt arkiv med `200`**, inte `404`: frågan "vad har säljaren
+bifogat?" har svaret "ingenting", vilket inte är ett fel.
+
+> **ZIP-arkivet byggs med JSZip, inte fflate.** fflate sätter inte UTF-8-flaggan (bit 11)
+> i ZIP-huvudet, så `unzip` tolkar filnamnen som CP437 och `förslag.md` blir
+> `f├╢rslag.md` hos mottagaren. Testet läste tillbaka arkivet med *samma bibliotek som
+> skrev det* och märkte ingenting — felet syntes först när arkivet packades upp med
+> systemets `unzip`. B.9 granskar nu flaggbiten i råa byten i stället för att lita på en
+> rundtur.
 
 > Detta är den enda designtolkning i planen som inte är direkt given av uppgiften: kravlistan
 > nämner "signera avtal" men inget separat "acceptera anbud". Vi låter köparens signatur
@@ -828,6 +878,37 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | T.10 | Lösenordsbyte dödar alla refresh-tokens, utan att anklaga någon |
 | T.11 | Token lagras aldrig i klartext |
 | T.12 | En token ger access till sitt eget konto, inte anroparens |
+| **P** | **Läsrättigheter** (API 15–18) |
+| P.1 | Köparen kan ge en kollega läsrätt ⇒ 201 |
+| P.2 | Dubbel tilldelning är idempotent ⇒ 200, oförändrad tidpunkt |
+| P.3 | Okänd e-postadress ⇒ 404 |
+| P.4 | Köparen kan inte tilldela sig själv ⇒ 422 |
+| P.5 | Bara ägaren får tilldela; en behörig kan inte dela vidare ⇒ 403 |
+| P.6 | Okänd förfrågan ⇒ 404 |
+| P.7 | Ägaren ser listan; andra nekas ⇒ 403 |
+| P.8 | Rättigheten går att ta tillbaka; okänd ⇒ 404; bara ägaren får ⇒ 403 |
+| P.9 | Ägaren kan läsa sin förfrågan med anbud |
+| P.10 | En behörig kan läsa förfrågan och dess anbud |
+| P.11 | Utan rättighet ⇒ 403 |
+| P.12 | Återkallad rättighet stänger läsningen omedelbart |
+| P.13 | Läsrätt påverkar inte rätten att lägga anbud |
+| P.14 | Rättigheter försvinner med förfrågan |
+| **B** | **Anbudsdokument** (API 19–23) |
+| B.1 | Säljaren kan ladda upp PDF och Markdown ⇒ 201 |
+| B.2 | Filtypen avgörs av innehållet: falsk PDF, trasig UTF-8 och andra typer ⇒ 415 |
+| B.3 | Filnamn saneras från sökvägar; svenska tecken behålls |
+| B.4 | Samma filnamn två gånger ⇒ 409 |
+| B.5 | Tom fil ⇒ 422 |
+| B.6 | Fler än 20 dokument ⇒ 422 |
+| B.7 | Bara säljaren får ladda upp; okänt anbud ⇒ 404 |
+| B.8 | Säljare, köpare och behörig ser listan; utomstående ⇒ 403 |
+| B.9 | Arkivet innehåller allt med rätt innehåll, svenska filnamn, och **UTF-8-flaggad** |
+| B.10 | Anbud utan dokument ⇒ tomt arkiv med 200 |
+| B.11 | Behörig kan ladda ner; återkallad rättighet stänger omedelbart; utomstående ⇒ 403 |
+| B.12 | Namnbyte fungerar; ändelsen låst; upptaget namn ⇒ 409; samma namn ofarligt |
+| B.13 | Radering fungerar, frigör namnet, är säljarens ensak, och andra gången ⇒ 404 |
+| B.14 | Dokument följer med anbudet när det raderas |
+| B.15 | Dokument går att lägga till även efter signerat avtal |
 | **X** | **Tvärsnitt** |
 | X.1 | `/docs/json` är OpenAPI 3.1 med ifylld `info` |
 | X.1b | Alla sju API:erna finns på rätt metod och väg, med rätt `operationId` |
@@ -842,7 +923,7 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | X.4b | Fel metod på en känd väg ⇒ 404 i samma format |
 | X.4c | Felsvar från en riktig route är också `application/problem+json` |
 
-Totalt 186 testfall, **alla gröna**. Matrisen är levande — den *ska* ändras i
+Totalt 237 testfall, **alla gröna**. Matrisen är levande — den *ska* ändras i
 dialogen (§8.1).
 
 X-gruppen var grön redan när den skrevs, eftersom den beskriver tvärsnitt som byggdes upp
@@ -917,6 +998,7 @@ Varje etapp är en pull-liknande enhet med en tydlig grön-tröskel.
 | **5** ✅ | Listnings-API:er (API 3–4) | Joins utan N+1, markörsidbrytning, filter, `004_contracts.sql` (tidigarelagd), dubbla valideringsregimer | **Klar.** L3.\*, L4.\* gröna; 68/68 i hela sviten |
 | **6** ✅ | Avtalssignering (API 7) | `domain/contract-rules.ts`, transaktionell tillståndsmaskin med `sql.begin` + `FOR UPDATE OF r`, frysta villkor, tom-kropp-parser | **Klar.** S7.\*, D.3 gröna; 92/92 i hela sviten; hela flödet kört mot levande Aspire |
 | **7** ✅ | Dokumentation & finish | OpenAPI-tvärsnittstester, `docs/API.md` | **Klar.** X.\* gröna; hela sviten 103/103; Swagger UI och hela flödet körda mot levande Aspire |
+| **16** ✅ | Dokument och rättigheter (API 15–23) | `012_request_permissions.sql`, `013_bid_attachments.sql`, `domain/attachments.ts`, multipart, ZIP | **Klar.** P.\* och B.\* gröna; 237/237; uppladdning, rättigheter och ZIP verifierade mot levande Aspire — arkivet uppackat med systemets `unzip` |
 | **15** ✅ | Refresh-tokens (API 14) | `011_refresh_tokens.sql`, rotation med återanvändningsdetektering, `sid` som binder ihop sessionen | **Klar.** T.\* gröna; 186/186; rotation, läckagedetektering och utloggning verifierade mot levande Aspire |
 | **14** ✅ | Utloggning (API 13) | `010_revoked_tokens.sql`, `jti` per token, `db/sessions.ts` | **Klar.** U.\* gröna; 171/171; två samtidiga sessioner verifierade mot levande Aspire |
 | **13** ✅ | Revokering vid lösenordsbyte | `009_token_version.sql`, `ver`-claim, jämförelse i `requireAuth` | **Klar.** R.15–R.19 gröna; 163/163; verifierat mot levande Aspire |
@@ -936,6 +1018,11 @@ gör resten testdriven. Från etapp 2 gäller §8.1 utan undantag.
 - **Lista aktiva sessioner** — `refresh_tokens` har allt som behövs (`session_id`,
   `created_at`, `revoked_at`), men inget API exponerar det. Ett `GET /me/sessions` med
   möjlighet att avsluta en enskild är nästa naturliga steg.
+- **Objektlagring för dokument** — `bytea` duger i en icke-persistent databas, men en
+  driftsatt tjänst vill ha filerna någon annanstans. `bid_attachments` byter då `content`
+  mot en nyckel.
+- **Fler rättighetsnivåer** — `permission_level` har bara `read`. Kolumnen finns för att
+  slippa en migrering den dag det behövs fler.
 - **Städning av `refresh_tokens`** — rader ligger kvar efter utgång. `revoked_tokens`
   städas vid utloggning; motsvarande saknas här.
 - **Rate limiting** på `/auth/*` — `@fastify/rate-limit` är ett endagsjobb när det behövs.

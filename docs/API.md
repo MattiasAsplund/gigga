@@ -94,6 +94,8 @@ kr. Aldrig decimaltal. `currency` är valfri och betyder `SEK` om den utelämnas
 | 404 | Resursen finns inte |
 | 410 | Fanns, men gäller inte längre — utgången verifieringslänk |
 | 409 | Konflikt med befintligt tillstånd |
+| 413 | Filen är större än 10 MB |
+| 415 | Filtypen tas inte emot, eller innehållet matchar inte ändelsen |
 | 422 | Syntaktiskt giltig men semantiskt ogiltig indata |
 | 400 | Trasig JSON — inte schemabrott, de blir 422 |
 
@@ -120,6 +122,15 @@ bläddringen.
 | `GET /me/requests` | ✔ | Egna förfrågningar, var och en med sina anbud |
 | `GET /me/bids` | ✔ | Egna anbud med status och avtalsläge |
 | `POST /bids/{bidId}/contract/signatures` | ✔ | Signerar avtalet |
+| `GET /requests/{requestId}` | ✔ | Läser en förfrågan med dess anbud |
+| `POST /requests/{requestId}/permissions` | ✔ | Ger någon läsrätt till förfrågan |
+| `GET /requests/{requestId}/permissions` | ✔ | Listar tilldelade rättigheter |
+| `DELETE /requests/{requestId}/permissions/{userId}` | ✔ | Tar tillbaka läsrätt |
+| `POST /bids/{bidId}/attachments` | ✔ | Laddar upp ett anbudsdokument |
+| `GET /bids/{bidId}/attachments` | ✔ | Listar dokumentens metadata |
+| `GET /bids/{bidId}/attachments/archive` | ✔ | Laddar ner alla dokument som ZIP |
+| `PATCH /bids/{bidId}/attachments/{attachmentId}` | ✔ | Byter filnamn |
+| `DELETE /bids/{bidId}/attachments/{attachmentId}` | ✔ | Raderar ett dokument |
 
 ### Katalogen
 
@@ -144,6 +155,43 @@ Diskriminerad på `type` — exakt en av formerna, aldrig fält från båda:
 
 Svaret innehåller `estimatedTotalMinor` — för timanbud `rateMinor × estimatedHours`
 avrundat till hela ören — så att anbud går att jämföra utan att räkna själv.
+
+### Anbudsdokument
+
+Ett anbud kan kompletteras med **Markdown och PDF** när som helst, även efter att avtalet
+signerats — dokument är komplement, inte avtalsinnehåll.
+
+```bash
+curl -X POST $API/bids/$BID/attachments -H "authorization: Bearer $ST" \
+  -F "file=@förslag.md"
+```
+
+Högst 10 MB per fil och 20 filer per anbud. **Filtypen avgörs av innehållet**, inte av
+ändelsen: en `.pdf` som inte börjar med `%PDF-` avvisas med `415`. Filnamn saneras från
+sökvägar och måste vara unika inom anbudet (`409` annars). Ett namnbyte får inte ändra
+filändelsen.
+
+Ladda ner allt på en gång:
+
+```bash
+curl -OJ $API/bids/$BID/attachments/archive -H "authorization: Bearer $KT"
+```
+
+Arkivet är öppet för säljaren som lämnat anbudet, förfrågans köpare, och den som fått
+läsrätt. Ett anbud utan dokument ger ett tomt arkiv med `200`, inte `404`.
+
+### Dela en förfrågan
+
+Köparen kan låta andra läsa sin förfrågan — typiskt kollegor som ska bedöma anbuden:
+
+```bash
+curl -X POST $API/requests/$REQ/permissions -H "authorization: Bearer $KT" \
+  -H 'content-type: application/json' -d '{"email":"kollega@example.se"}'
+```
+
+Läsrätt ger `GET /requests/{id}` med anbuden, dokumentlistan och ZIP-arkiven. Den ger
+**inte** rätt att dela vidare, signera eller ändra något. Ta tillbaka med
+`DELETE /requests/{id}/permissions/{userId}` — åtkomsten stängs vid nästa anrop.
 
 ### Signering
 

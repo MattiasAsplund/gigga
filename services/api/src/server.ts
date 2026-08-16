@@ -13,6 +13,10 @@ import { requestRoutes } from './routes/requests.ts';
 import { bidRoutes } from './routes/bids.ts';
 import { meRoutes } from './routes/me.ts';
 import { contractRoutes } from './routes/contracts.ts';
+import { permissionRoutes } from './routes/permissions.ts';
+import { attachmentRoutes } from './routes/attachments.ts';
+import multipart from '@fastify/multipart';
+import { MAX_FILE_BYTES } from './domain/attachments.ts';
 import { registerValidation } from './plugins/validation.ts';
 
 export const API_PREFIX = '/api/v1';
@@ -77,6 +81,12 @@ export async function buildServer(options: BuildServerOptions = {}) {
 
   registerValidation(app);
   registerErrorHandling(app);
+
+  // Gränsen sätts här och inte bara i routen: en för stor fil ska avvisas medan den
+  // strömmar in, inte efter att hela kroppen lästs in i minnet.
+  await app.register(multipart, {
+    limits: { fileSize: MAX_FILE_BYTES, files: 1, fields: 4 },
+  });
   await registerSwagger(app);
   await registerAuth(app);
 
@@ -86,6 +96,8 @@ export async function buildServer(options: BuildServerOptions = {}) {
   await app.register(bidRoutes, { prefix: API_PREFIX });
   await app.register(meRoutes, { prefix: API_PREFIX });
   await app.register(contractRoutes, { prefix: API_PREFIX });
+  await app.register(permissionRoutes, { prefix: API_PREFIX });
+  await app.register(attachmentRoutes, { prefix: API_PREFIX });
 
   return app;
 }

@@ -16,6 +16,7 @@ export interface Actor {
   headers: { authorization: string };
   get(url: string, options?: InjectOptions): Promise<LightMyRequestResponse>;
   post(url: string, payload?: unknown, options?: InjectOptions): Promise<LightMyRequestResponse>;
+  del(url: string, options?: InjectOptions): Promise<LightMyRequestResponse>;
 }
 
 export const DEFAULT_PASSWORD = 'ett-tillrackligt-langt-losenord';
@@ -73,6 +74,13 @@ export async function actor(app: App, name: string, password = DEFAULT_PASSWORD)
         method: 'POST',
         url,
         payload: payload as InjectOptions['payload'],
+        ...options,
+        headers: { ...headers, ...options.headers },
+      }),
+    del: (url, options = {}) =>
+      app.inject({
+        method: 'DELETE',
+        url,
         ...options,
         headers: { ...headers, ...options.headers },
       }),

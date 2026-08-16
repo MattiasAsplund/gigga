@@ -41,6 +41,15 @@ const EXPECTED_OPERATIONS: Record<string, [string, string]> = {
   logout: ['post', '/api/v1/auth/logout'],
   // Öppen: den som behöver refresha har ingen giltig access-token.
   refreshSession: ['post', '/api/v1/auth/refresh'],
+  getRequest: ['get', '/api/v1/requests/{requestId}'],
+  grantRequestPermission: ['post', '/api/v1/requests/{requestId}/permissions'],
+  listRequestPermissions: ['get', '/api/v1/requests/{requestId}/permissions'],
+  revokeRequestPermission: ['delete', '/api/v1/requests/{requestId}/permissions/{userId}'],
+  uploadAttachment: ['post', '/api/v1/bids/{bidId}/attachments'],
+  listAttachments: ['get', '/api/v1/bids/{bidId}/attachments'],
+  downloadAttachmentArchive: ['get', '/api/v1/bids/{bidId}/attachments/archive'],
+  renameAttachment: ['patch', '/api/v1/bids/{bidId}/attachments/{attachmentId}'],
+  deleteAttachment: ['delete', '/api/v1/bids/{bidId}/attachments/{attachmentId}'],
 };
 
 /** Operationer som kräver token, och därmed ska deklarera bearerAuth. */
@@ -53,6 +62,15 @@ const PROTECTED = new Set([
   'listOpenRequests',
   // Kräver token — det är just den sessionen som avslutas.
   'logout',
+  'getRequest',
+  'grantRequestPermission',
+  'listRequestPermissions',
+  'revokeRequestPermission',
+  'uploadAttachment',
+  'listAttachments',
+  'downloadAttachmentArchive',
+  'renameAttachment',
+  'deleteAttachment',
 ]);
 
 function operations(document: OpenApiDocument): { id: string; op: Operation; where: string }[] {
