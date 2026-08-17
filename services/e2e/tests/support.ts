@@ -73,6 +73,17 @@ export async function registerAndVerify(page: Page, who: Person): Promise<void> 
   await expect(page.getByTestId('verified')).toContainText(who.email);
 }
 
+/** Bifogar ett dokument till anbudet som sidan redan står på. */
+export async function attach(
+  page: Page,
+  name: string,
+  mimeType: string,
+  content: string,
+): Promise<void> {
+  await page.getByTestId('file').setInputFiles({ name, mimeType, buffer: Buffer.from(content) });
+  await page.getByTestId('upload').click();
+}
+
 /** Steg 3: logga in och landa i katalogen. */
 export async function signIn(page: Page, who: Person): Promise<void> {
   await page.goto('/login');

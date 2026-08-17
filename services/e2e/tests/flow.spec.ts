@@ -1,5 +1,7 @@
+import { readFile } from 'node:fs/promises';
 import { test, expect } from '@playwright/test';
 import {
+  attach,
   PASSWORD,
   person,
   registerAndVerify,
@@ -136,16 +138,32 @@ test('hela flödet från förfrågan till signerat avtal', async ({ page }) => {
     await signIn(page, kim);
 
     await page.goto('/me/requests');
-    await expect(
-      page.getByTestId('request').filter({ hasText: 'Fortnox' }).getByTestId('request-bid-count'),
-    ).toContainText('1');
+    const own = page.getByTestId('request').filter({ hasText: 'Fortnox' });
+    await expect(own.getByTestId('request-bid-count')).toContainText('1');
 
-    await page.goto(`/bids/${bidId}`);
+    // Klickvägen, inte page.goto med ett id testet råkar bära med sig: att köparen
+    // *kan ta sig* till anbudet är hela poängen med steget.
+    await expect(own.getByTestId('request-bid')).toHaveCount(1);
+    await own.getByTestId('inspect-bid').first().click();
+    await expect(page).toHaveURL(new RegExp(`/bids/${bidId}$`));
+
+    // Köparen ska möta anbudets innehåll, inte bara dess id.
+    await expect(page.getByTestId('bid-seller')).toContainText(robin.displayName);
+    await expect(page.getByTestId('bid-plan')).toContainText('Kartläggning');
+    await expect(page.getByTestId('bid-total')).toContainText('38');
+
     await expect(page.getByTestId('attachment')).toHaveCount(2);
 
     const download = page.waitForEvent('download');
     await page.getByTestId('download-archive').click();
-    expect((await download).suggestedFilename()).toContain('.zip');
+    const zip = await download;
+    expect(zip.suggestedFilename()).toContain('.zip');
+
+    // Att filen *heter* .zip säger inget. Magin PK\x03\x04 i början visar att det är ett
+    // riktigt arkiv som kom hela vägen ut. Innehållet i arkivet granskar B.9 i API-sviten.
+    const bytes = await readFile((await zip.path())!);
+    expect(bytes.subarray(0, 4)).toEqual(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
+    expect(bytes.byteLength).toBeGreaterThan(100);
   });
 
   await test.step('8b. Kim ger Lo läsrätt, och tar tillbaka den', async () => {
@@ -189,13 +207,44 @@ test('hela flödet från förfrågan till signerat avtal', async ({ page }) => {
     await expect(page.getByTestId('signature-buyer')).toHaveAttribute('data-signed', 'true');
     await expect(page.getByTestId('signature-seller')).toHaveAttribute('data-signed', 'false');
 
+    // Signaturen måste överleva att sidan laddas om. Avtalsläget låg tidigare bara i
+    // sidans eget minne från signeringssvaret, så Kim möttes av "inget avtal än" igen.
+    await page.reload();
+    await expect(page.getByTestId('contract')).toHaveAttribute(
+      'data-status',
+      'pending_signatures',
+    );
+    await expect(page.getByTestId('signature-buyer')).toHaveAttribute('data-signed', 'true');
+    await expect(page.getByTestId('no-contract')).toHaveCount(0);
+
+    // Den som signerat erbjuds inte att signera igen.
+    await expect(page.getByTestId('sign')).toHaveCount(0);
+    await expect(page.getByTestId('already-signed')).toContainText('köpare');
+
+    // Signaturen ska bära sin tidpunkt, inte bara en flagga: "Signerat" tillsammans med
+    // "Ingen signatur än" i samma ruta är två påståenden som motsäger varandra.
+    const köparensSignatur = page.getByTestId('signature-buyer');
+    await expect(köparensSignatur).toContainText('Signerat');
+    await expect(köparensSignatur).not.toContainText('Ingen signatur än');
+
     await signOut(page);
     await signIn(page, robin);
     await page.goto(`/bids/${bidId}`);
+    // Säljaren har inte signerat än, så för hen står knappen kvar.
+    await expect(page.getByTestId('sign')).toBeVisible();
     await page.getByTestId('sign').click();
 
     await expect(page.getByTestId('contract')).toHaveAttribute('data-status', 'active');
     await expect(page.getByTestId('signature-seller')).toHaveAttribute('data-signed', 'true');
+
+    // Och när båda signerat är knappen borta för säljaren också, även efter omladdning.
+    await page.reload();
+    await expect(page.getByTestId('sign')).toHaveCount(0);
+    await expect(page.getByTestId('already-signed')).toContainText('bindande');
+
+    // Säljarens vy av avtalet: båda signaturerna med tidpunkt, ingen "Ingen signatur än".
+    await expect(page.getByTestId('signature-seller')).toContainText('Signerat');
+    await expect(page.getByTestId('contract')).not.toContainText('Ingen signatur än');
   });
 
   await test.step('9b. Förfrågan är tilldelad och anbudet antaget', async () => {
@@ -264,8 +313,13 @@ test('säljaren kan ändra och dra tillbaka sitt anbud', async ({ page }) => {
   await page.getByTestId('submit-bid').click();
   const ändringsBidId = (await page.getByTestId('bid').first().getAttribute('data-id'))!;
 
-  await test.step('Anbudet skrivs om från fast pris till timpris', async () => {
+  await test.step('Anbudet får ett dokument', async () => {
     await page.goto(`/bids/${ändringsBidId}`);
+    await attach(page, 'etappplan.md', 'text/markdown', '# Etappplan\n\nTvå etapper.');
+    await expect(page.getByTestId('attachment')).toHaveCount(1);
+  });
+
+  await test.step('Anbudet skrivs om från fast pris till timpris', async () => {
     await page.getByTestId('change-plan').fill('Omarbetad plan: två etapper.');
     await page.getByTestId('change-compensation-type').selectOption('hourly');
     await page.getByTestId('change-rate').fill('950');
@@ -274,6 +328,8 @@ test('säljaren kan ändra och dra tillbaka sitt anbud', async ({ page }) => {
 
     // 950 kr × 40 tim = 38 000 kr, uträknat av API:et.
     await expect(page.getByTestId('bid-total')).toContainText('38');
+    // En ändring rör anbudets innehåll, inte dess dokument.
+    await expect(page.getByTestId('attachment')).toHaveCount(1);
   });
 
   await test.step('Anbudet dras tillbaka och går inte längre att ändra', async () => {
@@ -282,16 +338,29 @@ test('säljaren kan ändra och dra tillbaka sitt anbud', async ({ page }) => {
 
     await expect(page.getByTestId('bid-locked')).toContainText('withdrawn');
     await expect(page.getByTestId('change-bid-form')).toHaveCount(0);
+    // Anbudsraden lever kvar med ny status, så dokumenten följer med den.
+    await expect(page.getByTestId('attachment')).toHaveCount(1);
   });
 
-  await test.step('Efter tillbakadragandet går det att lämna ett nytt anbud', async () => {
+  await test.step('Efter tillbakadragandet går det att lämna ett nytt anbud, med egna dokument', async () => {
     await page.goto(`/requests/${ändringsRequestId}`);
     await page.getByTestId('plan').fill('Nytt försök med skarpare pris.');
     await page.getByTestId('compensation-type').selectOption('fixed');
     await page.getByTestId('amount').fill('39000');
     await page.getByTestId('submit-bid').click();
 
-    await expect(page.getByTestId('bid').first()).toBeVisible();
+    // Vänta på att listan blivit två. Det tillbakadragna anbudet ligger redan där, så
+    // "syns ett anbud" hade varit sant redan före omladdningen — och gett gammalt id.
+    await expect(page.getByTestId('bid')).toHaveCount(2);
+    const nyttBidId = (await page.getByTestId('bid').first().getAttribute('data-id'))!;
+    expect(nyttBidId).not.toBe(ändringsBidId);
+
+    // Det nya anbudet börjar tomt — dokumenten satt på det tillbakadragna.
+    await page.goto(`/bids/${nyttBidId}`);
+    await expect(page.getByTestId('attachment')).toHaveCount(0);
+
+    await attach(page, 'offert.pdf', 'application/pdf', '%PDF-1.7\nSkarpare offert');
+    await expect(page.getByTestId('attachment')).toHaveCount(1);
   });
 });
 
