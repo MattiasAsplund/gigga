@@ -24,18 +24,18 @@ export function verificationEmail(input: {
 
   return {
     to: input.to,
-    subject: 'Bekräfta din e-postadress hos fastgig',
+    subject: 'Bekräfta din e-postadress hos gigga',
     text: [
       `Hej ${input.displayName}!`,
       '',
-      'Bekräfta din e-postadress för att kunna logga in på fastgig:',
+      'Bekräfta din e-postadress för att kunna logga in på gigga:',
       link,
       '',
       'Har du inte skapat något konto kan du strunta i det här mailet.',
     ].join('\n'),
     html: [
       `<p>Hej ${escapeHtml(input.displayName)}!</p>`,
-      '<p>Bekräfta din e-postadress för att kunna logga in på fastgig:</p>',
+      '<p>Bekräfta din e-postadress för att kunna logga in på gigga:</p>',
       `<p><a href="${escapeHtml(link)}">Bekräfta e-postadressen</a></p>`,
       '<p>Har du inte skapat något konto kan du strunta i det här mailet.</p>',
     ].join('\n'),

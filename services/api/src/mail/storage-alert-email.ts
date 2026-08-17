@@ -41,7 +41,7 @@ export function storageAlertEmail(input: {
 
   return {
     to: input.to,
-    subject: `fastgig: innehåll saknas för ${input.total} anbudsdokument`,
+    subject: `gigga: innehåll saknas för ${input.total} anbudsdokument`,
     text: lines.join('\n'),
   };
 }

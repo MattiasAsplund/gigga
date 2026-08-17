@@ -18,7 +18,7 @@ function Masthead() {
     <header className="masthead">
       <div className="masthead__inner">
         <NavLink to="/" className="wordmark">
-          fastgig
+          gigga
         </NavLink>
 
         {account && (

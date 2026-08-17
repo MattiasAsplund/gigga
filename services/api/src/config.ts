@@ -7,7 +7,9 @@ const ConfigSchema = Type.Object({
   DATABASE_URL: Type.String({ minLength: 1 }),
   SMTP_HOST: Type.String({ default: '127.0.0.1' }),
   SMTP_PORT: Type.Integer({ minimum: 1, maximum: 65535, default: 1025 }),
-  MAIL_FROM: Type.String({ default: 'fastgig <no-reply@fastgig.dev>' }),
+  // Avsändarnamnet syns i mailklienten; adressens domän är en driftsfråga och byts när
+  // en domän för gigga faktiskt finns på plats.
+  MAIL_FROM: Type.String({ default: 'gigga <no-reply@fastgig.dev>' }),
   /**
    * Webbens basadress — den användaren ser, inte API:ets. Bekräftelselänkarna pekar
    * på `/verify` där. Sätts av AppHosten.

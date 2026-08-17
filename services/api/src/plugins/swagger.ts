@@ -12,7 +12,7 @@ export async function registerSwagger(app: FastifyInstance): Promise<void> {
     openapi: {
       openapi: '3.1.0',
       info: {
-        title: 'fastgig API',
+        title: 'gigga API',
         description:
           'Marknadsplats för distansuppdrag: köpare publicerar uppdragsförfrågningar, ' +
           'säljare lämnar anbud, parterna signerar avtal.',

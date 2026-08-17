@@ -28,7 +28,7 @@ export function passwordResetEmail(input: {
 
   return {
     to: input.to,
-    subject: 'Återställ ditt lösenord hos fastgig',
+    subject: 'Återställ ditt lösenord hos gigga',
     text: [
       `Hej ${input.displayName}!`,
       '',
