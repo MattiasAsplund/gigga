@@ -4,6 +4,6 @@
   "private": true,
   "description": "Playwright-svit som går README:ns flöde från förfrågan till signerat avtal.",
   "devDependencies": {
-    "@playwright/test": "1.56.0"
+    "@playwright/test": "1.62.1"
   }
 }

@@ -16,13 +16,12 @@
     "test:lcoview": "bun node_modules/lcoview/bin/lcoview.js services/api/coverage/lcov.info -d services/api/coverage -s services/api"
   },
   "dependencies": {
-    "lcoview": "^1.1.1",
-    "vscode-jsonrpc": "^8.2.0"
+    "lcoview": "^1.1.1"
   },
   "devDependencies": {
-    "@types/bun": "^1.3.0",
-    "eslint": "^10.0.3",
-    "typescript": "^5.9.3",
-    "typescript-eslint": "^8.57.1"
+    "@types/bun": "^1.3.14",
+    "eslint": "^10.8.1",
+    "typescript": "^7.0.2",
+    "typescript-eslint": "^8.67.0"
   }
 }

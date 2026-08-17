@@ -115,11 +115,11 @@ await api.withEnvironment('PUBLIC_BASE_URL', await web.getEndpoint('http'));
  * `aspire run` startar miljön.
  */
 await builder
-  .addContainer('e2e', 'mcr.microsoft.com/playwright:v1.56.0-noble')
+  .addContainer('e2e', 'mcr.microsoft.com/playwright:v1.62.1-noble')
   .withContainerRuntimeArgs([
     '--add-host=host.containers.internal:host-gateway',
     '-v',
-    `${import.meta.dir}/services/e2e:/e2e:z`,
+    `${import.meta.dirname}/services/e2e:/e2e:z`,
   ])
   .withEnvironment('BASE_URL', 'http://host.containers.internal:5173')
   .withEnvironment('MAILPIT_URL', 'http://mailpit:8025')
