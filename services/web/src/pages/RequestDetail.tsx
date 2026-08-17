@@ -15,7 +15,11 @@ export function RequestDetail() {
   );
 
   const isBuyer = data?.buyerId === account?.id;
-  const myBid = data?.bids.find((bid) => bid.sellerId === account?.id);
+  // Ett tillbakadraget anbud spärrar inte: API:et släpper igenom ett nytt, och katalogens
+  // hasMyBid räknar likadant. Utan filtret vore knappen borta fast anbudet vore tillåtet.
+  const myBid = data?.bids.find(
+    (bid) => bid.sellerId === account?.id && bid.status !== 'withdrawn',
+  );
   const canBid = Boolean(data) && !isBuyer && !myBid && data?.status === 'open';
 
   return (

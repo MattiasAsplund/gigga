@@ -114,10 +114,16 @@ export function BidDetail() {
             </span>
             <span>
               <span className="eyebrow">Beräknat totalt</span>{' '}
-              <span className="amount">{formatAmount(bid.estimatedTotalMinor)}</span>
+              <span className="amount" data-testid="bid-total">
+                {formatAmount(bid.estimatedTotalMinor)}
+              </span>
             </span>
           </div>
         </section>
+      )}
+
+      {bid && isSeller && (
+        <ChangeBid bid={bid} token={token} onDone={mine.reload} onError={setError} />
       )}
 
       <section className="section">
@@ -209,6 +215,188 @@ export function BidDetail() {
         </div>
       </section>
     </>
+  );
+}
+
+/**
+ * Säljarens egna handlingar på anbudet: skriva om det, eller dra tillbaka det.
+ *
+ * Villkoren fryses i avtalet när köparen signerar, så när ett avtal finns visas ingen
+ * form alls — bara beskedet om varför, och att vägen ut är att låta bli att signera.
+ * Förfrågans läge och deadline känner sidan inte till; de spärrarna får API:et svara på,
+ * och felet hamnar i notisen ovanför.
+ */
+function ChangeBid({
+  bid,
+  token,
+  onDone,
+  onError,
+}: {
+  bid: MyBid;
+  token: string;
+  onDone: () => void;
+  onError: (cause: unknown) => void;
+}) {
+  const [kind, setKind] = useState<'fixed' | 'hourly'>(bid.compensation.type);
+  const [busy, setBusy] = useState(false);
+
+  if (bid.contract) {
+    return (
+      <section className="section">
+        <h2>Ändra anbudet</h2>
+        <p className="lede" data-testid="bid-locked">
+          Avtalet är påbörjat, och anbudets villkor ligger frysta i det. Vill du inte ha
+          uppdraget räcker det att låta bli att signera.
+        </p>
+      </section>
+    );
+  }
+
+  if (bid.status !== 'submitted') {
+    return (
+      <section className="section">
+        <h2>Ändra anbudet</h2>
+        <p className="lede" data-testid="bid-locked">
+          Anbudet är {bid.status} och går inte längre att ändra.
+          {bid.status === 'withdrawn' && ' Du kan lämna ett nytt anbud på förfrågan.'}
+        </p>
+      </section>
+    );
+  }
+
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    setBusy(true);
+    onError(null);
+    try {
+      await call(`/bids/${bid.id}`, {
+        token,
+        method: 'PATCH',
+        body: {
+          plan: form.get('plan'),
+          // Ersättningen skickas alltid hel — API:et byter aldrig fält för fält.
+          compensation:
+            kind === 'fixed'
+              ? {
+                  type: 'fixed',
+                  amountMinor: Math.round(Number(form.get('amount')) * 100),
+                  currency: 'SEK',
+                }
+              : {
+                  type: 'hourly',
+                  rateMinor: Math.round(Number(form.get('rate')) * 100),
+                  estimatedHours: Number(form.get('hours')),
+                  currency: 'SEK',
+                },
+        },
+      });
+      onDone();
+    } catch (cause) {
+      onError(cause);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function withdraw() {
+    if (!window.confirm('Dra tillbaka anbudet? Du kan lämna ett nytt på samma förfrågan.')) {
+      return;
+    }
+    setBusy(true);
+    onError(null);
+    try {
+      await call(`/bids/${bid.id}/withdrawal`, { token, method: 'POST' });
+      onDone();
+    } catch (cause) {
+      onError(cause);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const fixed = bid.compensation.type === 'fixed' ? bid.compensation : null;
+  const hourly = bid.compensation.type === 'hourly' ? bid.compensation : null;
+
+  return (
+    <section className="section">
+      <h2>Ändra anbudet</h2>
+      <form className="stack" onSubmit={save} data-testid="change-bid-form">
+        <label>
+          <span>Genomförandeplan</span>
+          <textarea name="plan" required defaultValue={bid.plan} data-testid="change-plan" />
+        </label>
+
+        <label style={{ maxWidth: '16rem' }}>
+          <span>Ersättningsform</span>
+          <select
+            value={kind}
+            onChange={(e) => setKind(e.target.value as 'fixed' | 'hourly')}
+            data-testid="change-compensation-type"
+          >
+            <option value="hourly">Timpris</option>
+            <option value="fixed">Fast pris</option>
+          </select>
+        </label>
+
+        {kind === 'fixed' ? (
+          <label style={{ maxWidth: '16rem' }}>
+            <span>Fast pris i kronor</span>
+            <input
+              name="amount"
+              type="number"
+              min="0.01"
+              step="0.01"
+              required
+              defaultValue={fixed ? fixed.amountMinor / 100 : ''}
+              data-testid="change-amount"
+            />
+          </label>
+        ) : (
+          <div className="field-row">
+            <label>
+              <span>Timpris i kronor</span>
+              <input
+                name="rate"
+                type="number"
+                min="0.01"
+                step="0.01"
+                required
+                defaultValue={hourly ? hourly.rateMinor / 100 : ''}
+                data-testid="change-rate"
+              />
+            </label>
+            <label>
+              <span>Uppskattade timmar</span>
+              <input
+                name="hours"
+                type="number"
+                min="0.25"
+                step="0.25"
+                required
+                defaultValue={hourly ? hourly.estimatedHours : ''}
+                data-testid="change-hours"
+              />
+            </label>
+          </div>
+        )}
+
+        <div className="actions">
+          <button type="submit" disabled={busy} data-testid="save-bid">
+            Spara ändringen
+          </button>
+          <button
+            type="button"
+            className="quiet"
+            onClick={() => void withdraw()}
+            disabled={busy}
+            data-testid="withdraw-bid"
+          >
+            Dra tillbaka anbudet
+          </button>
+        </div>
+      </form>
+    </section>
   );
 }
 

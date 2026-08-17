@@ -233,6 +233,68 @@ test('nytt bekräftelsemail går att begära', async ({ page }) => {
   await expect(page.getByTestId('verified')).toBeVisible();
 });
 
+test('säljaren kan ändra och dra tillbaka sitt anbud', async ({ page }) => {
+  test.slow();
+
+  // Egen kedja med egna konton: huvudflödet slutar i ett signerat avtal, och ett
+  // tillbakadraget anbud mitt i det vore inte samma berättelse.
+  const köpare = person('mika');
+  const säljare = person('alex');
+  for (const who of [köpare, säljare]) await registerAndVerify(page, who);
+
+  await signIn(page, köpare);
+  await page.goto('/requests/new');
+  await page.getByTestId('title').fill('Migrera en rapportdatabas');
+  await page.getByTestId('description').fill('Allt på distans, i etapper.');
+  await page.getByTestId('compensationPref').selectOption('any');
+  await page.getByTestId('deadlineAt').fill('2026-12-01');
+  await page.getByTestId('submit').click();
+
+  // Vänta in navigeringen innan URL:en läses av — annars är id:t fortfarande "new".
+  await expect(page.getByTestId('request-title')).toHaveText('Migrera en rapportdatabas');
+  const ändringsRequestId = new URL(page.url()).pathname.split('/').pop()!;
+  expect(ändringsRequestId).toMatch(/^[0-9a-f-]{36}$/);
+
+  await signOut(page);
+  await signIn(page, säljare);
+  await page.goto(`/requests/${ändringsRequestId}`);
+  await page.getByTestId('plan').fill('Första utkastet till plan.');
+  await page.getByTestId('compensation-type').selectOption('fixed');
+  await page.getByTestId('amount').fill('45000');
+  await page.getByTestId('submit-bid').click();
+  const ändringsBidId = (await page.getByTestId('bid').first().getAttribute('data-id'))!;
+
+  await test.step('Anbudet skrivs om från fast pris till timpris', async () => {
+    await page.goto(`/bids/${ändringsBidId}`);
+    await page.getByTestId('change-plan').fill('Omarbetad plan: två etapper.');
+    await page.getByTestId('change-compensation-type').selectOption('hourly');
+    await page.getByTestId('change-rate').fill('950');
+    await page.getByTestId('change-hours').fill('40');
+    await page.getByTestId('save-bid').click();
+
+    // 950 kr × 40 tim = 38 000 kr, uträknat av API:et.
+    await expect(page.getByTestId('bid-total')).toContainText('38');
+  });
+
+  await test.step('Anbudet dras tillbaka och går inte längre att ändra', async () => {
+    page.once('dialog', (dialog) => void dialog.accept());
+    await page.getByTestId('withdraw-bid').click();
+
+    await expect(page.getByTestId('bid-locked')).toContainText('withdrawn');
+    await expect(page.getByTestId('change-bid-form')).toHaveCount(0);
+  });
+
+  await test.step('Efter tillbakadragandet går det att lämna ett nytt anbud', async () => {
+    await page.goto(`/requests/${ändringsRequestId}`);
+    await page.getByTestId('plan').fill('Nytt försök med skarpare pris.');
+    await page.getByTestId('compensation-type').selectOption('fixed');
+    await page.getByTestId('amount').fill('39000');
+    await page.getByTestId('submit-bid').click();
+
+    await expect(page.getByTestId('bid').first()).toBeVisible();
+  });
+});
+
 test('en bekräftelselänk som inte gäller ger besked, inte ett rått JSON-svar', async ({
   page,
 }) => {
