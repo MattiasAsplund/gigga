@@ -46,6 +46,34 @@ export function MyRequests() {
                   <span className="eyebrow">Anbud</span> {request.bids.length}
                 </span>
               </div>
+
+              {/*
+                Anbuden listas här och inte bara som en siffra: att se att det kommit
+                tre anbud utan att kunna öppna något av dem är inte att kunna granska
+                dem. Varje rad går vidare till anbudet med dokument och avtal.
+              */}
+              {request.bids.length === 0 ? (
+                <Empty>Inga anbud har kommit in än.</Empty>
+              ) : (
+                <ul className="plain-list" data-testid="request-bids">
+                  {request.bids.map((bid) => (
+                    <li className="line-item" key={bid.id} data-testid="request-bid" data-id={bid.id}>
+                      <span>
+                        <strong>{bid.sellerDisplayName}</strong>{' '}
+                        <span className="amount" data-testid="request-bid-total">
+                          {formatAmount(bid.estimatedTotalMinor)}
+                        </span>{' '}
+                        <Status value={bid.status} />
+                      </span>
+                      <Link to={`/bids/${bid.id}`}>
+                        <button className="quiet" data-testid="inspect-bid">
+                          Granska anbudet
+                        </button>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </article>
         ))}

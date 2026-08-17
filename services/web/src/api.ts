@@ -112,6 +112,13 @@ export interface CatalogItem extends RequestSummary {
   canBid: boolean;
 }
 
+export interface ContractSummary {
+  id: string;
+  status: 'pending_signatures' | 'active' | 'void';
+  buyerSignedAt: string | null;
+  sellerSignedAt: string | null;
+}
+
 export interface BidSummary {
   id: string;
   sellerId: string;
@@ -120,6 +127,7 @@ export interface BidSummary {
   compensation: Compensation;
   estimatedTotalMinor: number;
   status: 'submitted' | 'withdrawn' | 'accepted' | 'rejected';
+  contract: ContractSummary | null;
   createdAt: string;
 }
 
@@ -135,12 +143,7 @@ export interface MyBid {
   compensation: Compensation;
   estimatedTotalMinor: number;
   status: BidSummary['status'];
-  contract: {
-    id: string;
-    status: 'pending_signatures' | 'active' | 'void';
-    buyerSigned: boolean;
-    sellerSigned: boolean;
-  } | null;
+  contract: ContractSummary | null;
   createdAt: string;
 }
 

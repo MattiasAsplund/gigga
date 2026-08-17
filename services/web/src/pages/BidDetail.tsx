@@ -4,8 +4,11 @@ import {
   call,
   download,
   type Attachment,
+  type BidSummary,
   type Contract,
+  type ContractSummary,
   type MyBid,
+  type RequestDetail,
 } from '../api.ts';
 import { useAuth, useToken } from '../auth.tsx';
 import { Empty, Notice, Status, formatAmount, formatDate, useLoader } from '../components/ui.tsx';
@@ -24,18 +27,53 @@ export function BidDetail() {
     [bidId],
   );
 
-  // Anbudets egna uppgifter finns bara i säljarens lista; för andra roller räcker
-  // dokumenten och avtalet, som båda hämtas per anbud.
   const mine = useLoader(() => call<{ items: MyBid[] }>('/me/bids', { token }), []);
   const bid = mine.data?.items.find((item) => item.id === bidId) ?? null;
   const isSeller = Boolean(bid);
+
+  // Köparen hittar samma anbud i sina egna förfrågningar. Utan det här mötte hen bara
+  // anbudets id, dokumenten och avtalet — allt utom vad säljaren faktiskt erbjuder.
+  const owned = useLoader(
+    () => call<{ items: RequestDetail[] }>('/me/requests', { token }),
+    [],
+  );
+  const asBuyer = owned.data?.items
+    .flatMap((request) => request.bids.map((item) => ({ item, request })))
+    .find(({ item }) => item.id === bidId);
+
+  /** Anbudets innehåll och avtalsläge, oavsett vilken sida av bordet läsaren sitter på. */
+  const summary = bid
+    ? {
+        requestId: bid.requestId,
+        requestTitle: bid.requestTitle,
+        sellerDisplayName: null,
+        plan: bid.plan,
+        compensation: bid.compensation,
+        estimatedTotalMinor: bid.estimatedTotalMinor,
+        status: bid.status,
+        contract: bid.contract,
+      }
+    : asBuyer
+      ? {
+          requestId: asBuyer.request.id,
+          requestTitle: asBuyer.request.title,
+          sellerDisplayName: asBuyer.item.sellerDisplayName,
+          plan: asBuyer.item.plan,
+          compensation: asBuyer.item.compensation,
+          estimatedTotalMinor: asBuyer.item.estimatedTotalMinor,
+          status: asBuyer.item.status,
+          contract: asBuyer.item.contract,
+        }
+      : null;
 
   async function sign() {
     setBusy(true);
     setError(null);
     try {
       setContract(await call<Contract>(`/bids/${bidId}/contract/signatures`, { token, method: 'POST' }));
+      // Båda listorna bär avtalsläget, och vilken av dem sidan läser beror på rollen.
       mine.reload();
+      owned.reload();
     } catch (cause) {
       setError(cause);
     } finally {
@@ -87,7 +125,20 @@ export function BidDetail() {
     }
   }
 
-  const signatureState = contract ?? bidContract(bid);
+  const signatureState = contract ?? bidContract(bidId, summary);
+
+  /**
+   * Har den som tittar redan signerat? Signaturen är idempotent, så knappen vore ofarlig
+   * — men den påstår att något återstår att göra, och etiketten under den upprepar en
+   * handling som redan är utförd.
+   *
+   */
+  const mySignedAt = signatureState
+    ? isSeller
+      ? signatureState.sellerSignedAt
+      : signatureState.buyerSignedAt
+    : null;
+  const hasSigned = signatureState !== null && mySignedAt !== null;
 
   return (
     <>
@@ -96,26 +147,31 @@ export function BidDetail() {
         <span className="mono" data-testid="bid-id">
           {bidId}
         </span>
-        {bid && <Status value={bid.status} />}
+        {summary && <Status value={summary.status} />}
       </div>
 
       <Notice error={error ?? files.error} />
 
-      {bid && (
-        <section className="section">
-          <h2>{bid.requestTitle}</h2>
-          <p>{bid.plan}</p>
+      {summary && (
+        <section className="section" data-testid="bid-summary">
+          <h2>{summary.requestTitle}</h2>
+          {summary.sellerDisplayName && (
+            <p className="lede" data-testid="bid-seller">
+              Anbud från {summary.sellerDisplayName}
+            </p>
+          )}
+          <p data-testid="bid-plan">{summary.plan}</p>
           <div className="meta">
             <span>
               <span className="eyebrow">Ersättning</span>{' '}
-              {bid.compensation.type === 'fixed'
-                ? `Fast pris ${formatAmount(bid.compensation.amountMinor)}`
-                : `${formatAmount(bid.compensation.rateMinor)}/tim × ${bid.compensation.estimatedHours} tim`}
+              {summary.compensation.type === 'fixed'
+                ? `Fast pris ${formatAmount(summary.compensation.amountMinor)}`
+                : `${formatAmount(summary.compensation.rateMinor)}/tim × ${summary.compensation.estimatedHours} tim`}
             </span>
             <span>
               <span className="eyebrow">Beräknat totalt</span>{' '}
               <span className="amount" data-testid="bid-total">
-                {formatAmount(bid.estimatedTotalMinor)}
+                {formatAmount(summary.estimatedTotalMinor)}
               </span>
             </span>
           </div>
@@ -205,14 +261,23 @@ export function BidDetail() {
           </p>
         )}
 
-        <div className="actions" style={{ marginTop: '1rem' }}>
-          <button onClick={() => void sign()} disabled={busy} data-testid="sign">
-            Signera avtalet
-          </button>
-          <span className="mono">
-            {account?.email} signerar som {isSeller ? 'säljare' : 'köpare'}
-          </span>
-        </div>
+        {hasSigned ? (
+          <p className="lede" data-testid="already-signed">
+            Du har signerat som {isSeller ? 'säljare' : 'köpare'}.{' '}
+            {signatureState?.status === 'active'
+              ? 'Avtalet är bindande.'
+              : 'Avtalet blir bindande när motparten signerar.'}
+          </p>
+        ) : (
+          <div className="actions" style={{ marginTop: '1rem' }}>
+            <button onClick={() => void sign()} disabled={busy} data-testid="sign">
+              Signera avtalet
+            </button>
+            <span className="mono">
+              {account?.email} signerar som {isSeller ? 'säljare' : 'köpare'}
+            </span>
+          </div>
+        )}
       </section>
     </>
   );
@@ -400,23 +465,37 @@ function ChangeBid({
   );
 }
 
-/** Säljarens anbudslista bär signaturläget, men inte de frysta villkoren. */
-function bidContract(bid: MyBid | null): Contract | null {
-  if (!bid?.contract) return null;
+/**
+ * Listorna bär signaturläget men inte de frysta villkoren — dem får sidan bara i svaret
+ * från signeringen. Anbudets egna uppgifter duger som stand-in tills dess, så att en
+ * köpare som signerat och laddar om möts av sitt avtal och inte av "inget avtal än".
+ */
+function bidContract(
+  bidId: string,
+  summary: {
+    requestId: string;
+    requestTitle: string;
+    plan: string;
+    compensation: BidSummary['compensation'];
+    estimatedTotalMinor: number;
+    contract: ContractSummary | null;
+  } | null,
+): Contract | null {
+  if (!summary?.contract) return null;
   return {
-    contractId: bid.contract.id,
-    status: bid.contract.status,
-    buyerSignedAt: bid.contract.buyerSigned ? '' : null,
-    sellerSignedAt: bid.contract.sellerSigned ? '' : null,
+    contractId: summary.contract.id,
+    status: summary.contract.status,
+    buyerSignedAt: summary.contract.buyerSignedAt,
+    sellerSignedAt: summary.contract.sellerSignedAt,
     terms: {
-      bidId: bid.id,
-      requestId: bid.requestId,
+      bidId,
+      requestId: summary.requestId,
       buyerId: '',
       sellerId: '',
-      requestTitle: bid.requestTitle,
-      plan: bid.plan,
-      compensation: bid.compensation,
-      estimatedTotalMinor: bid.estimatedTotalMinor,
+      requestTitle: summary.requestTitle,
+      plan: summary.plan,
+      compensation: summary.compensation,
+      estimatedTotalMinor: summary.estimatedTotalMinor,
       frozenAt: '',
     },
   };
