@@ -8,7 +8,10 @@ const ConfigSchema = Type.Object({
   SMTP_HOST: Type.String({ default: '127.0.0.1' }),
   SMTP_PORT: Type.Integer({ minimum: 1, maximum: 65535, default: 1025 }),
   MAIL_FROM: Type.String({ default: 'fastgig <no-reply@fastgig.dev>' }),
-  /** Basadress som verifieringslänkarna byggs på. Sätts av AppHosten. */
+  /**
+   * Webbens basadress — den användaren ser, inte API:ets. Bekräftelselänkarna pekar
+   * på `/verify` där. Sätts av AppHosten.
+   */
   PUBLIC_BASE_URL: Type.String({ default: '' }),
   /**
    * Sida där användaren sätter nytt lösenord. Tom betyder att återställningsmailet

@@ -45,15 +45,19 @@ export async function latestMail(address: string): Promise<string> {
   throw new Error(`Inget mail till ${address} inom rimlig tid`);
 }
 
-/** Plockar bekräftelsetoken ur mailet — samma väg som en användare klickar. */
-export async function verificationToken(address: string): Promise<string> {
+/**
+ * Bekräftelselänken ur mailet, som väg att navigera till — samma väg en användare
+ * klickar. Bara sökvägen används: mailet bär värdens adress, medan containern når
+ * webben under ett annat namn, och det är Playwrights baseURL som vet vilket.
+ */
+export async function verificationPath(address: string): Promise<string> {
   const text = await latestMail(address);
-  const link = /https?:\/\/\S*validate-user\S*/.exec(text)?.[0]?.trim();
+  const link = /https?:\/\/\S*\/verify\S*/.exec(text)?.[0]?.trim();
   if (!link) throw new Error(`Ingen bekräftelselänk i mailet till ${address}:\n${text}`);
 
-  const token = new URL(link).searchParams.get('token');
-  if (!token) throw new Error(`Länken saknar token: ${link}`);
-  return token;
+  const url = new URL(link);
+  if (!url.searchParams.get('token')) throw new Error(`Länken saknar token: ${link}`);
+  return url.pathname + url.search;
 }
 
 /** Steg 1–2: skapa konto och bekräfta adressen genom gränssnittet. */
@@ -65,7 +69,7 @@ export async function registerAndVerify(page: Page, who: Person): Promise<void> 
   await page.getByTestId('submit').click();
   await expect(page.getByTestId('registered')).toBeVisible();
 
-  await page.goto(`/verify?token=${await verificationToken(who.email)}`);
+  await page.goto(await verificationPath(who.email));
   await expect(page.getByTestId('verified')).toContainText(who.email);
 }
 

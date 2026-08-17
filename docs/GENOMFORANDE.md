@@ -395,8 +395,15 @@ Lösenord ≥ 12 tecken, hashas med `Bun.password.hash` (argon2id). Dubblett-e-p
 E-post normaliseras (trim + lowercase, `citext`).
 
 **9. `GET /validate-user?token=<uuid>`** → `200`
-Målet för länken i bekräftelsemailet, och därför öppen — den klickas ur ett mailprogram
-utan token. Sätter `email_verified = true` och svarar `{ verified, email }`.
+Öppen — den anropas för en användare som ännu inte kan logga in. Sätter
+`email_verified = true` och svarar `{ verified, email }`.
+
+**Länken i mailet pekar inte hit, utan på webbens `/verify?token=…`.** Den sidan gör
+anropet åt användaren och stannar kvar med ett besked: bekräftat, med vägen vidare till
+inloggningen — eller felet, med hur man begär ett nytt mail. Pekade länken rakt hit
+skulle en användare som klickar i sitt mailprogram få ett JSON-svar i webbläsaren, och
+en utgången token bara ett felobjekt. Därför är `PUBLIC_BASE_URL` **webbens** adress,
+inte API:ets (V.26).
 Idempotent: länken tål att klickas flera gånger. Okänd token ⇒ `404`, token som inte är en
 uuid ⇒ `422`.
 
@@ -908,6 +915,7 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | V.23 | Ett nytt bekräftelsemail ger en länk som fungerar igen |
 | V.24 | Rotationen flyttar fram utgångstiden |
 | V.25 | Ett redan bekräftat konto tål att länken passerat — idempotensen består |
+| V.26 | Länken pekar på webbens `/verify`, inte rakt in i API:et |
 | **R** | **Lösenordsåterställning** (API 11–12) |
 | R.1 | Begäran skickar ett mail med en kod, och utan det gamla lösenordet |
 | R.2 | Okänd adress ⇒ 202 utan mail |

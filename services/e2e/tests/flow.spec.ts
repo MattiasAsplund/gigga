@@ -5,7 +5,7 @@ import {
   registerAndVerify,
   signIn,
   signOut,
-  verificationToken,
+  verificationPath,
 } from './support.ts';
 
 /**
@@ -228,7 +228,16 @@ test('nytt bekräftelsemail går att begära', async ({ page }) => {
   await page.getByTestId('submit').click();
   await expect(page.getByTestId('registered')).toBeVisible();
 
-  const first = await verificationToken(nils.email);
-  await page.goto(`/verify?token=${first}`);
+  const link = await verificationPath(nils.email);
+  await page.goto(link);
   await expect(page.getByTestId('verified')).toBeVisible();
+});
+
+test('en bekräftelselänk som inte gäller ger besked, inte ett rått JSON-svar', async ({
+  page,
+}) => {
+  await page.goto('/verify?token=00000000-0000-4000-8000-000000000000');
+
+  await expect(page.getByTestId('notice')).toContainText('gäller inte');
+  await expect(page.getByTestId('verified')).toHaveCount(0);
 });

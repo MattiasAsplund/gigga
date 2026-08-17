@@ -24,7 +24,8 @@ den `401 session-ended`. Andra sessioner för samma konto påverkas inte — log
 telefonen utan att datorn kastas ut. För att avsluta samtliga sessioner: byt lösenord.
 
 **E-postadressen måste bekräftas.** Registreringen skickar ett mail med en länk till
-`GET /validate-user?token=<uuid>`. Innan den klickats svarar `/auth/login` med
+webbens `/verify?token=<uuid>`, som i sin tur anropar `GET /validate-user?token=<uuid>`
+och visar hur det gick. Innan den klickats svarar `/auth/login` med
 `403 email-not-verified` — och **det gör varje skyddad endpoint också**, även med den token
 registreringen returnerade. Länken är idempotent och tål att klickas flera gånger.
 
@@ -110,7 +111,7 @@ bläddringen.
 |---|---|---|
 | `POST /auth/register` | – | Skapar konto, returnerar token |
 | `POST /auth/login` | – | Loggar in, returnerar token |
-| `GET /validate-user` | – | Bekräftar e-postadressen via länken i mailet |
+| `GET /validate-user` | – | Bekräftar e-postadressen; anropas av webbens `/verify` |
 | `POST /auth/resend-verification` | – | Begär ett nytt bekräftelsemail |
 | `POST /auth/refresh` | – | Byter refresh-token mot en ny access-token |
 | `POST /auth/logout` | ✔ | Avslutar den session token tillhör |

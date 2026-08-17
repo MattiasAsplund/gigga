@@ -33,12 +33,17 @@ function linkFrom(email: string): string {
   const mail = ctx.mail.sent.findLast((m) => m.to === email);
   if (!mail) throw new Error(`Inget mail skickat till ${email}`);
 
-  const match = /https?:\/\/\S*validate-user\S*/.exec(`${mail.text} ${mail.html ?? ''}`);
+  const match = /https?:\/\/\S*\/verify\S*/.exec(`${mail.text} ${mail.html ?? ''}`);
   if (!match) throw new Error(`Ingen verifieringslänk i mailet:\n${mail.text}`);
   return match[0];
 }
 
-const pathOf = (url: string) => new URL(url).pathname + new URL(url).search;
+/**
+ * Anropet som webbens bekräftelsesida gör med token ur länken. Länken går till sidan,
+ * men det är det här anropet som faktiskt bekräftar kontot.
+ */
+const apiCallFor = (link: string) =>
+  `/api/v1/validate-user?token=${new URL(link).searchParams.get('token')}`;
 
 test('V.1 registrering skickar ett verifieringsmail med en länk', async () => {
   const email = 'v1@example.test';
@@ -54,6 +59,19 @@ test('V.1 registrering skickar ett verifieringsmail med en länk', async () => {
   const link = linkFrom(email);
   const token = new URL(link).searchParams.get('token');
   expect(token).toMatch(/^[0-9a-f-]{36}$/);
+});
+
+test('V.26 länken pekar på webbens bekräftelsesida, inte rakt in i API:et', async () => {
+  const email = 'v26@example.test';
+  await register(email);
+
+  const link = new URL(linkFrom(email));
+
+  // Sidan gör anropet åt användaren och kan visa besked om det gick vägen eller inte.
+  // En rå länk in i API:et lämnar bara ett JSON-svar i webbläsaren.
+  expect(link.pathname).toBe('/verify');
+  expect(link.pathname).not.toContain('/api/');
+  expect(link.searchParams.get('token')).toMatch(/^[0-9a-f-]{36}$/);
 });
 
 test('V.2 ett nytt konto är overifierat och bär en egen token', async () => {
@@ -75,7 +93,7 @@ test('V.3 länken ur mailet verifierar kontot', async () => {
   const email = 'v3@example.test';
   await register(email);
 
-  const res = await ctx.app.inject({ method: 'GET', url: pathOf(linkFrom(email)) });
+  const res = await ctx.app.inject({ method: 'GET', url: apiCallFor(linkFrom(email)) });
 
   expect(res.statusCode).toBe(200);
   expect(res.json<{ verified: boolean; email: string }>()).toEqual({
@@ -92,7 +110,7 @@ test('V.3 länken ur mailet verifierar kontot', async () => {
 test('V.4 samma länk igen är ofarlig', async () => {
   const email = 'v4@example.test';
   await register(email);
-  const url = pathOf(linkFrom(email));
+  const url = apiCallFor(linkFrom(email));
 
   const first = await ctx.app.inject({ method: 'GET', url });
   const second = await ctx.app.inject({ method: 'GET', url });
@@ -154,7 +172,7 @@ test('V.7 fel lösenord på ett overifierat konto ger fortfarande 401', async ()
 test('V.8 inloggning efter verifiering fungerar', async () => {
   const email = 'v8@example.test';
   await register(email);
-  await ctx.app.inject({ method: 'GET', url: pathOf(linkFrom(email)) });
+  await ctx.app.inject({ method: 'GET', url: apiCallFor(linkFrom(email)) });
 
   const res = await login(email);
 
@@ -188,7 +206,7 @@ test('V.11 samma token börjar fungera när adressen bekräftats', async () => {
 
   expect((await call()).statusCode).toBe(403);
 
-  await ctx.app.inject({ method: 'GET', url: pathOf(linkFrom(email)) });
+  await ctx.app.inject({ method: 'GET', url: apiCallFor(linkFrom(email)) });
 
   // Ingen ny inloggning krävs — spärren läser kontots läge, inte tokenens.
   expect((await call()).statusCode).toBe(200);
@@ -240,7 +258,7 @@ test('V.13 begäran skickar ett nytt mail med en ny länk', async () => {
 test('V.14 den gamla länken slutar gälla när en ny begärts', async () => {
   const email = 'v14@example.test';
   await register(email);
-  const old = pathOf(linkFrom(email));
+  const old = apiCallFor(linkFrom(email));
   await clearCooldown(email);
   await resend(email);
 
@@ -258,7 +276,7 @@ test('V.15 den nya länken verifierar kontot', async () => {
   await clearCooldown(email);
   await resend(email);
 
-  const res = await ctx.app.inject({ method: 'GET', url: pathOf(linkFrom(email)) });
+  const res = await ctx.app.inject({ method: 'GET', url: apiCallFor(linkFrom(email)) });
 
   expect(res.statusCode).toBe(200);
   expect((await login(email)).statusCode).toBe(200);
@@ -276,7 +294,7 @@ test('V.16 okänd adress ger 202 utan att något mail skickas', async () => {
 test('V.17 ett redan verifierat konto får inget nytt mail', async () => {
   const email = 'v17@example.test';
   await register(email);
-  await ctx.app.inject({ method: 'GET', url: pathOf(linkFrom(email)) });
+  await ctx.app.inject({ method: 'GET', url: apiCallFor(linkFrom(email)) });
   await clearCooldown(email);
   const before = ctx.mail.sent.length;
 
@@ -291,7 +309,7 @@ test('V.18 svaret är identiskt oavsett om kontot finns, saknas eller är verifi
   const verified = 'v18b@example.test';
   await register(unverified);
   await register(verified);
-  await ctx.app.inject({ method: 'GET', url: pathOf(linkFrom(verified)) });
+  await ctx.app.inject({ method: 'GET', url: apiCallFor(linkFrom(verified)) });
   await clearCooldown(unverified);
   await clearCooldown(verified);
 
@@ -351,7 +369,7 @@ test('V.21 utgångstiden sätts vid registrering och ligger i framtiden', async 
 test('V.22 en utgången länk ger 410, inte 404', async () => {
   const email = 'v22@example.test';
   await register(email);
-  const url = pathOf(linkFrom(email));
+  const url = apiCallFor(linkFrom(email));
   await expireToken(email);
 
   const res = await ctx.app.inject({ method: 'GET', url });
@@ -365,7 +383,7 @@ test('V.22 en utgången länk ger 410, inte 404', async () => {
 test('V.22 en utgången länk verifierar inte kontot', async () => {
   const email = 'v22b@example.test';
   await register(email);
-  const url = pathOf(linkFrom(email));
+  const url = apiCallFor(linkFrom(email));
   await expireToken(email);
   await ctx.app.inject({ method: 'GET', url });
 
@@ -383,7 +401,7 @@ test('V.23 ett nytt bekräftelsemail ger en länk som fungerar igen', async () =
   await clearCooldown(email);
 
   expect((await resend(email)).statusCode).toBe(202);
-  const res = await ctx.app.inject({ method: 'GET', url: pathOf(linkFrom(email)) });
+  const res = await ctx.app.inject({ method: 'GET', url: apiCallFor(linkFrom(email)) });
 
   expect(res.statusCode).toBe(200);
   expect((await login(email)).statusCode).toBe(200);
@@ -407,7 +425,7 @@ test('V.25 ett redan verifierat konto tål att länken passerat', async () => {
   // Idempotensen från V.4 får inte gå förlorad bara för att tiden runnit ut.
   const email = 'v25@example.test';
   await register(email);
-  const url = pathOf(linkFrom(email));
+  const url = apiCallFor(linkFrom(email));
   expect((await ctx.app.inject({ method: 'GET', url })).statusCode).toBe(200);
   await expireToken(email);
 

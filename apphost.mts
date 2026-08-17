@@ -69,9 +69,6 @@ const api = await builder
   .waitFor(mailpit)
   .waitFor(minio);
 
-// Verifieringslänkarna måste peka på den port Aspire faktiskt tilldelat API:et.
-await api.withEnvironment('PUBLIC_BASE_URL', await api.getEndpoint('http'));
-
 /*
  * Gränssnittet. Vite proxar /api vidare till API:et, så webben och API:et delar origin
  * — ingen CORS-konfiguration behövs, och Playwright behöver bara känna till en adress.
@@ -84,6 +81,11 @@ const web = await builder
   .withHttpEndpoint({ env: 'PORT', port: 5173, isProxied: false })
   .withEnvironment('API_TARGET', 'http://localhost:3000')
   .waitFor(api);
+
+// Bekräftelselänkarna pekar på webbens /verify, inte in i API:et — därför webbens
+// adress här och inte API:ets. Sätts efter att `web` finns, men bara som ett värde:
+// api väntar inte på webben, och webben väntar fortfarande på api.
+await api.withEnvironment('PUBLIC_BASE_URL', await web.getEndpoint('http'));
 
 /*
  * E2E-sviten kör i Playwrights egen image, så värdmaskinen slipper både webbläsare och

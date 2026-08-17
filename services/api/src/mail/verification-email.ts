@@ -3,9 +3,13 @@ import type { OutgoingMail } from './mailer.ts';
 /**
  * Verifieringslänken. Token ligger som query-parameter så att länken går att klicka
  * direkt ur ett mailprogram.
+ *
+ * Länken pekar på webbens `/verify`, inte på `/api/v1/validate-user`. Sidan gör
+ * anropet åt användaren och kan berätta hur det gick — en rå länk in i API:et hade
+ * lämnat ett JSON-svar i webbläsaren, och en utgången token bara ett felobjekt.
  */
 export function verificationUrl(baseUrl: string, token: string): string {
-  const url = new URL('/api/v1/validate-user', baseUrl);
+  const url = new URL('/verify', baseUrl);
   url.searchParams.set('token', token);
   return url.toString();
 }
