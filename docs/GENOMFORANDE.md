@@ -437,6 +437,27 @@ mailet gäller — utan utgångstid är det den enda begränsningen som finns.
 att bombardera en adress. `verification_sent_at` bär tidsstämpeln; inom kylperioden skickas
 inget, men svaret är detsamma.
 
+**Kvotgräns per anropare: 5 anrop per 15 minuter, för API 10 och 11 var för sig.** Över
+gränsen ⇒ `429 too-many-requests` med `retry-after`. Kylperioden ligger per *konto* och
+biter därför inte på den som varierar adressen — vilket är precis vad en kartläggning gör.
+Spärren är en `onRequest`-hook, alltså före hanteraren: ett kvoterat anrop skickar inget
+mail alls (K.5).
+
+`429` står inte i statustabellen ovan. Tabellen beskriver vad som är fel med *anropet*,
+och här är anropet i sig felfritt — det är takten som inte duger, och ingen annan kod
+säger det.
+
+**Anroparen identifieras med `req.ip`, vilket kräver `trustProxy`.** Webben proxar `/api`
+vidare till API:et, så utan det ser varje besökare ut att komma från proxyn och skulle
+dela ett och samma tak. Vites proxy sätter huvudet med `xfwd: true`. Priset är att
+huvudet måste komma från något betrott: utan proxy framför går det att sätta själv.
+
+**Räknarna lever i processen** och nollställs vid omstart. Med en API-process räcker det;
+skalas tjänsten ut behöver de flytta till delad lagring. Gränsen är konfigurerbar med
+`AUTH_RATE_LIMIT_PER_WINDOW` och `AUTH_RATE_LIMIT_WINDOW_MINUTES` — testsviten höjer den,
+eftersom räknaren delas av hela testfilen och sviter som med rätta anropar de här
+endpointsen många gånger annars skulle fällas av varandra.
+
 **11–12. Lösenordsåterställning**
 `POST /auth/forgot-password` `{ email }` → `202 { accepted: true }`, samma
 läckagefria mönster och kylperiod som API 10.
@@ -926,6 +947,7 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | D.2 | Totalberäkning: fastpris är sitt eget total, timpris = rate × timmar avrundat i minorenhet, halva ören uppåt, ingen flyttalsdrift |
 | D.3 | Signaturstatens övergångar som ren funktion: första signaturen aktiverar inte, andra gör det, ordningen är likgiltig, samma part igen är verkningslös, `void` går inte att signera, indata muteras inte |
 | D.4 | `bigint` från `Bun.SQL` (string) → `number`; null förblir null; belopp utanför säkra heltal och skräp kastar; `toMinorColumn` kräver positivt heltal |
+| D.5 | Kvoträknaren som ren funktion: fönstret släpper igenom upp till gränsen, nycklar räknas var för sig, fönstret öppnar igen när det löpt ut, `retryAfterSeconds` rundas uppåt och aldrig till noll, utgångna nycklar städas bort |
 | **L8** | **Lista öppna förfrågningar** (API 8) |
 | L8.1 | En säljare ser öppna förfrågningar från andra, med köparens namn |
 | L8.2 | Utan token ⇒ 401 |
@@ -1065,6 +1087,12 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | Ä.15 | Bara säljaren får dra tillbaka ⇒ 403 |
 | Ä.16 | Tillbakadragande när avtalet finns ⇒ 409 |
 | Ä.17 | Tillbakadragande av okänt anbud ⇒ 404 |
+| **K** | **Kvotgräns per anropare** (API 10–11) |
+| K.1 | Anrop upp till gränsen släpps igenom |
+| K.2 | Anropet över gränsen ⇒ 429 `too-many-requests` med `retry-after` |
+| K.3 | Gränsen är per anropare — en annan adress påverkas inte |
+| K.4 | Egen räknare per endpoint; båda endpointsen har samma gräns |
+| K.5 | Andra endpoints är opåverkade, och ett kvoterat anrop skickar inget mail |
 | **G** | **Städning av föräldralösa objekt** |
 | G.1 | Ett föräldralöst objekt äldre än fristen raderas |
 | G.2 | Ett objekt med rad i databasen rörs inte |

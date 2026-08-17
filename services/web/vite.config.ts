@@ -20,6 +20,9 @@ export default defineConfig({
       '/api': {
         target: process.env.API_TARGET ?? 'http://localhost:3000',
         changeOrigin: true,
+        // Utan detta ser varje besökare ut att komma från proxyn, och API:ets kvotgräns
+        // per anropare skulle bli ett gemensamt tak för hela webben.
+        xfwd: true,
       },
     },
   },

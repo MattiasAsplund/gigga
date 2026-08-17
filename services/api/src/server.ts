@@ -8,6 +8,7 @@ import { registerErrorHandling } from './plugins/errors.ts';
 import { createSmtpMailer, type Mailer } from './mail/mailer.ts';
 import { createS3ObjectStore, type ObjectStore } from './storage/object-store.ts';
 import { registerAuth } from './plugins/auth.ts';
+import { registerRateLimit } from './plugins/rate-limit.ts';
 import { healthRoutes } from './routes/health.ts';
 import { authRoutes } from './routes/auth.ts';
 import { requestRoutes } from './routes/requests.ts';
@@ -66,6 +67,10 @@ export async function buildServer(options: BuildServerOptions = {}) {
 
   const app = Fastify({
     logger: { level: config.LOG_LEVEL },
+    // Webben proxar /api vidare till API:et, så utan detta ser varje besökare ut att
+    // komma från proxyn och skulle dela ett och samma kvottak. Kräver att det som står
+    // framför är betrott — huvudet går annars att sätta själv.
+    trustProxy: true,
     ajv: { customOptions: { removeAdditional: false, coerceTypes: false } },
   }).withTypeProvider<TypeBoxTypeProvider>();
 
@@ -103,6 +108,7 @@ export async function buildServer(options: BuildServerOptions = {}) {
   });
   await registerSwagger(app);
   await registerAuth(app);
+  await registerRateLimit(app);
 
   await app.register(healthRoutes);
   await app.register(authRoutes, { prefix: API_PREFIX });

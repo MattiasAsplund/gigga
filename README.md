@@ -200,8 +200,10 @@ Utöver det:
   `available: false`; säljaren får radera och ladda upp på nytt, vilket ger ett nytt id.
 - **Bara läsrätt finns som rättighetsnivå.** Kolumnen är förberedd för fler.
 - **Aktiva sessioner går inte att lista.** Utloggning kräver att man har sin egen token.
-- **Ingen rate limiting.** `/auth/resend-verification` och `/auth/forgot-password` har en
-  kylperiod per konto, men inget hindrar en angripare som varierar adressen.
+- **Kvoträknarna lever i processen.** `/auth/resend-verification` och
+  `/auth/forgot-password` har en gräns per anropare utöver kylperioden per konto, men
+  räknarna nollställs vid omstart och delas inte mellan instanser. Övriga endpoints är
+  okvoterade.
 - **Migrationer kan inte rullas tillbaka.** Ofarligt mot en icke-persistent databas, men
   måste lösas innan någon miljö blir persistent.
 

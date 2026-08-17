@@ -30,6 +30,12 @@ const ConfigSchema = Type.Object({
   ORPHAN_SWEEP_INTERVAL_MINUTES: Type.Integer({ minimum: 0, default: 60 }),
   /** Adress som larmas när lagringen tappat innehåll. Tom stänger av larmen. */
   STORAGE_ALERT_EMAIL: Type.String({ default: '' }),
+  /**
+   * Kvotgräns per anropare för /auth/resend-verification och /auth/forgot-password.
+   * Kylperioden per konto ligger kvar i SQL; det här stoppar den som varierar adressen.
+   */
+  AUTH_RATE_LIMIT_PER_WINDOW: Type.Integer({ minimum: 1, default: 5 }),
+  AUTH_RATE_LIMIT_WINDOW_MINUTES: Type.Integer({ minimum: 1, default: 15 }),
   JWT_SECRET: Type.String({ minLength: 32 }),
   LOG_LEVEL: Type.Union(
     [

@@ -195,6 +195,7 @@ export const authRoutes: FastifyPluginAsyncTypebox = async (app) => {
   app.post(
     '/auth/resend-verification',
     {
+      onRequest: app.rateLimit('resend-verification'),
       schema: {
         operationId: 'resendVerification',
         tags: ['auth'],
@@ -208,6 +209,7 @@ export const authRoutes: FastifyPluginAsyncTypebox = async (app) => {
         response: {
           202: ResendVerificationResponseSchema,
           422: ProblemSchema,
+          429: ProblemSchema,
         },
       },
     },
@@ -234,6 +236,7 @@ export const authRoutes: FastifyPluginAsyncTypebox = async (app) => {
   app.post(
     '/auth/forgot-password',
     {
+      onRequest: app.rateLimit('forgot-password'),
       schema: {
         operationId: 'forgotPassword',
         tags: ['auth'],
@@ -244,7 +247,11 @@ export const authRoutes: FastifyPluginAsyncTypebox = async (app) => {
           'använda för att kartlägga registrerade adresser. Samma kylperiod som för ' +
           'bekräftelsemail.',
         body: ForgotPasswordBodySchema,
-        response: { 202: ForgotPasswordResponseSchema, 422: ProblemSchema },
+        response: {
+          202: ForgotPasswordResponseSchema,
+          422: ProblemSchema,
+          429: ProblemSchema,
+        },
       },
     },
     async (req, reply) => {

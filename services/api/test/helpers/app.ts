@@ -27,6 +27,13 @@ export interface BuildTestAppOptions {
    * publik route — t.ex. requireAuth — utan att API-ytan växer utanför §6 i planen.
    */
   extraRoutes?: (app: App) => Promise<void>;
+  /**
+   * Kvotgränsen per anropare. Höjd som grundvärde: räknaren lever i processen och delas
+   * av hela testfilen, så skarpa fem anrop hade fällt de sviter som med rätta anropar
+   * resend och forgot många gånger. Kvoten prövas i sitt eget testfall, med sitt eget
+   * värde här.
+   */
+  authRateLimitPerWindow?: number;
 }
 
 /**
@@ -58,6 +65,8 @@ export async function buildTestApp(options: BuildTestAppOptions = {}): Promise<T
       S3_REGION: 'us-east-1',
       ORPHAN_SWEEP_INTERVAL_MINUTES: 0,
       STORAGE_ALERT_EMAIL: '',
+      AUTH_RATE_LIMIT_PER_WINDOW: options.authRateLimitPerWindow ?? 100_000,
+      AUTH_RATE_LIMIT_WINDOW_MINUTES: 15,
     },
     sql: db.sql,
     mailer: mail,
@@ -108,6 +117,8 @@ export async function buildTestAppWithBrokenDatabase(url: string): Promise<TestA
       S3_REGION: 'us-east-1',
       ORPHAN_SWEEP_INTERVAL_MINUTES: 0,
       STORAGE_ALERT_EMAIL: '',
+      AUTH_RATE_LIMIT_PER_WINDOW: 100_000,
+      AUTH_RATE_LIMIT_WINDOW_MINUTES: 15,
     },
     sql,
     mailer: mail,

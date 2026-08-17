@@ -49,6 +49,19 @@ export class ProblemError extends Error {
 export const unauthorized = (detail = 'Autentisering krävs.') =>
   new ProblemError({ status: 401, slug: 'unauthorized', title: 'Ej autentiserad', detail });
 
+/**
+ * 429 står inte i statustabellen i §6 — den beskriver vad som är fel med *anropet*, och
+ * här är anropet i sig felfritt. Det är takten som inte duger, och det finns ingen annan
+ * kod som säger det. Retry-After sätts av den som kastar.
+ */
+export const tooManyRequests = (retryAfterSeconds: number) =>
+  new ProblemError({
+    status: 429,
+    slug: 'too-many-requests',
+    title: 'För många försök',
+    detail: `Vänta ${retryAfterSeconds} sekunder och försök igen.`,
+  });
+
 export const invalidCredentials = () =>
   new ProblemError({
     status: 401,

@@ -53,6 +53,11 @@ annan. Behörighet avgörs alltid av ägarskap i just den raden, aldrig av en ro
 `POST /auth/forgot-password` med `{ email }` skickar en kod och svarar alltid
 `202 { "accepted": true }` — samma läckagefria mönster och kylperiod som bekräftelsemailen.
 
+Båda endpointsen har dessutom en **kvotgräns per anropare: 5 anrop per 15 minuter**, var
+för sig. Över gränsen svarar de `429 too-many-requests` med `retry-after` i sekunder, och
+inget mail skickas. Kylperioden ligger per konto och biter inte på den som varierar
+adressen — det är vad kvoten är till för.
+
 `POST /auth/reset-password` med `{ token, password }` sätter det nya lösenordet. Koden
 gäller i **en timme** och **en gång**: efter användning ger den `404`, efter utgången `410`.
 Ett misslyckat försök — för kort lösenord — bränner den inte.
