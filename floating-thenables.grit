@@ -1,0 +1,21 @@
+// Biome-plugin: en sats som bara är ett anrop, utan await framför.
+//
+// Finns för att Biomes egen noFloatingPromises inte räcker här. Den känner igen
+// `Promise`, men inte `PromiseLike` — och Aspires SDK returnerar aldrig ett Promise.
+// Varje `builder.add*()` ger en egen typ (`ContainerResourcePromise` och släktingar)
+// som utvidgar `PromiseLike`. Ett bortglömt `await` i apphost.mts bygger alltså en
+// halv resursgraf under tystnad, och det är precis det som ska fångas.
+//
+// Regeln är trubbig med flit: den säger inget om typer, bara att en ensam
+// anropssats inte hör hemma i apphost.mts. Filen består av `const x = await …` och
+// `await …`, ingenting annat, så den har inget att slå emot i onödan. Behövs ett
+// anrop vars värde verkligen ska slängas skrivs det `void anrop()`.
+language js
+
+`$call;` where {
+  $call <: `$fn($args)`,
+  register_diagnostic(
+    span = $call,
+    message = "Anropet saknar await. Aspires byggare returnerar PromiseLike, och utan await körs bara halva kedjan — skriv `void` framför om värdet verkligen ska slängas."
+  )
+}

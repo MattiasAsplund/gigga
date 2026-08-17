@@ -1,0 +1,30 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+
+  // Bara apphost.mts, som under eslint. Tjänsterna har sina egna typkollar och sitt
+  // eget tsc; det här är inte en lint av hela repot utan en spärr för AppHosten.
+  "files": { "includes": ["apphost.mts"] },
+
+  // Formateringen lämnas åt filerna som de står. Biome skulle vilja skriva om dem, och
+  // det är en annan fråga än den här spärren.
+  "formatter": { "enabled": false },
+  "assist": { "enabled": false },
+
+  // Ett bortglömt await i apphost.mts bygger en halv resursgraf under tystnad. Det är
+  // hela anledningen till att det finns en linter i det här repot.
+  //
+  // noFloatingPromises känner bara igen `Promise`. Aspires byggare returnerar
+  // `PromiseLike` och slinker igenom — därför plugin:et, som tar de fallen. Regeln står
+  // kvar ändå: den fångar vanliga Promise och kostar ingenting.
+  //
+  // Regeln ligger i nursery och kan ändras mellan Biome-versioner. Slutar den finnas
+  // står plugin:et kvar och gör grovjobbet.
+  "plugins": ["./floating-thenables.grit"],
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "none",
+      "nursery": { "noFloatingPromises": "error" }
+    }
+  }
+}
