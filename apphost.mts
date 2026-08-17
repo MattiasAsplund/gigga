@@ -48,10 +48,15 @@ const minio = await builder
   .addMinioContainer('minio', { rootUser: minioUser, rootPassword: minioPassword })
   .withSessionLifetime();
 
-// addBunApp kör `bun src/index.ts` direkt — inget bygg- eller transpileringssteg.
+// addBunApp kör källfilen direkt — inget bygg- eller transpileringssteg.
 const api = await builder
   .addBunApp('api', './services/api', 'src/index.ts')
   .withBun()
+  // Levande omladdning: bun startar om API:et när en källfil ändras, utan `aspire stop`.
+  // Flaggan måste stå före skriptet (`bun --watch src/index.ts`), och withArgs() lägger
+  // bara till sist — då blir den ett argument till programmet i stället. Därför via
+  // dev-scriptet i services/api/package.json, som äger ordningen.
+  .withRunScript('dev')
   // Fast port av samma skäl som mailpit: webbens proxy och e2e pekar hit.
   .withHttpEndpoint({ env: 'PORT', port: 3000 })
   .withEnvironment('DATABASE_URL', await db.uriExpression())
