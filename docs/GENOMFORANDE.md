@@ -785,7 +785,8 @@ räknar redan bort tillbakadragna.
 
 > Detta är den enda designtolkning i planen som inte är direkt given av uppgiften: kravlistan
 > nämner "signera avtal" men inget separat "acceptera anbud". Vi låter köparens signatur
-> *vara* accepterandet, vilket håller ytan vid sju API:er utan att tappa något steg i flödet.
+> *vara* accepterandet, vilket höll ytan vid sju API:er — så som den såg ut då — utan att
+> tappa något steg i flödet.
 > Om ett explicit accept-steg önskas är det en additiv ändring (nytt API 8), inte en omskrivning.
 
 ---
@@ -854,7 +855,7 @@ undvika.
 
 **Prövning utan publik route.** `buildTestApp({ extraRoutes })` registrerar routes som bara
 finns i testet, före `app.ready()`. Det är så `requireAuth` prövas (A2.1, A2.4) utan att
-API-ytan växer utanför de sju i §6.
+API-ytan växer utanför den som står i §6.
 
 ### 7.2 Testfallsmatris
 
@@ -1115,8 +1116,8 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | G.19 | Larmet är avkortat men säger hur mycket som utelämnats |
 | **X** | **Tvärsnitt** |
 | X.1 | `/docs/json` är OpenAPI 3.1 med ifylld `info` |
-| X.1b | Alla sju API:erna finns på rätt metod och väg, med rätt `operationId` |
-| X.1c | API-ytan är **exakt** de sju plus `/health` — en oavsiktlig route faller ut här |
+| X.1b | Alla API:er i §6 finns på rätt metod och väg, med rätt `operationId` |
+| X.1c | API-ytan är **exakt** de deklarerade plus `/health` — en oavsiktlig route faller ut här |
 | X.1d | Varje `$ref` går att slå upp i `components` |
 | X.2 | Varje operation har unikt `operationId`, `tags` och `summary` |
 | X.2b | Varje 4xx-svar är beskrivet och har ett kroppsschema |
@@ -1244,9 +1245,9 @@ gör resten testdriven. Från etapp 2 gäller §8.1 utan undantag.
   slippa en migrering den dag det behövs fler.
 - **Städning av `refresh_tokens`** — rader ligger kvar efter utgång. `revoked_tokens`
   städas vid utloggning; motsvarande saknas här.
-- **Rate limiting** på `/auth/*` — `@fastify/rate-limit` är ett endagsjobb när det behövs.
-  `/auth/resend-verification` har en egen kylperiod per konto, men inget skydd mot en
-  angripare som varierar adressen.
+- **Delade kvoträknare** — `/auth/resend-verification` och `/auth/forgot-password` har en
+  gräns per anropare (§6.1 punkt 10), men räknarna lever i API-processen: de nollställs vid
+  omstart och delas inte mellan instanser. Övriga `/auth/*` är okvoterade.
 - **Betalning, fakturering, tidrapportering** — nästa domänområde efter avtalet.
 - **Migrationsverktyg med rollback** — meningslöst mot en icke-persistent databas, men
   krävs innan någon persistent miljö sätts upp. Detta är den skuld som förfaller först.
@@ -1263,8 +1264,9 @@ Ingen blockerar etapp 0–2; de behöver svar innan de etapper som anges.
    förfrågans budget avvisas? *(behövs i etapp 4)*
 2. **Moms** — ska belopp anges exklusive eller inklusive moms, och ska det modelleras
    explicit? *(etapp 4)*
-3. **Ändra/dra tillbaka anbud** — `withdrawn` finns i schemat men inget API. Behövs det i
-   etapp 1? *(etapp 4)*
+3. **Ändra/dra tillbaka anbud** — ~~behövs det?~~ **Besvarad: ja.** Byggd som
+   `PATCH /bids/{id}` och `POST /bids/{id}/withdrawal` (API 24–25, §6.1). Motsvarande för
+   *förfrågningar* är fortfarande obyggt — `cancelled` ligger oanvänd.
 4. **Signaturens rättsliga innebörd** — räcker tidsstämpel + användar-ID, eller ska en
    hash av `terms` sparas som bevis? Det senare är billigt att lägga till nu och dyrt
    senare. *(etapp 6)*

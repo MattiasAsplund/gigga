@@ -4,7 +4,8 @@ Marknadsplats för distansuppdrag. **Köpare** publicerar uppdragsförfrågninga
 lämnar anbud med en genomförandeplan och ett pris — fast eller per timme — och parterna
 signerar ett avtal.
 
-Det här är backenden: ett REST-API med 23 endpoints. Ingen frontend finns.
+Repot innehåller ett REST-API med 25 endpoints, ett webbgränssnitt ovanpå det, och en
+Playwright-svit som går hela flödet genom gränssnittet.
 
 **Roller är inte knutna till konton.** Samma användare är köpare i en förfrågan och säljare
 i en annan. Behörighet avgörs alltid av ägarskap i just den raden.
@@ -22,22 +23,24 @@ vidare till:
 
 | Resurs | Vad du gör där |
 |---|---|
+| **web** | Gränssnittet — registrera, publicera, lämna anbud, signera |
 | **api** | Swagger UI på `/docs`, OpenAPI 3.1 på `/docs/json` |
 | **mailpit** | Läser bekräftelse- och återställningsmail — inget skickas på riktigt |
 | **pgweb** | Bläddrar i tabellerna |
 | **minio** | Ser anbudsdokumenten som objekt |
+| **e2e** | Playwright-sviten. Startas på begäran, inte vid `aspire run` |
 
 Postgres och MinIO är **icke-persistenta**: allt försvinner vid `aspire stop`. Schemat
 byggs upp vid varje start.
 
 ```bash
-bun test                  # 263 tester, ~35 s
+bun test                  # 297 tester, ~45 s
 bun run test:coverage     # samma, plus täckningsrapport
 ```
 
 Rapporten hamnar i `services/api/coverage/` (gitignorerad): `index.html` med annoterad
-källkod, `lcov.info` för CI och `summary.txt` som textabell. Täckningen ligger på 92,5 %
-av funktionerna och 94,7 % av raderna; det som saknas är främst SMTP- och S3-koden, som
+källkod, `lcov.info` för CI och `summary.txt` som textabell. Täckningen ligger på 92,9 %
+av funktionerna och 94,9 % av raderna; det som saknas är främst SMTP- och S3-koden, som
 testerna med flit ersätter med minnesvarianter.
 
 ---
@@ -65,8 +68,9 @@ duger inte förrän adressen är bekräftad.
 ### 2. Bekräfta adresserna
 
 Öppna **mailpit** i dashboarden och klicka länken i vartdera mailet. Länken går till
-`GET /validate-user?token=…`, gäller i 24 timmar och tål att klickas flera gånger. Tappat
-mailet? `POST /auth/resend-verification`.
+webbens `/verify?token=…`, som gör anropet mot API:et och visar hur det gick. Den gäller i
+24 timmar och tål att klickas flera gånger. Tappat mailet? `POST /auth/resend-verification`
+— högst fem gånger per kvart och anropare.
 
 Utan det här steget svarar både inloggning och varje skyddad endpoint `403
 email-not-verified`.
@@ -168,10 +172,10 @@ Anropet är idempotent: samma part kan signera igen utan att något ändras.
 
 | Område | Stöd |
 |---|---|
-| **Konton** | Registrering, inloggning, e-postbekräftelse med utgångstid, nytt bekräftelsemail, lösenordsåterställning |
+| **Konton** | Registrering, inloggning, e-postbekräftelse med utgångstid, nytt bekräftelsemail, lösenordsåterställning, kvotgräns per anropare på de två som skickar mail |
 | **Sessioner** | Access-token (1 h) + refresh-token (30 d) med rotation och läckagedetektering, utloggning per session, lösenordsbyte som stänger alla |
 | **Förfrågningar** | Publicera, läsa egna med anbud, katalog över öppna med filter och sidbrytning |
-| **Anbud** | Fast pris eller timpris, beräknat totalbelopp, ett aktivt anbud per säljare och förfrågan |
+| **Anbud** | Fast pris eller timpris, beräknat totalbelopp, ett aktivt anbud per säljare och förfrågan, ändra och dra tillbaka |
 | **Dokument** | Markdown och PDF i objektlagring, namnbyte, radering, nedladdning av alla som ZIP |
 | **Delning** | Läsrätt på en förfrågan till namngivna användare, återkallningsbar |
 | **Avtal** | Tvåpartssignering med frysta villkor, tilldelning och avslag i en transaktion |
@@ -192,9 +196,9 @@ arbetet faktiskt blev gjort.
 
 Utöver det:
 
-- **Anbud går inte att ändra eller dra tillbaka.** Statusen `withdrawn` finns i schemat men
-  inget API sätter den. Fel i ett anbud kan bara rättas genom att köparen väljer ett annat.
-- **Förfrågningar går inte att ändra eller avbryta.** `cancelled` finns, likaså oanvänd.
+- **Förfrågningar går inte att ändra eller avbryta.** `cancelled` finns i schemat men
+  inget API sätter den. Säljaren kan ändra och dra tillbaka sitt anbud, köparen har ingen
+  motsvarande väg ut ur sin förfrågan.
 - **Katalogen har varken fritextsökning eller sortering.** Bara filter på ersättningsform.
 - **Ett dokument vars innehåll tappats går inte att ersätta.** Raden markeras
   `available: false`; säljaren får radera och ladda upp på nytt, vilket ger ett nytt id.
@@ -207,9 +211,9 @@ Utöver det:
 - **Migrationer kan inte rullas tillbaka.** Ofarligt mot en icke-persistent databas, men
   måste lösas innan någon miljö blir persistent.
 
-Fyra frågor väntar dessutom på beställarens svar: valuta vid anbud i annan valuta än
-budgeten, momshantering, om anbud ska kunna dras tillbaka, och om en signatur ska spara en
-hash av villkoren som bevis. De står i §11 i [genomförandeplanen](docs/GENOMFORANDE.md).
+Tre frågor väntar dessutom på beställarens svar: valuta vid anbud i annan valuta än
+budgeten, momshantering, och om en signatur ska spara en hash av villkoren som bevis. De
+står i §11 i [genomförandeplanen](docs/GENOMFORANDE.md).
 
 ---
 

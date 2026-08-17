@@ -62,8 +62,9 @@ adressen — det är vad kvoten är till för.
 gäller i **en timme** och **en gång**: efter användning ger den `404`, efter utgången `410`.
 Ett misslyckat försök — för kort lösenord — bränner den inte.
 
-Utan frontend bär mailet koden i klartext med instruktioner. Sätt `PASSWORD_RESET_URL` när
-en sida finns, så skickas en klickbar länk i stället.
+**Mailet bär koden i klartext med instruktioner**, eftersom webben ännu inte har någon
+sida för att sätta nytt lösenord — till skillnad från bekräftelselänken, som går via
+`/verify`. Sätt `PASSWORD_RESET_URL` när sidan finns, så skickas en klickbar länk i stället.
 
 **Alla tidigare access-tokens slutar gälla** vid lösenordsbytet och ger `401 token-revoked`.
 Logga in igen för att få en ny. Andra användares tokens berörs förstås inte.
