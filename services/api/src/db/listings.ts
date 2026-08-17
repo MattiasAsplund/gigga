@@ -15,6 +15,7 @@ export interface PageQuery {
 
 export interface BidWithSeller extends Bid {
   sellerDisplayName: string;
+  contract: ContractSummary | null;
 }
 
 export interface RequestWithBids extends UppdragsRequest {
@@ -24,13 +25,35 @@ export interface RequestWithBids extends UppdragsRequest {
 export interface ContractSummary {
   id: string;
   status: 'pending_signatures' | 'active' | 'void';
-  buyerSigned: boolean;
-  sellerSigned: boolean;
+  buyerSignedAt: Date | null;
+  sellerSignedAt: Date | null;
 }
 
 export interface BidWithContext extends Bid {
   requestTitle: string;
   contract: ContractSummary | null;
+}
+
+/** Kolumnerna från LEFT JOIN contracts — null hela vägen när inget avtal finns. */
+interface ContractColumns {
+  contract_id: string | null;
+  contract_status: ContractSummary['status'] | null;
+  buyer_signed_at: Date | null;
+  seller_signed_at: Date | null;
+}
+
+const CONTRACT_JOIN_COLUMNS =
+  'c.id AS contract_id, c.status AS contract_status, c.buyer_signed_at, c.seller_signed_at';
+
+function toContractSummary(row: ContractColumns): ContractSummary | null {
+  return row.contract_id && row.contract_status
+    ? {
+        id: row.contract_id,
+        status: row.contract_status,
+        buyerSignedAt: row.buyer_signed_at,
+        sellerSignedAt: row.seller_signed_at,
+      }
+    : null;
 }
 
 /**
@@ -65,20 +88,26 @@ export async function listBuyerRequests(
     SELECT b.id, b.request_id, b.seller_id, b.plan, b.compensation_type,
            b.fixed_amount_minor, b.hourly_rate_minor, b.estimated_hours, b.currency,
            b.status, b.created_at,
-           u.display_name
+           u.display_name,
+           ${sql.unsafe(CONTRACT_JOIN_COLUMNS)}
     FROM bids b
     JOIN users u ON u.id = b.seller_id
+    LEFT JOIN contracts c ON c.bid_id = b.id
     -- sql(array) expanderar till en parametriserad IN-lista. En rå JS-array binds av
     -- Bun.SQL som komma-sträng och ger "malformed array literal".
     -- Listan är aldrig tom här: vi returnerade redan om sidan saknade förfrågningar.
     WHERE b.request_id IN ${sql(requests.map((r) => r.id))}
     ORDER BY b.created_at DESC, b.id DESC
-  `) as (BidRow & { display_name: string })[];
+  `) as (BidRow & { display_name: string } & ContractColumns)[];
 
   const byRequest = new Map<string, BidWithSeller[]>();
   for (const row of bidRows) {
     const list = byRequest.get(row.request_id) ?? [];
-    list.push({ ...toBid(row), sellerDisplayName: row.display_name });
+    list.push({
+      ...toBid(row),
+      sellerDisplayName: row.display_name,
+      contract: toContractSummary(row),
+    });
     byRequest.set(row.request_id, list);
   }
 
@@ -98,14 +127,20 @@ export async function listBidsForRequest(
     SELECT b.id, b.request_id, b.seller_id, b.plan, b.compensation_type,
            b.fixed_amount_minor, b.hourly_rate_minor, b.estimated_hours, b.currency,
            b.status, b.created_at,
-           u.display_name
+           u.display_name,
+           ${sql.unsafe(CONTRACT_JOIN_COLUMNS)}
     FROM bids b
     JOIN users u ON u.id = b.seller_id
+    LEFT JOIN contracts c ON c.bid_id = b.id
     WHERE b.request_id = ${requestId}
     ORDER BY b.created_at DESC, b.id DESC
-  `) as (BidRow & { display_name: string })[];
+  `) as (BidRow & { display_name: string } & ContractColumns)[];
 
-  return rows.map((row) => ({ ...toBid(row), sellerDisplayName: row.display_name }));
+  return rows.map((row) => ({
+    ...toBid(row),
+    sellerDisplayName: row.display_name,
+    contract: toContractSummary(row),
+  }));
 }
 
 export interface CatalogRequest extends UppdragsRequest {
@@ -201,14 +236,6 @@ export async function listSellerBids(
   return rows.map((row) => ({
     ...toBid(row),
     requestTitle: row.request_title,
-    contract:
-      row.contract_id && row.contract_status
-        ? {
-            id: row.contract_id,
-            status: row.contract_status,
-            buyerSigned: row.buyer_signed_at !== null,
-            sellerSigned: row.seller_signed_at !== null,
-          }
-        : null,
+    contract: toContractSummary(row),
   }));
 }

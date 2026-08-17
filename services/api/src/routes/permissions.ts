@@ -21,6 +21,7 @@ import {
 import { listBidsForRequest } from '../db/listings.ts';
 import { estimatedTotalMinor } from '../domain/bid-rules.ts';
 import { requestToResponse } from './requests.ts';
+import { contractSummaryToResponse } from './me.ts';
 import {
   notRequestOwner,
   permissionNotFound,
@@ -102,6 +103,7 @@ export const permissionRoutes: FastifyPluginAsyncTypebox = async (app) => {
           compensation: bid.compensation,
           estimatedTotalMinor: estimatedTotalMinor(bid.compensation),
           status: bid.status,
+          contract: contractSummaryToResponse(bid.contract),
           createdAt: bid.createdAt.toISOString(),
         })),
       };

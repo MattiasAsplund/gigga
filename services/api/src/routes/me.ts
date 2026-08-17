@@ -6,11 +6,27 @@ import {
   MyRequestsResponseSchema,
   PageQuerySchema,
 } from '../schemas/me.ts';
-import { listBuyerRequests, listSellerBids } from '../db/listings.ts';
+import {
+  listBuyerRequests,
+  listSellerBids,
+  type ContractSummary,
+} from '../db/listings.ts';
 import { paginate, DEFAULT_PAGE_SIZE } from '../domain/pagination.ts';
 import { estimatedTotalMinor } from '../domain/bid-rules.ts';
 import { requestToResponse } from './requests.ts';
 import { parseCursor } from './query.ts';
+
+/** Datum blir ISO-strängar vid gränsen, som överallt annars i svaren. */
+export function contractSummaryToResponse(contract: ContractSummary | null) {
+  return contract
+    ? {
+        id: contract.id,
+        status: contract.status,
+        buyerSignedAt: contract.buyerSignedAt?.toISOString() ?? null,
+        sellerSignedAt: contract.sellerSignedAt?.toISOString() ?? null,
+      }
+    : null;
+}
 
 export const meRoutes: FastifyPluginAsyncTypebox = async (app) => {
   app.get(
@@ -48,6 +64,7 @@ export const meRoutes: FastifyPluginAsyncTypebox = async (app) => {
             compensation: bid.compensation,
             estimatedTotalMinor: estimatedTotalMinor(bid.compensation),
             status: bid.status,
+            contract: contractSummaryToResponse(bid.contract),
             createdAt: bid.createdAt.toISOString(),
           })),
         })),
@@ -91,7 +108,7 @@ export const meRoutes: FastifyPluginAsyncTypebox = async (app) => {
           compensation: bid.compensation,
           estimatedTotalMinor: estimatedTotalMinor(bid.compensation),
           status: bid.status,
-          contract: bid.contract,
+          contract: contractSummaryToResponse(bid.contract),
           createdAt: bid.createdAt.toISOString(),
         })),
         nextCursor: page.nextCursor,

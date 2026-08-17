@@ -34,6 +34,17 @@ const NextCursorSchema = Type.Union([Type.String(), Type.Null()], {
   description: 'Skickas som `cursor` för nästa sida. `null` när sidan är den sista.',
 });
 
+export const ContractSummarySchema = Type.Object({
+  id: UuidSchema,
+  status: Type.Union([
+    Type.Literal('pending_signatures'),
+    Type.Literal('active'),
+    Type.Literal('void'),
+  ]),
+  buyerSignedAt: Type.Union([Type.String({ format: 'date-time' }), Type.Null()]),
+  sellerSignedAt: Type.Union([Type.String({ format: 'date-time' }), Type.Null()]),
+});
+
 /** Anbud sett från köparens sida, inuti en av dennes förfrågningar. */
 export const BidSummarySchema = Type.Object({
   id: UuidSchema,
@@ -43,6 +54,12 @@ export const BidSummarySchema = Type.Object({
   compensation: CompensationSchema,
   estimatedTotalMinor: Type.Integer(),
   status: BidStatusSchema,
+  /**
+   * Avtalets läge, eller null när inget avtal finns. Fältet finns alltid: utan det kan
+   * köparens sida inte skilja "inget avtal" från "vet inte", och en köpare som signerat
+   * och laddar om möts av att avtalet aldrig påbörjats.
+   */
+  contract: Type.Union([ContractSummarySchema, Type.Null()]),
   createdAt: Type.String({ format: 'date-time' }),
 });
 
@@ -54,17 +71,6 @@ export const MyRequestsResponseSchema = Type.Object({
     ]),
   ),
   nextCursor: NextCursorSchema,
-});
-
-export const ContractSummarySchema = Type.Object({
-  id: UuidSchema,
-  status: Type.Union([
-    Type.Literal('pending_signatures'),
-    Type.Literal('active'),
-    Type.Literal('void'),
-  ]),
-  buyerSigned: Type.Boolean(),
-  sellerSigned: Type.Boolean(),
 });
 
 /** Anbud sett från säljarens sida, med förfrågans titel och avtalets läge. */

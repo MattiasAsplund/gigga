@@ -28,8 +28,8 @@ interface BidItem {
   contract: {
     id: string;
     status: string;
-    buyerSigned: boolean;
-    sellerSigned: boolean;
+    buyerSignedAt: string | null;
+    sellerSignedAt: string | null;
   } | null;
   createdAt: string;
 }
@@ -114,7 +114,7 @@ test('L4.3 contract är null innan avtal finns', async () => {
   expect(item!.contract).toBeNull();
 });
 
-test('L4.3 contract visar signaturläget när avtal finns', async () => {
+test('L4.3b contract bär signaturernas tidpunkter när avtal finns', async () => {
   const requestId = await createRequest('Uppdrag med påbörjat avtal');
   const bidId = await placeBid(seller, requestId);
 
@@ -127,12 +127,12 @@ test('L4.3 contract visar signaturläget när avtal finns', async () => {
     (i) => i.id === bidId,
   );
 
-  expect(item!.contract).toEqual({
-    id: contractId,
-    status: 'pending_signatures',
-    buyerSigned: true,
-    sellerSigned: false,
-  });
+  // Tidpunkten, inte bara ett ja/nej: avtalet är ett dokument, och när en part skrev
+  // under hör till det. En boolean tvingar dessutom sidan att hitta på en tidpunkt.
+  expect(item!.contract!.id).toBe(contractId);
+  expect(item!.contract!.status).toBe('pending_signatures');
+  expect(item!.contract!.buyerSignedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  expect(item!.contract!.sellerSignedAt).toBeNull();
 });
 
 test('L4.4 ?status filtrerar', async () => {

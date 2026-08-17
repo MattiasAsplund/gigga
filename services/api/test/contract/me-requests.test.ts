@@ -26,6 +26,12 @@ interface BidSummary {
   compensation: Record<string, unknown>;
   estimatedTotalMinor: number;
   status: string;
+  contract: {
+    id: string;
+    status: string;
+    buyerSignedAt: string | null;
+    sellerSignedAt: string | null;
+  } | null;
   createdAt: string;
 }
 
@@ -166,4 +172,26 @@ test('L3.5 utan token ger 401', async () => {
   const res = await ctx.app.inject({ method: 'GET', url: '/api/v1/me/requests' });
 
   expect(res.statusCode).toBe(401);
+});
+
+test('L3.6 anbudet bär avtalets läge, så köparen ser sin egen signatur igen', async () => {
+  const requestId = await createRequest(buyer, 'Förfrågan som ska signeras');
+  const bidId = (
+    await seller.post(`/api/v1/requests/${requestId}/bids`, fixedBid)
+  ).json<{ id: string }>().id;
+
+  // Utan avtal är fältet null — utelämnas det kan köparens sida inte skilja
+  // "inget avtal" från "vet inte".
+  const before = (await buyer.get('/api/v1/me/requests')).json<Page>();
+  const bidBefore = before.items.find((i) => i.id === requestId)!.bids[0]!;
+  expect(bidBefore.contract).toBeNull();
+
+  await buyer.post(`/api/v1/bids/${bidId}/contract/signatures`, {});
+
+  const after = (await buyer.get('/api/v1/me/requests')).json<Page>();
+  const bidAfter = after.items.find((i) => i.id === requestId)!.bids[0]!;
+  expect(bidAfter.contract).not.toBeNull();
+  expect(bidAfter.contract!.status).toBe('pending_signatures');
+  expect(bidAfter.contract!.buyerSignedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  expect(bidAfter.contract!.sellerSignedAt).toBeNull();
 });

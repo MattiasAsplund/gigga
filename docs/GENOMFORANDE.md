@@ -533,10 +533,17 @@ aldrig kunna börja fungera. Med uppslaget gäller i stället att **samma token 
 direkt efter bekräftelsen, utan ny inloggning** (V.11).
 
 **3. `GET /me/requests`** → `200`
-`{ items: [{ …request, bids: [{ id, sellerId, sellerDisplayName, plan, compensation, estimatedTotalMinor, status, createdAt }] }], nextCursor }`.
+`{ items: [{ …request, bids: [{ id, sellerId, sellerDisplayName, plan, compensation, estimatedTotalMinor, status, contract, createdAt }] }], nextCursor }`.
 Endast anropande användares egna förfrågningar. Anbudens `plan`-fält ingår — köparen ska
-kunna bedöma dem. Sortering: nyaste först. Sidbrytning via `?limit&cursor` (default 20,
-max 100).
+kunna bedöma dem.
+
+**`contract` bär avtalets läge, eller `null` när inget avtal finns** — samma form som i
+API 4, och fältet finns alltid. Säljarens lista har haft det hela tiden; köparens saknade
+det, vilket gjorde att en köpare som signerat och laddade om sidan möttes av att avtalet
+aldrig påbörjats. Signaturläget fanns då bara i webbsidans eget minne från
+signeringssvaret (L3.6). Samma fält ingår i API 15 (P.16).
+
+Sortering: nyaste först. Sidbrytning via `?limit&cursor` (default 20, max 100).
 
 Markören är ogenomskinlig (base64url av `created_at|id`) och pekar på sista raden i
 föregående sida. Inte offset: med offset tappar eller upprepar man rader när nya
@@ -545,7 +552,12 @@ förfrågningar tillkommer mitt i bläddringen. `nextCursor` är `null` på sist
 Anbuden hämtas i **en** extra fråga för hela sidan, inte en per förfrågan.
 
 **4. `GET /me/bids`** → `200`
-`{ items: [{ id, requestId, requestTitle, plan, compensation, estimatedTotalMinor, status, contract: { id, status, buyerSigned, sellerSigned } | null, createdAt }], nextCursor }`.
+`{ items: [{ id, requestId, requestTitle, plan, compensation, estimatedTotalMinor, status, contract: { id, status, buyerSignedAt, sellerSignedAt } | null, createdAt }], nextCursor }`.
+
+**Signaturerna redovisas som tidpunkter, inte som ja/nej.** Avtalet är ett dokument, och
+när en part skrev under hör till det. En boolean tvingade dessutom gränssnittet att hitta
+på en tidpunkt för att kunna rendera signaturrutan — resultatet blev "Signerat" och "Ingen
+signatur än" bredvid varandra i samma ruta (L4.3b).
 Endast egna anbud. Filtrering via `?status=`, och samma markörsidbrytning som API 3 —
 en obegränsad lista är ett problem som växer tyst.
 
@@ -874,13 +886,14 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | L3.4c | Trasig `cursor` ⇒ 422 med pekare på `cursor` |
 | L3.4d | `limit` utanför 1–100 ⇒ 422 |
 | L3.5 | Utan token ⇒ 401 |
+| L3.6 | Anbudet bär avtalets läge med signaturernas tidpunkter, `null` utan avtal |
 | **L4** | **Lista egna anbud** |
 | L4.1 | Returnerar bara egna anbud |
 | L4.1b | Anbudet bär förfrågans titel och beräknat totalbelopp |
 | L4.1c | Utan token ⇒ 401 |
 | L4.2 | Status speglar avtalsflödet (`submitted` → `accepted`/`rejected`) |
 | L4.3 | `contract` är `null` innan avtal finns |
-| L4.3b | `contract` visar signaturläget när avtal finns |
+| L4.3b | `contract` bär signaturernas tidpunkter när avtal finns |
 | L4.4 | `?status=` filtrerar |
 | L4.4b | Okänd status ⇒ 422 |
 | L4.4c | Sidbrytning fungerar som för förfrågningar |
@@ -1009,6 +1022,7 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | P.13 | Läsrätt påverkar inte rätten att lägga anbud |
 | P.14 | Rättigheter försvinner med förfrågan |
 | P.15 | Säljaren ser sitt eget anbud men inte en annan säljares |
+| P.16 | Anbudet i förfrågan bär avtalets läge med signaturens tidpunkt |
 | **B** | **Anbudsdokument** (API 19–23) |
 | B.1 | Säljaren kan ladda upp PDF och Markdown ⇒ 201 |
 | B.2 | Filtypen avgörs av innehållet: falsk PDF, trasig UTF-8 och andra typer ⇒ 415 |

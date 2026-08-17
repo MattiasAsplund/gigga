@@ -276,3 +276,26 @@ test('P.14 rättigheter försvinner med förfrågan', async () => {
   `) as { n: number }[];
   expect(rows[0]!.n).toBe(0);
 });
+
+test('P.16 anbudet i förfrågan bär avtalets läge', async () => {
+  const requestId = await createRequest();
+  const bidId = (
+    await seller.post(`/api/v1/requests/${requestId}/bids`, {
+      plan: 'Plan att signera.',
+      compensation: { type: 'fixed', amountMinor: 100000, currency: 'SEK' },
+    })
+  ).json<{ id: string }>().id;
+
+  expect(
+    (await readRequest(buyer, requestId)).json<{ bids: { contract: unknown }[] }>().bids[0]!
+      .contract,
+  ).toBeNull();
+
+  await buyer.post(`/api/v1/bids/${bidId}/contract/signatures`, {});
+
+  const bid = (await readRequest(buyer, requestId)).json<{
+    bids: { contract: { status: string; buyerSignedAt: string | null } | null }[];
+  }>().bids[0]!;
+  expect(bid.contract?.status).toBe('pending_signatures');
+  expect(bid.contract?.buyerSignedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+});
