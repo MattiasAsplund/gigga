@@ -287,6 +287,16 @@ export const noContractYet = () =>
       'Köparen signerar först, vilket skapar avtalet. Det finns inget att signera ännu.',
   });
 
+export const contractExists = () =>
+  new ProblemError({
+    status: 409,
+    slug: 'contract-exists',
+    title: 'Avtalet är redan skapat',
+    detail:
+      'Anbudet går varken att ändra eller dra tillbaka när köparen signerat — villkoren ' +
+      'är frysta i avtalet. Vill du inte ha uppdraget räcker det att låta bli att signera.',
+  });
+
 /**
  * Översätter Fastifys valideringsfel till 422 med fältpekare.
  * 400 är reserverat för trasig syntax; ett schemabrott är semantiskt (planens §8.1).

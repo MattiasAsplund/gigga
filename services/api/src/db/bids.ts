@@ -76,3 +76,56 @@ export async function findBidById(sql: SQL, id: string): Promise<Bid | null> {
   const row = rows[0];
   return row ? toBid(row) : null;
 }
+
+/**
+ * Skriver om anbudets innehåll. Utelämnade fält lämnas orörda — COALESCE på planen,
+ * och för ersättningen avgör en flagga i stället, eftersom dess kolumner är null i
+ * den form som inte gäller (ett fastprisanbud har ingen timtaxa att falla tillbaka på).
+ *
+ * Statusen rörs inte: en ändring gör inte om anbudet till något annat.
+ */
+export async function updateBid(
+  sql: SQL,
+  input: { bidId: string; plan: string | null; compensation: Compensation | null },
+): Promise<Bid | null> {
+  const columns = input.compensation
+    ? toCompensationColumns(input.compensation)
+    : { compensationType: null, fixedAmountMinor: null, hourlyRateMinor: null, estimatedHours: null, currency: null };
+  const changeCompensation = input.compensation !== null;
+
+  const rows = (await sql`
+    UPDATE bids SET
+      plan                = COALESCE(${input.plan}, plan),
+      compensation_type   = CASE WHEN ${changeCompensation}
+                            THEN ${columns.compensationType}::compensation_type
+                            ELSE compensation_type END,
+      fixed_amount_minor  = CASE WHEN ${changeCompensation}
+                            THEN ${columns.fixedAmountMinor} ELSE fixed_amount_minor END,
+      hourly_rate_minor   = CASE WHEN ${changeCompensation}
+                            THEN ${columns.hourlyRateMinor} ELSE hourly_rate_minor END,
+      estimated_hours     = CASE WHEN ${changeCompensation}
+                            THEN ${columns.estimatedHours} ELSE estimated_hours END,
+      currency            = CASE WHEN ${changeCompensation}
+                            THEN ${columns.currency} ELSE currency END
+    WHERE id = ${input.bidId}
+    RETURNING ${sql.unsafe(BID_COLUMNS)}
+  `) as BidRow[];
+
+  const row = rows[0];
+  return row ? toBid(row) : null;
+}
+
+/**
+ * Sätter anbudet till withdrawn. Idempotent genom att den redan tillbakadragna raden
+ * skrivs om till samma värde — anroparen får tillbaka raden oavsett (Ä.12).
+ */
+export async function withdrawBid(sql: SQL, bidId: string): Promise<Bid | null> {
+  const rows = (await sql`
+    UPDATE bids SET status = 'withdrawn'
+    WHERE id = ${bidId}
+    RETURNING ${sql.unsafe(BID_COLUMNS)}
+  `) as BidRow[];
+
+  const row = rows[0];
+  return row ? toBid(row) : null;
+}

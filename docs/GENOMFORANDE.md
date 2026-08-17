@@ -384,6 +384,8 @@ och vid valideringsfel `errors[]`.
 | 21 | `GET /api/v1/bids/{bidId}/attachments/archive` | ✔ | Ladda ner alla som ZIP |
 | 22 | `PATCH /api/v1/bids/{bidId}/attachments/{attachmentId}` | ✔ | Byt filnamn |
 | 23 | `DELETE /api/v1/bids/{bidId}/attachments/{attachmentId}` | ✔ | Radera dokument |
+| 24 | `PATCH /api/v1/bids/{bidId}` | ✔ | Ändra anbud |
+| 25 | `POST /api/v1/bids/{bidId}/withdrawal` | ✔ | Dra tillbaka anbud |
 
 ### 6.1 Detaljer per API
 
@@ -715,6 +717,39 @@ bifogat?" har svaret "ingenting", vilket inte är ett fel.
 > systemets `unzip`. B.9 granskar nu flaggbiten i råa byten i stället för att lita på en
 > rundtur.
 
+**24–25. Ändra och dra tillbaka anbud**
+Säljaren kan skriva om sin genomförandeplan och sin ersättning, och dra tillbaka anbudet
+helt. Båda kräver att anroparen är anbudets säljare (`403`), att förfrågan fortfarande är
+öppen och att deadline inte passerat (`422`).
+
+**Ersättningen byts i sin helhet, aldrig fält för fält.** Ett timanbud och ett
+fastprisanbud har olika fält, och en halvt ifylld ersättning är inte en form som går att
+räkna på. Planen och ersättningen går däremot att ändra var för sig. En kropp utan fält
+alls ⇒ `422`, via `minProperties` — annars vore anropet ett tyst ingenting som ändå svarar
+`200`.
+
+**Ett skapat avtal låser anbudet: `409 contract-exists`.** Villkoren fryses i
+`contracts.terms` när köparen signerar (S7.7), och ett anbud som glider isär från dem vore
+två sanningar om samma uppgörelse. Säljaren som ångrar sig behöver inte dra tillbaka något
+— det räcker att låta bli att signera, så förblir avtalet `pending_signatures`. Att låta
+tillbakadragandet ogiltigförklara avtalet vore att riva det under en köpare som redan
+signerat.
+
+**Tillbakadragande är idempotent** och svarar `200` med samma resultat andra gången — det
+är en handling utan motsatsläge, till skillnad från att lämna anbud där det andra försöket
+ger `409`. Statusen `withdrawn` och det partiella unika indexet
+`(request_id, seller_id) WHERE status <> 'withdrawn'` fanns i schemat från början: säljaren
+får lämna ett **nytt** anbud på förfrågan efteråt, och katalogens `bidCount`/`hasMyBid`
+räknar redan bort tillbakadragna.
+
+> **Varför inte en `/bids/manage` som gör allt tre.** Frågan ställdes, och svaret är
+> statuskoderna: en väg som både skapar, ändrar och drar tillbaka måste svara `201` ibland
+> och `200` andra gånger utan att kontraktet säger när. Schemat blir en diskriminerad union
+> i stället för ett schema per request, vilket försvagar både de genererade typerna och
+> Swagger, och retry-semantiken skiljer sig mellan handlingarna — att skapa två gånger är
+> `409`, att dra tillbaka två gånger är ofarligt. `POST /bids/{id}/withdrawal` följer
+> dessutom samma idiom som `POST /bids/{id}/contract/signatures`.
+
 > Detta är den enda designtolkning i planen som inte är direkt given av uppgiften: kravlistan
 > nämner "signera avtal" men inget separat "acceptera anbud". Vi låter köparens signatur
 > *vara* accepterandet, vilket håller ytan vid sju API:er utan att tappa något steg i flödet.
@@ -997,6 +1032,25 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | B.20 | Ett saknat objekt fäller inte hela arkivet |
 | B.21 | Ett dokument redovisas som `available: true` |
 | B.22 | Ett dokument vars innehåll saknas redovisas som `available: false`, med metadata kvar, och utelämnas ur arkivet |
+| **Ä** | **Ändra och dra tillbaka anbud** (API 24–25) |
+| Ä.1 | Säljaren kan ändra plan och ersättning ⇒ 200, status oförändrad |
+| Ä.2 | Fälten går att ändra var för sig; det andra står kvar orört |
+| Ä.3 | Kropp utan fält ⇒ 422 |
+| Ä.4 | En annan säljare ⇒ 403 `not-bid-owner` |
+| Ä.4b | Köparen ⇒ 403 — förfrågan är hens, anbudet är det inte |
+| Ä.5 | Okänt anbud ⇒ 404 |
+| Ä.6 | Ogiltig ersättning ⇒ 422 |
+| Ä.7 | Ändring efter deadline ⇒ 422 |
+| Ä.8 | Ändring när förfrågan inte är `open` ⇒ 422 |
+| Ä.9 | Ändring när avtalet finns ⇒ 409 `contract-exists` |
+| Ä.10 | Ett tillbakadraget anbud går inte att ändra ⇒ 422 |
+| Ä.11 | Säljaren kan dra tillbaka ⇒ 200, status `withdrawn` |
+| Ä.12 | Tillbakadragande är idempotent ⇒ 200, oförändrat svar |
+| Ä.13 | Efter tillbakadragande går det att lämna ett nytt anbud ⇒ 201 |
+| Ä.14 | Ett tillbakadraget anbud räknas inte i katalogens `bidCount` |
+| Ä.15 | Bara säljaren får dra tillbaka ⇒ 403 |
+| Ä.16 | Tillbakadragande när avtalet finns ⇒ 409 |
+| Ä.17 | Tillbakadragande av okänt anbud ⇒ 404 |
 | **G** | **Städning av föräldralösa objekt** |
 | G.1 | Ett föräldralöst objekt äldre än fristen raderas |
 | G.2 | Ett objekt med rad i databasen rörs inte |

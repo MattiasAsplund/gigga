@@ -30,6 +30,8 @@ const EXPECTED_OPERATIONS: Record<string, [string, string]> = {
   listMyBids: ['get', '/api/v1/me/bids'],
   createRequest: ['post', '/api/v1/requests'],
   createBid: ['post', '/api/v1/requests/{requestId}/bids'],
+  changeBid: ['patch', '/api/v1/bids/{bidId}'],
+  withdrawBid: ['post', '/api/v1/bids/{bidId}/withdrawal'],
   signContract: ['post', '/api/v1/bids/{bidId}/contract/signatures'],
   listOpenRequests: ['get', '/api/v1/requests'],
   // Klickas ur ett mail, alltså utan token — därför inte i PROTECTED.
@@ -58,6 +60,8 @@ const PROTECTED = new Set([
   'listMyBids',
   'createRequest',
   'createBid',
+  'changeBid',
+  'withdrawBid',
   'signContract',
   'listOpenRequests',
   // Kräver token — det är just den sessionen som avslutas.

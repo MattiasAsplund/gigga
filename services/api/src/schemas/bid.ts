@@ -80,9 +80,34 @@ export const CreateBidBodySchema = Type.Object(
   { additionalProperties: false },
 );
 
+/**
+ * Ändring av ett anbud. Båda fälten är valfria var för sig, men `minProperties` gör
+ * att en tom kropp faller ut som valideringsfel — annars vore anropet ett tyst
+ * ingenting som ändå svarar 200 (Ä.3).
+ *
+ * `compensation` byts alltid i sin helhet, aldrig fält för fält: ett timanbud och ett
+ * fastprisanbud har olika fält, och en delvis ifylld ersättning är inte en form som
+ * går att räkna på.
+ */
+export const ChangeBidBodySchema = Type.Object(
+  {
+    plan: Type.Optional(
+      Type.String({
+        minLength: 1,
+        maxLength: PLAN_MAX_LENGTH,
+        description: 'Ny genomförandeplan. Utelämnad lämnar den befintliga orörd.',
+      }),
+    ),
+    compensation: Type.Optional(CompensationSchema),
+  },
+  { additionalProperties: false, minProperties: 1 },
+);
+
 export const RequestIdParamsSchema = Type.Object({
   requestId: UuidSchema,
 });
+
+export const BidIdParamsSchema = Type.Object({ bidId: UuidSchema });
 
 export const BidResponseSchema = Type.Object({
   id: UuidSchema,

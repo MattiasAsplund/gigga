@@ -120,6 +120,8 @@ bläddringen.
 | `GET /requests` | ✔ | Listar öppna uppdrag att lämna anbud på |
 | `POST /requests` | ✔ | Publicerar en uppdragsförfrågan |
 | `POST /requests/{requestId}/bids` | ✔ | Lämnar anbud med plan och ersättning |
+| `PATCH /bids/{bidId}` | ✔ | Ändrar plan, ersättning eller båda |
+| `POST /bids/{bidId}/withdrawal` | ✔ | Drar tillbaka anbudet |
 | `GET /me/requests` | ✔ | Egna förfrågningar, var och en med sina anbud |
 | `GET /me/bids` | ✔ | Egna anbud med status och avtalsläge |
 | `POST /bids/{bidId}/contract/signatures` | ✔ | Signerar avtalet |
@@ -156,6 +158,26 @@ Diskriminerad på `type` — exakt en av formerna, aldrig fält från båda:
 
 Svaret innehåller `estimatedTotalMinor` — för timanbud `rateMinor × estimatedHours`
 avrundat till hela ören — så att anbud går att jämföra utan att räkna själv.
+
+### Ändra eller dra tillbaka ett anbud
+
+```bash
+curl -X PATCH $API/bids/$BID -H "authorization: Bearer $ST" \
+  -H 'content-type: application/json' \
+  -d '{"compensation":{"type":"fixed","amountMinor":3900000,"currency":"SEK"}}'
+
+curl -X POST $API/bids/$BID/withdrawal -H "authorization: Bearer $ST"
+```
+
+`plan` och `compensation` går att ändra var för sig, men **ersättningen byts i sin helhet**
+— en halvt ifylld form går inte att räkna på. En kropp utan fält alls ger `422`.
+
+Båda kräver att du är anbudets säljare (`403`), att förfrågan är öppen och att deadline
+inte passerat (`422`). **När köparen signerat är anbudet låst: `409 contract-exists`** —
+villkoren ligger frysta i avtalet, och ångrar du dig räcker det att låta bli att signera.
+
+Tillbakadragande är idempotent och svarar `200` även andra gången. Ett tillbakadraget
+anbud räknas inte i katalogen, och du får lämna ett **nytt** anbud på samma förfrågan.
 
 ### Anbudsdokument
 

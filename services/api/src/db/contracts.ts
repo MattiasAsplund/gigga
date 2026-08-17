@@ -107,6 +107,16 @@ export async function lockBidForSigning(
   };
 }
 
+/** Finns det ett avtal på anbudet? Utan lås — anroparen ska bara neka, inte skriva. */
+export async function findContractByBid(sql: SQL, bidId: string): Promise<Contract | null> {
+  const rows = (await sql`
+    SELECT ${sql.unsafe(CONTRACT_COLUMNS)} FROM contracts WHERE bid_id = ${bidId}
+  `) as ContractRow[];
+
+  const row = rows[0];
+  return row ? toContract(row) : null;
+}
+
 /** Låser avtalsraden om den finns, så samtidiga signaturer serialiseras. */
 export async function findContractByBidForUpdate(
   sql: SQL,
