@@ -3,3 +3,5 @@ report/
 # Playwrights testartefakter: video, spår och skärmbilder (outputDir i konfigurationen).
 recordings/
 test-results/
+# Bildspelet skrivs om från grunden vid varje körning — både bilderna och flow.marp.
+slides/

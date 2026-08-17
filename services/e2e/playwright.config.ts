@@ -7,6 +7,9 @@ import { defineConfig, devices } from '@playwright/test';
  */
 export default defineConfig({
   testDir: './tests',
+  // Bildspelet (slides/) skrivs om från grunden vid varje körning — annars hade
+  // bilderna från förra körningen legat kvar och numreringen börjat mitt i.
+  globalSetup: './tests/slides.ts',
   fullyParallel: false,
   workers: 1,
   // Flödet är en kedja: varje steg bygger på föregående, så ett omtag mitt i vore
@@ -27,5 +30,12 @@ export default defineConfig({
     video: 'on',
     locale: 'sv-SE',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    {
+      name: 'chromium',
+      // Vyporten sätts efter spridningen, inte i `use` ovanför: `devices` bär en egen
+      // viewport, och projektets `use` vinner över den yttre.
+      use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 764 } },
+    },
+  ],
 });

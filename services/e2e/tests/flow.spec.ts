@@ -1,5 +1,7 @@
 import { readFile } from 'node:fs/promises';
-import { test, expect } from '@playwright/test';
+// Inte från '@playwright/test' rakt av: den här `test` bär `page`-fixturen som fotar
+// varje navigering till bildspelet i slides/. Se tests/slides.ts.
+import { test, expect } from './slides.ts';
 import {
   attach,
   PASSWORD,

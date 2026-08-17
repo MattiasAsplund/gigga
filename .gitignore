@@ -3,6 +3,7 @@ dist/
 coverage/
 .aspire/
 .env.local
+outputs/
 
 # bun.lock checkas IN — den styr att Aspire kör AppHosten med bun.
 # En package-lock.json ska aldrig finnas här.

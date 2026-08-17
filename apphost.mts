@@ -1,8 +1,15 @@
 // fastgig AppHost — orkestrerar Postgres och API:et för localhost-utveckling.
 // Körs med bun (Aspire väljer bun så länge bun.lock finns i roten).
+import { mkdir } from 'node:fs/promises';
 import { createBuilder } from './.aspire/modules/aspire.mjs';
 
 const builder = await createBuilder();
+
+// Bindmonteringarna nedan pekar hit. Podman skapar inte en monteringskälla som saknas
+// utan vägrar starta containern, och outputs/ ligger utanför versionshanteringen — alltså
+// finns den inte i ett nytt klon förrän någon kört. Mapparna skapas därför här.
+await mkdir(`${import.meta.dirname}/outputs`, { recursive: true });
+await mkdir(`${import.meta.dirname}/services/e2e/slides`, { recursive: true });
 
 // Icke-persistent: ingen withDataVolume(), ingen withPersistentLifetime().
 // Sessionslivstid => containern rivs vid `aspire stop` och databasen är tom vid varje start.
@@ -114,7 +121,7 @@ await api.withEnvironment('PUBLIC_BASE_URL', await web.getEndpoint('http'));
  * withExplicitStart: sviten körs på begäran från dashboarden, inte varje gång
  * `aspire run` startar miljön.
  */
-await builder
+const e2e = await builder
   .addContainer('e2e', 'mcr.microsoft.com/playwright:v1.62.1-noble')
   .withContainerRuntimeArgs([
     '--add-host=host.containers.internal:host-gateway',
@@ -129,5 +136,57 @@ await builder
   .withExplicitStart()
   .waitFor(web)
   .waitFor(mailpit);
+
+/*
+ * Sviten skriver till services/e2e/slides: en skärmbild per navigering, och två
+ * utskrifter av dem — flow.md att läsa och flow.marp att presentera ur. Den här resursen
+ * lägger båda i outputs/:
+ *
+ * - **flow-dokument.pdf** — flow.md genom pandoc. Ingen sida att få plats på, så varje
+ *   skärmbild behåller sin höjd och de långa vyerna klipps inte.
+ * - **flow.marp** med sina bilder — kopierade som de är. Bildspelet presenteras ur marp,
+ *   inte ur en PDF, och marp läser bilderna som grannfiler. Därför följer .png-filerna
+ *   med: utan dem renderas decket tomt.
+ *
+ * Ingen behöver ha vare sig pandoc eller ett TeX-bygge installerat — bägge kommer med
+ * imagen. `pandoc/latex` är pandoc *och* pdf-motorn (xelatex) i samma image; ett pandoc
+ * utan motor kan inte skriva PDF, så de kan inte skiljas åt i var sin container.
+ *
+ * xelatex och inte pdflatex: bildtexterna bär pilar och å/ä/ö, och pdflatex tappar dem.
+ * `-implicit_figures` — annars hamnar bildernas alt-text som "Figure 1:" under var och en.
+ * Smala marginaler: satsytan är vad bilderna skalas till, och i standardmåtten blev
+ * skärmbilderna för små att läsa.
+ *
+ * Städningen först: en körning som ger färre bilder än den förra ska inte lämna kvar
+ * gamla. `.gitignore` står kvar — den är mappens enda incheckade fil.
+ *
+ * Entrypointen byts mot ett skal: imagen startar pandoc direkt, och här är det flera steg.
+ *
+ * waitForCompletion: körs när sviten är klar, inte när den startar. Resursen får inget
+ * withExplicitStart — den ligger och väntar från `aspire run` och gör sitt så fort e2e
+ * gått igenom. Vid en andra körning av sviten startas den om från dashboarden.
+ */
+await builder
+  .addContainer('pandoc', 'docker.io/pandoc/latex:3.7')
+  .withContainerRuntimeArgs([
+    // Samma `:z` som e2e-monteringen, och av samma skäl: utan omtaggning ger SELinux
+    // "Permission denied". Utskrifterna läses bara, resultatet skrivs.
+    '-v',
+    `${import.meta.dirname}/services/e2e/slides:/data:z,ro`,
+    '-v',
+    `${import.meta.dirname}/outputs:/outputs:z`,
+  ])
+  .withEntrypoint('/bin/sh')
+  .withArgs([
+    '-c',
+    [
+      'cd /data',
+      'rm -f /outputs/*.pdf /outputs/*.png /outputs/flow.marp',
+      'pandoc --from=markdown-implicit_figures --pdf-engine=xelatex' +
+        ' --variable=geometry:a4paper,margin=1.5cm flow.md --output=/outputs/flow-dokument.pdf',
+      'cp flow.marp *.png /outputs/',
+    ].join(' && '),
+  ])
+  .waitForCompletion(e2e);
 
 await builder.build().run();

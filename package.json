@@ -13,7 +13,8 @@
     "dev": "aspire run",
     "test": "cd services/api && bun test",
     "test:coverage": "cd services/api && bun run test:coverage && cd .. && bun run test:lcoview",
-    "test:lcoview": "bun node_modules/lcoview/bin/lcoview.js services/api/coverage/lcov.info -d services/api/coverage -s services/api"
+    "test:lcoview": "bun node_modules/lcoview/bin/lcoview.js services/api/coverage/lcov.info -d services/api/coverage -s services/api",
+    "marp": "marp -p outputs/flow.marp"
   },
   "dependencies": {
     "lcoview": "^1.1.1"
