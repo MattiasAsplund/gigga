@@ -109,15 +109,22 @@ export default async function nyttBildspel(config: FullConfig): Promise<void> {
 }
 
 /**
- * Bara sökvägen: värdnamnet är containerns och säger inget för den som tittar. Id:n
- * kortas till sina första tecken — hela uuid:t säger inte mer än så, och obeskuret
- * radbryter det över halva sliden och tar plats från bilden.
+ * Giggas egen värd, satt av den första bilden. Sviten börjar alltid i gränssnittet, så
+ * den första adressen är dess.
+ */
+let gigga = '';
+
+/**
+ * Bara sökvägen: värdnamnet är containerns och säger inget för den som tittar. Undantaget
+ * är en annan värd än giggas — brevlådan — där `/view/…` utan värd inte säger vilken
+ * sida bilden visar. Id:n kortas till sina första tecken — hela uuid:t säger inte mer än
+ * så, och obeskuret radbryter det över halva sliden och tar plats från bilden.
  */
 function sökväg(url: string): string {
   let path = url;
   try {
     const parsed = new URL(url);
-    path = parsed.pathname + parsed.search;
+    path = (parsed.host === gigga ? '' : parsed.host) + parsed.pathname + parsed.search;
   } catch {
     // Relativa adresser (page.goto('/login')) är redan sökvägen.
   }
@@ -280,6 +287,13 @@ class Fotograf {
 
   private bild(shot: Buffer, text: Bildtext): void {
     this.ingenBild = false;
+    if (!gigga) {
+      try {
+        gigga = new URL(text.från).host;
+      } catch {
+        // En relativ adress hör till gränssnittet ändå — nästa bild sätter värden.
+      }
+    }
     slide(shot, this.rubrik, text);
   }
 }
