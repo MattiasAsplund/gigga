@@ -148,14 +148,25 @@ const e2e = await builder
  *   inte ur en PDF, och marp läser bilderna som grannfiler. Därför följer .png-filerna
  *   med: utan dem renderas decket tomt.
  *
- * Ingen behöver ha vare sig pandoc eller ett TeX-bygge installerat — bägge kommer med
- * imagen. `pandoc/latex` är pandoc *och* pdf-motorn (xelatex) i samma image; ett pandoc
- * utan motor kan inte skriva PDF, så de kan inte skiljas åt i var sin container.
+ * Ingen behöver ha vare sig pandoc eller en pdf-motor installerad — bägge kommer med
+ * imagen. `pandoc/typst` är pandoc *och* motorn i samma image; ett pandoc utan motor kan
+ * inte skriva PDF, så de kan inte skiljas åt i var sin container.
  *
- * xelatex och inte pdflatex: bildtexterna bär pilar och å/ä/ö, och pdflatex tappar dem.
+ * typst och inte xelatex, av två skäl. **`pandoc/latex` byggs bara för amd64**, så på en
+ * arm64-värd gick den bara att köra under emulering; `pandoc/typst` finns för båda och
+ * körs infödd här. Och den är 295 MB mot TeX-byggets flera gigabyte.
+ *
+ * Teckensnitt behöver ingen konfiguration: typst får med pilarna och å/ä/ö i rubrikerna
+ * som de är. Det var för dem den tidigare imagen tvingades till xelatex framför pdflatex.
+ *
  * `-implicit_figures` — annars hamnar bildernas alt-text som "Figure 1:" under var och en.
- * Smala marginaler: satsytan är vad bilderna skalas till, och i standardmåtten blev
- * skärmbilderna för små att läsa.
+ * Sidformat och marginaler ligger i flow.md:s front matter, satta av slides.ts.
+ *
+ * **Ordningen är inte godtycklig.** Pandoc lägger sin temporära .typ-fil i arbetskatalogen,
+ * och typst letar bilderna relativt *den* filen — inte via `--resource-path`, som bara styr
+ * pandocs egen uppslagning. Därför kopieras bilderna först och pandoc körs sedan från
+ * /outputs, där de nu ligger. Det gör också att /data kan förbli skrivskyddat: sviten
+ * skriver dit, den här resursen läser bara.
  *
  * Städningen först: en körning som ger färre bilder än den förra ska inte lämna kvar
  * gamla. `.gitignore` står kvar — den är mappens enda incheckade fil.
@@ -167,7 +178,7 @@ const e2e = await builder
  * gått igenom. Vid en andra körning av sviten startas den om från dashboarden.
  */
 await builder
-  .addContainer('pandoc', 'docker.io/pandoc/latex:3.7')
+  .addContainer('pandoc', 'docker.io/pandoc/typst:3.7')
   .withContainerRuntimeArgs([
     // Samma `:z` som e2e-monteringen, och av samma skäl: utan omtaggning ger SELinux
     // "Permission denied". Utskrifterna läses bara, resultatet skrivs.
@@ -180,11 +191,11 @@ await builder
   .withArgs([
     '-c',
     [
-      'cd /data',
       'rm -f /outputs/*.pdf /outputs/*.png /outputs/flow.marp',
-      'pandoc --from=markdown-implicit_figures --pdf-engine=xelatex' +
-        ' --variable=geometry:a4paper,margin=1.5cm flow.md --output=/outputs/flow-dokument.pdf',
-      'cp flow.marp *.png /outputs/',
+      'cp /data/flow.marp /data/*.png /outputs/',
+      'cd /outputs',
+      'pandoc --from=markdown-implicit_figures --pdf-engine=typst' +
+        ' /data/flow.md --output=flow-dokument.pdf',
     ].join(' && '),
   ])
   .waitForCompletion(e2e);

@@ -79,6 +79,18 @@ export default async function nyttBildspel(config: FullConfig): Promise<void> {
   await writeFile(
     fil(DOK),
     [
+      // Sidformatet bor i dokumentet, som marp-deckets gör i sitt front matter. Pandoc
+      // läser metadata som mallvariabler, och typst-mallen tar `margin` som en map —
+      // därför här och inte som `-V margin=…`, som bara kan sätta enkla värden.
+      // Måtten är valda efter bilderna: satsytan är vad de skalas till, och i typsts
+      // standardmarginaler blev skärmbilderna för små att läsa.
+      '---',
+      'papersize: a4',
+      'margin:',
+      '  x: 1.5cm',
+      '  y: 1.5cm',
+      '---',
+      '',
       '# fastgig — flödet genom gränssnittet',
       '',
       'En bild per navigering, i den ordning Playwright-sviten går vägen. Bilderna är',
