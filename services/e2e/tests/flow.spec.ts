@@ -2,15 +2,7 @@ import { readFile } from 'node:fs/promises';
 // Inte från '@playwright/test' rakt av: den här `test` bär `page`-fixturen som fotar
 // varje navigering till bildspelet i slides/. Se tests/slides.ts.
 import { test, expect } from './slides.ts';
-import {
-  attach,
-  PASSWORD,
-  person,
-  registerAndVerify,
-  signIn,
-  signOut,
-  verificationPath,
-} from './support.ts';
+import { attach, PASSWORD, person, registerAndVerify, signIn, signOut } from './support.ts';
 
 /**
  * README:ns nio steg, körda genom gränssnittet.
@@ -269,31 +261,14 @@ test('hela flödet från förfrågan till signerat avtal', async ({ page }) => {
   });
 });
 
-test('nytt bekräftelsemail går att begära', async ({ page }) => {
-  // Egen kedja: den här vägen finns i README:n men ligger utanför huvudflödet.
-  const nils = person('nils');
-  await page.goto('/register');
-  await page.getByTestId('displayName').fill(nils.displayName);
-  await page.getByTestId('email').fill(nils.email);
-  await page.getByTestId('password').fill(PASSWORD);
-  await page.getByTestId('submit').click();
-  await expect(page.getByTestId('registered')).toBeVisible();
-
-  const link = await verificationPath(nils.email);
-  await page.goto(link);
-  await expect(page.getByTestId('verified')).toBeVisible();
-});
-
 test('säljaren kan ändra och dra tillbaka sitt anbud', async ({ page }) => {
   test.slow();
 
-  // Egen kedja med egna konton: huvudflödet slutar i ett signerat avtal, och ett
-  // tillbakadraget anbud mitt i det vore inte samma berättelse.
-  const köpare = person('mika');
-  const säljare = person('alex');
-  for (const who of [köpare, säljare]) await registerAndVerify(page, who);
-
-  await signIn(page, köpare);
+  // Egen kedja med en egen förfrågan: huvudflödet slutar i ett signerat avtal, och ett
+  // tillbakadraget anbud mitt i det vore inte samma berättelse. Konton behöver den
+  // däremot inte egna — rollen sitter i förfrågan och inte i kontot, så kim är köpare
+  // och robin säljare här också.
+  await signIn(page, kim);
   await page.goto('/requests/new');
   await page.getByTestId('title').fill('Migrera en rapportdatabas');
   await page.getByTestId('description').fill('Allt på distans, i etapper.');
@@ -307,7 +282,7 @@ test('säljaren kan ändra och dra tillbaka sitt anbud', async ({ page }) => {
   expect(ändringsRequestId).toMatch(/^[0-9a-f-]{36}$/);
 
   await signOut(page);
-  await signIn(page, säljare);
+  await signIn(page, robin);
   await page.goto(`/requests/${ändringsRequestId}`);
   await page.getByTestId('plan').fill('Första utkastet till plan.');
   await page.getByTestId('compensation-type').selectOption('fixed');
