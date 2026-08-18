@@ -2,7 +2,15 @@ import { readFile } from 'node:fs/promises';
 // Inte från '@playwright/test' rakt av: den här `test` bär `page`-fixturen som fotar
 // varje navigering till bildspelet i slides/. Se tests/slides.ts.
 import { test, expect } from './slides.ts';
-import { attach, PASSWORD, person, registerAndVerify, signIn, signOut } from './support.ts';
+import {
+  attach,
+  NEW_PASSWORD,
+  person,
+  registerAndVerify,
+  resetFromMailbox,
+  signIn,
+  signOut,
+} from './support.ts';
 
 /**
  * README:ns nio steg, körda genom gränssnittet.
@@ -34,7 +42,7 @@ test('hela flödet från förfrågan till signerat avtal', async ({ page }) => {
     const okänd = person('okand');
     await page.goto('/login');
     await page.getByTestId('email').fill(okänd.email);
-    await page.getByTestId('password').fill(PASSWORD);
+    await page.getByTestId('password').fill(okänd.password);
     await page.getByTestId('submit').click();
     await expect(page.getByTestId('notice')).toBeVisible();
 
@@ -127,8 +135,23 @@ test('hela flödet från förfrågan till signerat avtal', async ({ page }) => {
     await expect(page.getByTestId('attachment')).toHaveCount(2);
   });
 
-  await test.step('8. Kim läser anbudet och hämtar dokumenten som ZIP', async () => {
+  await test.step('7c. Kim har glömt sitt lösenord och sätter ett nytt', async () => {
     await signOut(page);
+
+    await page.goto('/login');
+    await page.getByTestId('forgot-password').click();
+    await page.getByTestId('email').fill(kim.email);
+    await page.getByTestId('submit').click();
+    await expect(page.getByTestId('reset-requested')).toBeVisible();
+
+    // Koden ligger i mailet, så vägen går genom brevlådan — samma väg som bekräftelsen.
+    await resetFromMailbox(page, kim, NEW_PASSWORD);
+    await expect(page.getByTestId('password-reset')).toBeVisible();
+  });
+
+  await test.step('8. Kim läser anbudet och hämtar dokumenten som ZIP', async () => {
+    // Ingen utloggning här: återställningen stängde sessionen, och steget före lämnade
+    // Kim utloggad. Inloggningen sker med det nya lösenordet, som personen bär själv.
     await signIn(page, kim);
 
     await page.goto('/me/requests');

@@ -63,6 +63,9 @@ export function Login() {
             Logga in
           </button>
           <Link to="/register">Skapa konto i stället</Link>
+          <Link to="/forgot-password" data-testid="forgot-password">
+            Jag har glömt mitt lösenord
+          </Link>
         </div>
       </form>
     </>

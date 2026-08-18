@@ -3,6 +3,8 @@ import { AuthProvider, useAuth } from './auth.tsx';
 import { Login } from './pages/Login.tsx';
 import { Register } from './pages/Register.tsx';
 import { Verify } from './pages/Verify.tsx';
+import { ForgotPassword } from './pages/ForgotPassword.tsx';
+import { ResetPassword } from './pages/ResetPassword.tsx';
 import { Catalog } from './pages/Catalog.tsx';
 import { NewRequest } from './pages/NewRequest.tsx';
 import { RequestDetail } from './pages/RequestDetail.tsx';
@@ -74,6 +76,8 @@ function Shell() {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/verify" element={<Verify />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
 
           <Route
             path="/requests"
