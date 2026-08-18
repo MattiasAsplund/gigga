@@ -13,7 +13,7 @@ export default defineConfig({
     // E2E-sviten kör i en container och når värden under det här namnet. Vite svarar
     // annars "Blocked request" på allt utom localhost, och sidan blir tom i stället
     // för att felet syns.
-    allowedHosts: ['host.containers.internal'],
+    allowedHosts: ['aspire.dev.internal', 'host.containers.internal', 'host.docker.internal'],
     port: Number(process.env.PORT ?? 5173),
     strictPort: true,
     proxy: {
