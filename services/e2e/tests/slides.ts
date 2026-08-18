@@ -21,6 +21,11 @@ import { test as base, type FullConfig, type Locator, type Page } from '@playwri
  * fyllts i och klickats. En bild tagen *efter* navigeringen hade visat nästa sida i tomt
  * skick, och det man faktiskt gjorde hade aldrig synts.
  *
+ * Av samma skäl fotas också formulär som skickas utan att adressen ändrar sig — konto,
+ * anbud, ändrat anbud. Utan dem stod fälten aldrig ifyllda någonstans i utskriften:
+ * bilden före visade ett tomt formulär och bilden efter kvittot, med formuläret
+ * undanstoppat.
+ *
  * Mappen ligger bredvid konfigurationen. Adressen tas ur Playwrights egen och inte ur
  * `import.meta.url`: paketet är CommonJS, och `__dirname` hade slutat gälla den dag det
  * blir ESM. `configFile` och inte `rootDir` — det senare är testkatalogen (./tests), och
@@ -176,16 +181,22 @@ function avdelare(rubrik: string): void {
 interface Väntande {
   shot: Buffer;
   från: string;
+  /** Fylldes något i på sidan innan klicket? Då är bilden värd sin plats ändå. */
+  ifylld: boolean;
 }
 
 /**
  * Håller reda på vad som är värt en bild. `page.goto()` och `page.reload()` är kända
  * navigeringar och skrivs direkt. Ett klick vet vi däremot inte om förrän efteråt — där
- * tas bilden på spekulation och behålls bara om adressen faktiskt ändrade sig.
+ * tas bilden på spekulation och behålls om adressen ändrade sig, eller om sidans
+ * formulär hunnit fyllas i innan klicket.
  */
 class Fotograf {
   private väntande: Väntande | null = null;
-  private senaste: 'ankomst' | 'navigering' | null = null;
+  /** Sant tills testet fått sin första bild: den sidan ska med, vad som än händer där. */
+  private ingenBild = true;
+  /** Sant när ett fält fyllts i sedan förra bilden. Nollställs när bilden tas. */
+  private ifylld = false;
 
   constructor(
     private readonly page: Page,
@@ -193,28 +204,21 @@ class Fotograf {
   ) {}
 
   /**
-   * En känd navigering: bilden hör hit och kan skrivas med en gång. Svarar `true` när
-   * det inte fanns någon sida att fota — se `ankomst()`.
+   * En känd navigering: bilden hör hit och kan skrivas med en gång. Före den allra
+   * första navigeringen är sidan tom, och en bild på ingenting är ingen bild — då blir
+   * det ingen, och sidan man kommer till fotas när den lämnas eller opereras.
    */
-  async navigering(till: string): Promise<boolean> {
+  async navigering(till: string): Promise<void> {
     this.lös();
-    if (tom(this.page.url())) return true;
+    this.ifylld = false;
+    if (tom(this.page.url())) return;
     this.bild(await foto(this.page), { från: this.page.url(), till });
-    return false;
-  }
-
-  /**
-   * Före den allra första navigeringen är sidan tom, och en bild på ingenting är ingen
-   * bild. Då fotas den man kommer *till* i stället — annars saknades den första vyn
-   * (/register) i utskriften, trots att det är där flödet börjar.
-   */
-  async ankomst(): Promise<void> {
-    this.bild(await foto(this.page), { från: this.page.url(), not: 'startläget' }, 'ankomst');
   }
 
   /** Omladdning är också en navigering, men "hit → hit" säger inte vad som händer. */
   async omladdning(): Promise<void> {
     this.lös();
+    this.ifylld = false;
     if (tom(this.page.url())) return;
     this.bild(await foto(this.page), { från: this.page.url(), not: 'sidan laddas om' });
   }
@@ -235,15 +239,19 @@ class Fotograf {
   async klick(): Promise<void> {
     this.lös();
     if (tom(this.page.url())) return;
-    this.väntande = { shot: await foto(this.page), från: this.page.url() };
+    this.väntande = { shot: await foto(this.page), från: this.page.url(), ifylld: this.ifylld };
+    this.ifylld = false;
+  }
+
+  /** Ett fält fylldes i. Nästa bild visar alltså ett ifyllt formulär. */
+  fylldes(): void {
+    this.ifylld = true;
   }
 
   /** Sista bilden: flödet slutar i ett läge, och det läget är poängen med att visa det. */
   async slut(): Promise<void> {
     this.lös();
     if (tom(this.page.url())) return;
-    // Navigerade testet aldrig vidare vore slutbilden startbilden en gång till.
-    if (this.senaste === 'ankomst') return;
     this.bild(await foto(this.page), {
       från: this.page.url(),
       not: 'läget när steget är klart',
@@ -252,8 +260,13 @@ class Fotograf {
 
   /**
    * Avgör en väntande bild på adressen: har den ändrats sedan klicket, så navigerade
-   * klicket och bilden hör hemma i bildspelet. Annars gjorde det inte det (uppladdning,
-   * namnbyte, en dialogruta) och bilden kastas.
+   * klicket och bilden hör hemma i bildspelet.
+   *
+   * Stannade klicket kvar på samma adress behålls bilden ändå när ett fält hunnit fyllas
+   * i: det är ett formulär som skickats, och den här bilden är det enda stället i
+   * utskriften där dess fält står ifyllda. Övriga klick som stannar kvar (uppladdning,
+   * namnbyte, en dialogruta) visar inget nytt och kastas — utom på testets första sida,
+   * som annars aldrig hade synts.
    */
   private lös(): void {
     const v = this.väntande;
@@ -261,10 +274,12 @@ class Fotograf {
     if (!v) return;
     const nu = this.page.url();
     if (v.från !== nu) this.bild(v.shot, { från: v.från, till: nu });
+    else if (v.ifylld) this.bild(v.shot, { från: v.från, not: 'ifyllt, innan det skickas' });
+    else if (this.ingenBild) this.bild(v.shot, { från: v.från, not: 'startläget' });
   }
 
-  private bild(shot: Buffer, text: Bildtext, sort: 'ankomst' | 'navigering' = 'navigering'): void {
-    this.senaste = sort;
+  private bild(shot: Buffer, text: Bildtext): void {
+    this.ingenBild = false;
     slide(shot, this.rubrik, text);
   }
 }
@@ -276,12 +291,19 @@ let lappad = false;
  * Klicken går genom `Locator.click()` överallt i sviten, så prototypen är den enda punkt
  * där alla passerar. Alternativet vore ett anrop före varje klick som navigerar, och den
  * listan hade blivit fel den dag ett steg lades till.
+ *
+ * `fill()` och `selectOption()` lappas av samma skäl: bilden före klicket behöver veta
+ * om den visar ett ifyllt formulär eller en sida någon bara klickade på.
  */
 function lappaLocator(page: Page): void {
   if (lappad) return;
   lappad = true;
 
-  const proto = Object.getPrototypeOf(page.locator('body')) as Pick<Locator, 'click'>;
+  const proto = Object.getPrototypeOf(page.locator('body')) as Pick<
+    Locator,
+    'click' | 'fill' | 'selectOption'
+  >;
+
   const klick = proto.click;
   proto.click = async function (
     this: Locator,
@@ -289,6 +311,24 @@ function lappaLocator(page: Page): void {
   ): Promise<void> {
     await fotografer.get(this.page())?.klick();
     return klick.apply(this, args);
+  };
+
+  const fyll = proto.fill;
+  proto.fill = async function (
+    this: Locator,
+    ...args: Parameters<Locator['fill']>
+  ): Promise<void> {
+    fotografer.get(this.page())?.fylldes();
+    return fyll.apply(this, args);
+  };
+
+  const välj = proto.selectOption;
+  proto.selectOption = async function (
+    this: Locator,
+    ...args: Parameters<Locator['selectOption']>
+  ): Promise<string[]> {
+    fotografer.get(this.page())?.fylldes();
+    return välj.apply(this, args);
   };
 }
 
@@ -301,10 +341,8 @@ export const test = base.extend({
 
     const goto = page.goto.bind(page);
     page.goto = async (url, options) => {
-      const första = await fotograf.navigering(url);
-      const svar = await goto(url, options);
-      if (första) await fotograf.ankomst();
-      return svar;
+      await fotograf.navigering(url);
+      return goto(url, options);
     };
 
     const reload = page.reload.bind(page);
