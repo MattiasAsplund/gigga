@@ -11,6 +11,7 @@
     "lint": "biome lint",
     "typecheck": "tsc --noEmit -p tsconfig.apphost.json",
     "dev": "aspire run",
+    "dev-cloudflare": "aspire run -- --enable-cloudflare",
     "test": "cd services/api && bun test",
     "test:coverage": "cd services/api && bun run test:coverage && cd .. && bun run test:lcoview",
     "test:lcoview": "bun node_modules/lcoview/bin/lcoview.js services/api/coverage/lcov.info -d services/api/coverage -s services/api",

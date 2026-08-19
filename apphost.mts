@@ -1,15 +1,125 @@
 // fastgig AppHost — orkestrerar Postgres och API:et för localhost-utveckling.
 // Körs med bun (Aspire väljer bun så länge bun.lock finns i roten).
 import { mkdir } from "node:fs/promises";
-import { createBuilder } from "./.aspire/modules/aspire.mjs";
+import {
+	createBuilder,
+	type ResourceUrlsCallbackContext,
+} from "./.aspire/modules/aspire.mjs";
 
-const builder = await createBuilder();
+// --enable-cloudflare, satt av `bun run dev-cloudflare`, avgör om tunnelresurserna längre
+// ned finns med.
+//
+// Flaggan läses ur två källor, och den andra är inte överflödig: Aspire CLI 13.4.6 skickar
+// *inte* vidare argumenten efter `--` till en TypeScript-AppHost. CLI-loggen visar vad som
+// verkligen startas — `bun run apphost.mts`, utan argument. (Vidarebefordran gäller
+// .NET-AppHosts, som får dem via `dotnet run --`.) Det som däremot når hit är
+// npm_lifecycle_script: bun sätter den till hela raden ur package.json innan aspire
+// startas, och den ärvs ned till AppHost-processen.
+//
+// process.argv läses ändå först. Den bär flaggan om AppHosten körs för hand
+// (`bun apphost.mts --enable-cloudflare`), och den dagen CLI:t börjar skicka vidare
+// argumenten är det den vägen som gäller.
+const hostArgs = process.argv.slice(2);
+const invocation = [
+	...hostArgs,
+	...(process.env.npm_lifecycle_script ?? "").split(/\s+/),
+];
+const cloudflareEnabled = invocation.includes("--enable-cloudflare");
+
+// Flaggan plockas bort innan argumenten går vidare till Aspire: värdens
+// konfigurationsläsare läser `--nyckel värde` och skulle annars sluka nästa argument som
+// flaggans värde.
+const builder = await createBuilder({
+	args: hostArgs.filter((arg) => arg !== "--enable-cloudflare"),
+});
 
 // Bindmonteringarna nedan pekar hit. Podman skapar inte en monteringskälla som saknas
 // utan vägrar starta containern, och outputs/ ligger utanför versionshanteringen — alltså
 // finns den inte i ett nytt klon förrän någon kört. Mapparna skapas därför här.
 await mkdir(`${import.meta.dirname}/outputs`, { recursive: true });
 await mkdir(`${import.meta.dirname}/services/e2e/slides`, { recursive: true });
+
+/*
+ * Cloudflare-tunnlar — bara med --enable-cloudflare, alltså `bun run dev-cloudflare`.
+ *
+ * Två snabbtunnlar utan Cloudflare-konto: en framför webben och en framför mailpit, så
+ * att både gränssnittet och breven går att visa upp från en annan maskin utan
+ * brandväggsöppning.
+ *
+ * withPersistentLifetime: processerna hör inte till sessionen utan lever kvar över
+ * `aspire stop`, och nästa `aspire run` återanvänder dem. Adressen på trycloudflare.com
+ * lottas fram när tunneln kopplar upp — det är långlivade processer som gör att en
+ * utdelad länk fortsätter fungera över en omstart av miljön. Baksidan är att `aspire stop`
+ * inte stänger dem: det gör dashboarden, eller `pkill cloudflared`.
+ *
+ * Ordningen är inte kosmetisk: tunnlarna deklareras före resurserna de går till. Aspire
+ * bygger en resurs i taget, och miljö- och URL-callbackarna längst ned i filen väntar in
+ * tunnelns adress medan kön står still. Deklarerade sist hamnar cloudflared i kö bakom
+ * precis de callbacks som väntar på den — uppmätt startade processen först drygt tre
+ * minuter in, långt efter att väntan gett upp.
+ *
+ * --metrics står inte i cloudflareds exempel men behövs här. Adressen skrivs bara ut i
+ * cloudflareds egen logg, och den går inte att läsa härifrån: Aspires API kan tömma en
+ * resurslogg, inte prenumerera på raderna. Metrics-servern svarar däremot på
+ * /quicktunnel med värdnamnet som JSON, på en port vi själva väljer — och portarna är
+ * fasta av samma skäl som mailpits: en lottad port går inte att fråga.
+ */
+const WEB_TUNNEL_METRICS_PORT = 20241;
+const MAIL_TUNNEL_METRICS_PORT = 20242;
+
+/*
+ * Två tidsgränser, och skillnaden mellan dem är hela poängen.
+ *
+ * En callback som väntar håller upp *hela* startkön — Aspire bygger resursernas specar i
+ * tur och ordning, och där ingår starten av cloudflared. Väntar api:s callback på en
+ * tunnel som står i kö bakom den själv står de och stirrar på varandra tills tidsgränsen
+ * går ut. (Uppmätt: cloudflared startade i samma sekund som väntan gav upp.) Callbackarna
+ * väntar därför bara kort — det räcker för en tunnel som redan lever sedan förra körningen
+ * — och efterspelet längst ned tar hand om kallstarten, utanför kön.
+ */
+const CALLBACK_TIMEOUT_MS = 12_000;
+const COLD_START_TIMEOUT_MS = 180_000;
+
+const tunnels = cloudflareEnabled ? await addCloudflareTunnels() : null;
+
+async function addCloudflareTunnels() {
+	const web = await builder
+		.addExecutable("tunnel-web", "cloudflared", ".", [
+			"tunnel",
+			"--url",
+			"http://localhost:5173",
+			"--metrics",
+			`127.0.0.1:${WEB_TUNNEL_METRICS_PORT}`,
+		])
+		// Metrics-porten som endpoint: det är den hälsokontrollen nedan frågar. /ready svarar
+		// 200 först när tunneln har en registrerad anslutning, alltså när den går att besöka.
+		// isProxied: false — cloudflared binder porten själv, DCP ska inte lägga sig emellan.
+		.withHttpEndpoint({
+			name: "metrics",
+			port: WEB_TUNNEL_METRICS_PORT,
+			isProxied: false,
+		})
+		.withHttpHealthCheck({ endpointName: "metrics", path: "/ready" })
+		.withPersistentLifetime();
+
+	const mail = await builder
+		.addExecutable("tunnel-mail", "cloudflared", ".", [
+			"tunnel",
+			"--url",
+			"http://localhost:8025",
+			"--metrics",
+			`127.0.0.1:${MAIL_TUNNEL_METRICS_PORT}`,
+		])
+		.withHttpEndpoint({
+			name: "metrics",
+			port: MAIL_TUNNEL_METRICS_PORT,
+			isProxied: false,
+		})
+		.withHttpHealthCheck({ endpointName: "metrics", path: "/ready" })
+		.withPersistentLifetime();
+
+	return { web, mail };
+}
 
 // Icke-persistent: ingen withDataVolume(), ingen withPersistentLifetime().
 // Sessionslivstid => containern rivs vid `aspire stop` och databasen är tom vid varje start.
@@ -103,7 +213,184 @@ const web = await builder
 // Bekräftelselänkarna pekar på webbens /verify, inte in i API:et — därför webbens
 // adress här och inte API:ets. Sätts efter att `web` finns, men bara som ett värde:
 // api väntar inte på webben, och webben väntar fortfarande på api.
+//
+// Med --enable-cloudflare skrivs värdet över längre ned, till tunnelns adress.
 await api.withEnvironment("PUBLIC_BASE_URL", await web.getEndpoint("http"));
+
+/*
+ * Väntar in tunnelns publika adress. Metrics-servern startar först när tunneln är
+ * uppkopplad, så allt fram till dess är anslutningsfel och inget att rapportera —
+ * därför tyst omförsök tills tidsgränsen går ut.
+ *
+ * Tidsgränsen är inte valfri: väntan sker inne i callbacks som håller sina resurser
+ * tillbaka så länge de kör. Utan cloudflared igång — eller utan väg ut — skulle varken
+ * api eller web starta. Efter tidsgränsen går miljön vidare som vanligt, på localhost.
+ */
+async function pollQuickTunnel(
+	metricsPort: number,
+	timeoutMs = CALLBACK_TIMEOUT_MS,
+): Promise<string | null> {
+	const deadline = performance.now() + timeoutMs;
+
+	while (performance.now() < deadline) {
+		try {
+			const response = await fetch(
+				`http://127.0.0.1:${metricsPort}/quicktunnel`,
+				{ signal: AbortSignal.timeout(2_000) },
+			);
+
+			if (response.ok) {
+				const { hostname } = (await response.json()) as { hostname?: string };
+				if (hostname) {
+					return `https://${hostname}`;
+				}
+			}
+		} catch {
+			// Tunneln är inte uppe än. Nästa varv.
+		}
+
+		await new Promise((resolve) => setTimeout(resolve, 500));
+	}
+
+	return null;
+}
+
+/*
+ * Delad väntan på en tunnel, med adressen sparad när den väl kommit fram.
+ *
+ * **Delad**, för att flera callbacks frågar efter samma tunnel och annars hade väntat i
+ * tur och ordning — och api hade kunnat få en annan adress än den som visas på webben.
+ *
+ * **Sparad bara när den lyckas.** En väntan som gick ut får inte cementeras: efterspelet
+ * längst ned frågar igen med en längre tidsgräns, och då ska svaret gälla för alla som
+ * frågar efter det.
+ */
+function tunnelUrlReader(
+	metricsPort: number,
+): (timeoutMs?: number) => Promise<string | null> {
+	let found: string | null = null;
+	let pending: Promise<string | null> | undefined;
+
+	return async (timeoutMs) => {
+		if (found) {
+			return found;
+		}
+
+		pending ??= pollQuickTunnel(metricsPort, timeoutMs);
+		const url = await pending;
+		pending = undefined;
+
+		if (url) {
+			found = url;
+		}
+
+		return url;
+	};
+}
+
+/*
+ * Hänger tunnelns adress på resursen och skriver den i resursloggen. Uteblir den skrivs
+ * en varning i stället — annars vore skillnaden mellan "tunneln kom inte upp" och
+ * "tunneln är avstängd" osynlig i dashboarden.
+ */
+async function addTunnelUrl(
+	context: ResourceUrlsCallbackContext,
+	tunnelUrl: (timeoutMs?: number) => Promise<string | null>,
+): Promise<void> {
+	const url = await tunnelUrl(CALLBACK_TIMEOUT_MS);
+
+	if (!url) {
+		await context
+			.log()
+			.warning(
+				"Ingen cloudflare-tunnel svarade i tid — resursen visas bara på localhost.",
+			);
+		return;
+	}
+
+	await context.urls().add(url, { displayText: "Cloudflare" });
+	await context.log().info(`Cloudflare-tunnel: ${url}`);
+}
+
+if (tunnels) {
+	/*
+	 * waitFor uttrycker ordningen i modellen i stället för i väntan: web och api går inte
+	 * upp förrän tunneln har svarat 200 på /ready. Callbackarna nedan hittar då adressen
+	 * direkt, och dashboarden visar "Waiting" i stället för en resurs som ser hängd ut.
+	 *
+	 * api väntar på webbens tunnel för PUBLIC_BASE_URL:s skull, mailpit på sin egen.
+	 */
+	await api.waitFor(tunnels.web);
+	await web.waitFor(tunnels.web);
+	await mailpit.waitFor(tunnels.mail);
+
+	const webTunnelUrl = tunnelUrlReader(WEB_TUNNEL_METRICS_PORT);
+	const mailTunnelUrl = tunnelUrlReader(MAIL_TUNNEL_METRICS_PORT);
+
+	// Adresserna hängs på webben och mailpit, inte på tunnelresurserna: det är där man
+	// letar efter dem i dashboarden, bredvid localhost-länken och som klickbar länk.
+	await web.withUrls((context) => addTunnelUrl(context, webTunnelUrl));
+	await mailpit.withUrls((context) => addTunnelUrl(context, mailTunnelUrl));
+
+	/*
+	 * Bekräftelse- och återställningslänkarna måste peka på tunneln: den som öppnar
+	 * gränssnittet utifrån har ingen localhost att gå tillbaka till, och en länk till
+	 * localhost:5173 i brevet leder rakt in i mottagarens egen maskin.
+	 *
+	 * En callback och inte withEnvironment: adressen finns inte när grafen byggs, bara när
+	 * api startar. Miljövariablerna sätts i den ordning de registrerades, så det här skriver
+	 * över localhost-värdet från raden längre upp — och lämnar det orört om tunneln uteblir,
+	 * vilket är precis vad man vill ha kvar då.
+	 */
+	await api.withEnvironmentCallback(async (context) => {
+		const url = await webTunnelUrl(CALLBACK_TIMEOUT_MS);
+
+		if (!url) {
+			await context
+				.log()
+				.warning(
+					"Ingen cloudflare-tunnel svarade i tid — PUBLIC_BASE_URL står kvar på localhost.",
+				);
+			return;
+		}
+
+		await context.environment().set("PUBLIC_BASE_URL", url);
+		await context.log().info(`PUBLIC_BASE_URL pekar på tunneln: ${url}`);
+	});
+
+	/*
+	 * Efterspelet, och det som räddar bekräftelselänkarna vid en kallstart.
+	 *
+	 * Första gången flaggan används finns ingen tunnel när callbackarna ovan körs — de kan
+	 * inte vänta in en process som står bakom dem i kön. De tar localhost, kön släpper,
+	 * cloudflared startar. Här väntas adressen in utanför kön, och api startas om: en omstart
+	 * bygger resursens spec på nytt, alltså körs miljö-callbacken en gång till, nu med
+	 * adressen på plats.
+	 *
+	 * Bara api. URL-callbacken körs *inte* om vid en omstart — dashboardens länkar räknas ut
+	 * en gång, när resursen skapas — så en omstart av web och mailpit hade kostat en
+	 * nedsläckt Vite-server och en tömd brevlåda utan att ge något tillbaka. Länkarna på de
+	 * två resurserna dyker i stället upp nästa körning, när tunnlarna redan lever.
+	 *
+	 * Andra körningen och framåt gör hela blocket ingenting: adressen fanns direkt, och
+	 * omstarten hoppas över.
+	 */
+	await builder.subscribeAfterResourcesCreated(async (event) => {
+		const commands = await (await event.services()).getResourceCommandService();
+
+		// Medvetet utan await: handlern kör innan miljön är uppe, och att vänta här vore att
+		// återinföra exakt den blockering det hela handlar om.
+		void (async () => {
+			if (await webTunnelUrl(0)) {
+				return;
+			}
+
+			if (await webTunnelUrl(COLD_START_TIMEOUT_MS)) {
+				await commands.executeCommandAsync(api, "resource-restart");
+			}
+		})();
+	});
+}
 
 /*
  * E2E-sviten kör i Playwrights egen image, så värdmaskinen slipper både webbläsare och

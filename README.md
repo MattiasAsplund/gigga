@@ -33,6 +33,33 @@ vidare till:
 Postgres och MinIO är **icke-persistenta**: allt försvinner vid `aspire stop`. Schemat
 byggs upp vid varje start.
 
+### Visa upp miljön utanför maskinen
+
+```bash
+bun run dev-cloudflare
+```
+
+Samma miljö, plus två cloudflared-snabbtunnlar: en framför **web** och en framför
+**mailpit**. Adresserna på `trycloudflare.com` hängs på respektive resurs i dashboarden,
+bredvid localhost-länken. `PUBLIC_BASE_URL` följer med webbens tunnel, så bekräftelse- och
+återställningslänkarna i breven pekar utåt och fungerar för den som öppnar gränssnittet
+utifrån.
+
+API:et får ingen egen tunnel och behöver ingen: Vites `/api`-proxy körs på värden, så det
+sista hoppet till `localhost:3000` sker aldrig över internet och webbläsaren ser bara ett
+origin.
+
+Tunnelprocesserna är långlivade — de överlever `aspire stop` och återanvänds vid nästa
+start, så en utdelad länk fortsätter fungera över en omstart. Stäng dem från dashboarden
+eller med `pkill cloudflared`.
+
+Första körningen efter att tunnlarna dödats är dashboardens två länkar inte med: adressen
+finns inte när resurserna byggs, och de länkarna räknas ut en gång. Breven pekar rätt ändå
+— api startas om när tunneln svarar — och nästa `bun run dev-cloudflare` har allt på plats.
+
+Kräver `cloudflared` i PATH. Länkarna är öppna för var och en som har dem, och mailpit
+visar all post i miljön — dela dem därefter.
+
 ```bash
 bun test                  # 297 tester, ~45 s
 bun run test:coverage     # samma, plus täckningsrapport
