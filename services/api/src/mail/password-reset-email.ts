@@ -4,9 +4,11 @@ import type { OutgoingMail } from './mailer.ts';
  * Återställningsmailet bär **token**, inte en färdig länk.
  *
  * Till skillnad från bekräftelselänken kan återställningen inte utföras med ett klick —
- * den kräver ett nytt lösenord, alltså ett formulär. Så länge det inte finns någon
- * frontend vore en länk in i API:et bara en 404. Sätt `PASSWORD_RESET_URL` när en sida
- * finns, så följer en klickbar länk med.
+ * den kräver ett nytt lösenord, alltså ett formulär. Länken pekar därför på webbens
+ * `/reset-password`, som tar koden ur adressen och frågar efter lösenordet.
+ *
+ * Utan `resetUrl` bär mailet koden i klartext i stället. Det gällde så länge det inte
+ * fanns någon sida att skicka någon till, och står kvar för den som kör API:et ensamt.
  */
 export function passwordResetEmail(input: {
   to: string;

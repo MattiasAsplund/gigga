@@ -326,3 +326,15 @@ test('R.14 återställning bekräftar inte adressen', async () => {
   expect(login403.statusCode).toBe(403);
   expect(login403.json<Problem>().type).toBe('https://fastgig.dev/problems/email-not-verified');
 });
+
+test('R.20 mailet bär en länk till återställningssidan', async () => {
+  const email = 'r20@example.test';
+  await account(email);
+
+  await forgot(email);
+
+  // Utan PASSWORD_RESET_URL faller länken tillbaka på webbens adress. Koden i klartext
+  // dög så länge det inte fanns någon sida att skicka någon till; nu finns det en.
+  const mail = ctx.mail.sent.at(-1)!;
+  expect(mail.text).toContain(`http://fastgig.test/reset-password?token=${tokenFrom(email)}`);
+});

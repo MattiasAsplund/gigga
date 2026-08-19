@@ -263,7 +263,9 @@ export const authRoutes: FastifyPluginAsyncTypebox = async (app) => {
             to: started.user.email,
             displayName: started.user.displayName,
             token: started.resetToken,
-            resetUrl: app.config.PASSWORD_RESET_URL || null,
+            // Faller tillbaka på webbens egen sida, precis som bekräftelselänken gör.
+            // PASSWORD_RESET_URL finns kvar för den dag sidan ligger någon annanstans.
+            resetUrl: app.config.PASSWORD_RESET_URL || `${app.publicBaseUrl()}/reset-password`,
             ttlHours: PASSWORD_RESET_TTL_HOURS,
           }),
         );

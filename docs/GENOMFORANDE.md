@@ -1007,6 +1007,7 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | R.17 | Andra användares tokens påverkas inte |
 | R.18 | En token utan `ver`-claim avvisas |
 | R.19 | Varje återställning ogiltigförklarar den föregående sessionen |
+| R.20 | Mailet bär en länk till webbens `/reset-password`, inte koden i klartext |
 | **U** | **Utloggning** (API 13) |
 | U.1 | Utloggning ⇒ 200, och token ger sedan 401 `session-ended` |
 | U.2 | Utloggning utan token ⇒ 401 |

@@ -4,12 +4,12 @@ import { readFile } from 'node:fs/promises';
 import { test, expect } from './slides.ts';
 import {
   attach,
-  PASSWORD,
+  NEW_PASSWORD,
   person,
   registerAndVerify,
+  resetFromMailbox,
   signIn,
   signOut,
-  verificationPath,
 } from './support.ts';
 
 /**
@@ -42,7 +42,7 @@ test('hela flödet från förfrågan till signerat avtal', async ({ page }) => {
     const okänd = person('okand');
     await page.goto('/login');
     await page.getByTestId('email').fill(okänd.email);
-    await page.getByTestId('password').fill(PASSWORD);
+    await page.getByTestId('password').fill(okänd.password);
     await page.getByTestId('submit').click();
     await expect(page.getByTestId('notice')).toBeVisible();
 
@@ -135,8 +135,23 @@ test('hela flödet från förfrågan till signerat avtal', async ({ page }) => {
     await expect(page.getByTestId('attachment')).toHaveCount(2);
   });
 
-  await test.step('8. Kim läser anbudet och hämtar dokumenten som ZIP', async () => {
+  await test.step('7c. Kim har glömt sitt lösenord och sätter ett nytt', async () => {
     await signOut(page);
+
+    await page.goto('/login');
+    await page.getByTestId('forgot-password').click();
+    await page.getByTestId('email').fill(kim.email);
+    await page.getByTestId('submit').click();
+    await expect(page.getByTestId('reset-requested')).toBeVisible();
+
+    // Koden ligger i mailet, så vägen går genom brevlådan — samma väg som bekräftelsen.
+    await resetFromMailbox(page, kim, NEW_PASSWORD);
+    await expect(page.getByTestId('password-reset')).toBeVisible();
+  });
+
+  await test.step('8. Kim läser anbudet och hämtar dokumenten som ZIP', async () => {
+    // Ingen utloggning här: återställningen stängde sessionen, och steget före lämnade
+    // Kim utloggad. Inloggningen sker med det nya lösenordet, som personen bär själv.
     await signIn(page, kim);
 
     await page.goto('/me/requests');
@@ -269,31 +284,14 @@ test('hela flödet från förfrågan till signerat avtal', async ({ page }) => {
   });
 });
 
-test('nytt bekräftelsemail går att begära', async ({ page }) => {
-  // Egen kedja: den här vägen finns i README:n men ligger utanför huvudflödet.
-  const nils = person('nils');
-  await page.goto('/register');
-  await page.getByTestId('displayName').fill(nils.displayName);
-  await page.getByTestId('email').fill(nils.email);
-  await page.getByTestId('password').fill(PASSWORD);
-  await page.getByTestId('submit').click();
-  await expect(page.getByTestId('registered')).toBeVisible();
-
-  const link = await verificationPath(nils.email);
-  await page.goto(link);
-  await expect(page.getByTestId('verified')).toBeVisible();
-});
-
 test('säljaren kan ändra och dra tillbaka sitt anbud', async ({ page }) => {
   test.slow();
 
-  // Egen kedja med egna konton: huvudflödet slutar i ett signerat avtal, och ett
-  // tillbakadraget anbud mitt i det vore inte samma berättelse.
-  const köpare = person('mika');
-  const säljare = person('alex');
-  for (const who of [köpare, säljare]) await registerAndVerify(page, who);
-
-  await signIn(page, köpare);
+  // Egen kedja med en egen förfrågan: huvudflödet slutar i ett signerat avtal, och ett
+  // tillbakadraget anbud mitt i det vore inte samma berättelse. Konton behöver den
+  // däremot inte egna — rollen sitter i förfrågan och inte i kontot, så kim är köpare
+  // och robin säljare här också.
+  await signIn(page, kim);
   await page.goto('/requests/new');
   await page.getByTestId('title').fill('Migrera en rapportdatabas');
   await page.getByTestId('description').fill('Allt på distans, i etapper.');
@@ -307,7 +305,7 @@ test('säljaren kan ändra och dra tillbaka sitt anbud', async ({ page }) => {
   expect(ändringsRequestId).toMatch(/^[0-9a-f-]{36}$/);
 
   await signOut(page);
-  await signIn(page, säljare);
+  await signIn(page, robin);
   await page.goto(`/requests/${ändringsRequestId}`);
   await page.getByTestId('plan').fill('Första utkastet till plan.');
   await page.getByTestId('compensation-type').selectOption('fixed');
