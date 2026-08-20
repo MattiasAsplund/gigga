@@ -67,10 +67,14 @@ export const CatalogItemSchema = Type.Intersect([
       description: 'Antal aktiva anbud. Innehållet i dem lämnas inte ut här.',
     }),
     hasMyBid: Type.Boolean({ description: 'Har anroparen redan ett aktivt anbud?' }),
+    hasPublishedSpec: Type.Boolean({
+      description:
+        'Har köparen publicerat kravspecen? Utan den går förfrågan inte att bjuda på.',
+    }),
     canBid: Type.Boolean({
       description:
-        'Falskt för egna förfrågningar och när anroparen redan lämnat anbud — ' +
-        'sparar ett anrop som ändå skulle ge 403 eller 409.',
+        'Falskt för egna förfrågningar, när anroparen redan lämnat anbud och när ' +
+        'kravspecen inte är publicerad — sparar ett anrop som ändå skulle ge 403 eller 409.',
     }),
   }),
 ]);

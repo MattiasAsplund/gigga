@@ -310,6 +310,78 @@ export const contractExists = () =>
       'är frysta i avtalet. Vill du inte ha uppdraget räcker det att låta bli att signera.',
   });
 
+export const specNotFound = () =>
+  new ProblemError({
+    status: 404,
+    slug: 'spec-not-found',
+    title: 'Kravspecen finns inte',
+    // Samma svar oavsett om förfrågan saknar kravspec eller bara har ett utkast:
+    // ett opublicerat utkast är köparens interna arbete och angår ingen annan.
+    detail: 'Förfrågan har ingen publicerad kravspec.',
+  });
+
+export const specExists = () =>
+  new ProblemError({
+    status: 409,
+    slug: 'spec-exists',
+    title: 'Kravspecen är redan öppnad',
+    detail: 'Förfrågan har redan en kravspec. Ändra utkastet, eller öppna en revision.',
+  });
+
+export const specNotDraft = () =>
+  new ProblemError({
+    status: 409,
+    slug: 'spec-not-draft',
+    title: 'Kravspecen är publicerad',
+    detail:
+      'En publicerad kravspec ändras inte — anbuden avser den lydelsen. Öppna en revision, ' +
+      'så blir ändringen en ny version.',
+  });
+
+export const noPublishedSpec = () =>
+  new ProblemError({
+    status: 404,
+    slug: 'no-published-spec',
+    title: 'Ingen publicerad kravspec',
+    detail: 'Det finns ingen gällande version att göra en revision av.',
+  });
+
+/**
+ * Anbud förutsätter en publicerad kravspec. Utan den vet säljaren inte vad som ska
+ * levereras eller hur det verifieras — och ett fast pris på en oskriven omfattning är
+ * precis den affär plattformen finns för att undvika.
+ */
+export const specNotPublished = () =>
+  new ProblemError({
+    status: 409,
+    slug: 'spec-not-published',
+    title: 'Förfrågan saknar publicerad kravspec',
+    detail:
+      'Köparen har inte publicerat någon kravspec ännu. Det går inte att lämna anbud ' +
+      'förrän omfattningen och acceptanskriterierna är fastställda.',
+  });
+
+export const criterionNotFound = () =>
+  new ProblemError({
+    status: 404,
+    slug: 'criterion-not-found',
+    title: 'Kriterieraden finns inte',
+    detail: 'Det finns ingen rad med det id:t i kravspecen.',
+  });
+
+/**
+ * Publiceringskontrollen (steg 6). Bristerna kommer som rader med pekare, av samma skäl
+ * som kriterierna är rader: den som får ett nej ska se exakt vad som fattas.
+ */
+export const specNotPublishable = (errors: FieldError[]) =>
+  new ProblemError({
+    status: 422,
+    slug: 'spec-not-publishable',
+    title: 'Kravspecen är inte färdig',
+    detail: 'Kravspecen saknar något som krävs för publicering.',
+    errors,
+  });
+
 /**
  * Översätter Fastifys valideringsfel till 422 med fältpekare.
  * 400 är reserverat för trasig syntax; ett schemabrott är semantiskt (planens §8.1).

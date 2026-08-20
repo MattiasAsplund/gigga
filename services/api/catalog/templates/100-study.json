@@ -1,0 +1,70 @@
+{
+  "key": "study",
+  "layer": "type",
+  "name": "Förstudie eller utredning",
+  "summary": "Leveransobjektet är ett dokument, inte kod.",
+  "position": 100,
+  "asks": [
+    {
+      "key": "study.questions",
+      "prompt": "Vilka frågor ska besvaras? Numrera dem.",
+      "help": "Listan är själva leveransen — acceptansen blir att var och en av frågorna är besvarad.",
+      "kind": "longtext"
+    },
+    { "key": "study.audience", "prompt": "Vem ska läsa resultatet?", "kind": "text" },
+    {
+      "key": "study.recommendation",
+      "prompt": "Ska resultatet innehålla en rekommendation?",
+      "kind": "choice",
+      "options": [
+        { "key": "recommendation", "label": "Ja, med motivering" },
+        { "key": "options-only", "label": "Nej, bara underlag och alternativ" }
+      ]
+    },
+    {
+      "key": "study.spec-output",
+      "prompt": "Ska utredningen mynna ut i en kravspec som kan användas för nästa gigg?",
+      "kind": "bool"
+    },
+    {
+      "key": "study.format",
+      "prompt": "I vilken form levereras resultatet?",
+      "kind": "choice",
+      "options": [
+        { "key": "document", "label": "Dokument" },
+        { "key": "presentation", "label": "Presentation" },
+        { "key": "document-walkthrough", "label": "Dokument plus genomgång" }
+      ]
+    }
+  ],
+  "clauses": [
+    {
+      "key": "questions-answered",
+      "kind": "criterion",
+      "statement": "Varje i förväg listad fråga är besvarad i dokumentet, med källa eller resonemang.",
+      "verification": "Genomgång fråga för fråga mot listan."
+    },
+    {
+      "key": "recommendation-motivated",
+      "kind": "criterion",
+      "statement": "Rekommendationen är motiverad, och de alternativ som valts bort är redovisade med skäl.",
+      "verification": "Läsning av avsnittet av den som ska fatta beslutet."
+    },
+    {
+      "key": "spec-publishable",
+      "kind": "criterion",
+      "statement": "Ingår en kravspec uppfyller den giggas formkrav för publicering.",
+      "verification": "Kravspecen provpubliceras i gigga."
+    },
+    {
+      "key": "no-preference",
+      "kind": "term",
+      "statement": "Den som gör förstudien har inte förtur på det bygge den mynnar ut i."
+    },
+    {
+      "key": "implementation",
+      "kind": "exclusion",
+      "statement": "Genomförande av det utredningen föreslår ingår inte."
+    }
+  ]
+}

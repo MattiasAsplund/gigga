@@ -1,0 +1,85 @@
+{
+  "key": "screen",
+  "layer": "type",
+  "name": "Skärm, vy eller formulär",
+  "summary": "Något en människa ska titta på och använda.",
+  "position": 40,
+  "asks": [
+    {
+      "key": "screen.design",
+      "prompt": "Vilket designunderlag finns?",
+      "help": "Tvister om den här typen handlar nästan alltid om utseende. Antingen finns en skiss, eller så är utformningen uttryckligen leverantörens val.",
+      "kind": "choice",
+      "options": [
+        { "key": "sketch", "label": "Skiss eller mockup" },
+        { "key": "design-system", "label": "Befintligt designsystem att följa" },
+        { "key": "existing-view", "label": "En befintlig vy att härma" },
+        { "key": "free", "label": "Inget — utformningen är leverantörens val" }
+      ]
+    },
+    {
+      "key": "screen.design-source",
+      "prompt": "Var finns underlaget, och vem beslutar om avsteg från det?",
+      "kind": "text",
+      "condition": {
+        "question": "screen.design",
+        "in": ["sketch", "design-system", "existing-view"]
+      }
+    },
+    {
+      "key": "screen.fields",
+      "prompt": "Vilka fält ska finnas, och vilken validering gäller för var och en?",
+      "kind": "longtext"
+    },
+    { "key": "screen.roles", "prompt": "Vilka roller ska se vyn?", "kind": "text" },
+    { "key": "screen.mobile", "prompt": "Ska vyn fungera på mobil?", "kind": "bool" },
+    {
+      "key": "screen.browsers",
+      "prompt": "Vilka webbläsare ska stödjas?",
+      "kind": "multichoice",
+      "options": [
+        { "key": "chrome", "label": "Chrome" },
+        { "key": "edge", "label": "Edge" },
+        { "key": "firefox", "label": "Firefox" },
+        { "key": "safari", "label": "Safari på macOS" },
+        { "key": "safari-ios", "label": "Safari på iOS" },
+        { "key": "chrome-android", "label": "Chrome på Android" }
+      ]
+    }
+  ],
+  "clauses": [
+    {
+      "key": "fields-present",
+      "kind": "criterion",
+      "statement": "Samtliga angivna fält finns i vyn, med den validering som anges för vart och ett.",
+      "verification": "Genomgång fält för fält mot listan i kravspecen."
+    },
+    {
+      "key": "browsers-covered",
+      "kind": "criterion",
+      "statement": "Vyn fungerar i de angivna webbläsarna och skärmstorlekarna.",
+      "verification": "Verifieraren öppnar vyn i var och en av dem."
+    },
+    {
+      "key": "validation-messages",
+      "kind": "criterion",
+      "statement": "När ogiltig inmatning skickas, ska ett läsbart felmeddelande visas vid det fält som är fel.",
+      "verification": "Ett testfall per valideringsregel."
+    },
+    {
+      "key": "appearance-basis",
+      "kind": "term",
+      "statement": "Utformningen bedöms mot det angivna designunderlaget. Saknas underlag är utformningen leverantörens val och kan inte ensam ligga till grund för underkännande."
+    },
+    {
+      "key": "design-work",
+      "kind": "exclusion",
+      "statement": "Framtagning av grafisk design eller designsystem ingår inte."
+    },
+    {
+      "key": "content-production",
+      "kind": "exclusion",
+      "statement": "Framtagning av texter och bilder ingår inte."
+    }
+  ]
+}

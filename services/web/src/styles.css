@@ -246,6 +246,19 @@ h2 {
   color: var(--rejected);
 }
 
+/* Kravspecens versioner: utkastet är på gång, den publicerade gäller, den ersatta är historik. */
+.status--draft {
+  color: var(--pending);
+}
+
+.status--published {
+  color: var(--awarded);
+}
+
+.status--superseded {
+  color: var(--graphite-soft);
+}
+
 /* ---------------------------------------------------------------- Formulär */
 
 form.stack {
@@ -497,5 +510,237 @@ button.quiet:hover:not(:disabled) {
   * {
     transition: none !important;
     animation: none !important;
+  }
+}
+
+/* ---------------------------------------------------------------- Intervjun
+
+   Kravspecen är sidans tyngsta läsning: en checklista båda parter ska kunna bocka av.
+   Formen är därför listans, inte kortens — raderna ligger på en linjal av vänsterkanter
+   i stället för i var sin ram. */
+
+.choices {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.choices--tight {
+  gap: 0.25rem;
+}
+
+.choice {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.6rem;
+  align-items: start;
+  padding: 0.65rem 0.8rem;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.choice:hover {
+  border-color: var(--petrol);
+}
+
+.choice > span {
+  display: grid;
+  gap: 0.15rem;
+}
+
+/* Val har egna etiketter — de ska inte versaliseras som fältrubrikerna ovanför. */
+.choice > span > strong,
+.choice > span > span {
+  font-family: inherit;
+  font-size: 0.875rem;
+  letter-spacing: normal;
+  text-transform: none;
+  color: inherit;
+}
+
+.choice input {
+  width: auto;
+  margin-top: 0.25rem;
+}
+
+.choice__hint {
+  color: var(--graphite-soft);
+}
+
+.choice__count {
+  color: var(--graphite-soft);
+  font-size: 0.75rem !important;
+}
+
+.choice--inline {
+  border: 0;
+  background: transparent;
+  padding: 0.15rem 0;
+  grid-template-columns: auto 1fr;
+}
+
+.choice--inline:hover {
+  border-color: transparent;
+}
+
+/* Fullständighetsindikatorn: driver beteende bättre än felmeddelanden i slutet. */
+.tally {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--petrol);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  padding: 0.9rem 1.1rem;
+  margin-bottom: var(--rhythm);
+  display: grid;
+  gap: 0.5rem;
+}
+
+.tally__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: baseline;
+}
+
+.tally__blockers {
+  margin: 0.25rem 0 0;
+  color: var(--graphite-soft);
+  font-size: 0.8125rem;
+}
+
+.progress {
+  height: 4px;
+  background: var(--blueprint-deep);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress__bar {
+  height: 100%;
+  background: var(--petrol);
+  transition: width 200ms ease-out;
+}
+
+/* Prompterna är meningar, inte fältrubriker — de behöver mer rad än ett vanligt formulär. */
+form.stack.interview {
+  max-width: 46rem;
+}
+
+/* Ett trettiotal frågor: full texthöjd på varje fält gör sidan ogenomtränglig.
+   Fälten växer med innehållet, och den som skriver mer drar ut dem. */
+.question textarea {
+  min-height: 4.5rem;
+}
+
+.group {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 1rem 1.25rem 1.25rem;
+  display: grid;
+  gap: 1.1rem;
+  margin: 0;
+}
+
+.group legend {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.6875rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--petrol);
+  padding: 0 0.4rem;
+}
+
+/* Frågan är en mening, inte en fältrubrik — den ska läsas, inte skannas. */
+.question > span:first-child {
+  font-family: inherit;
+  font-size: 0.9375rem;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--graphite);
+}
+
+.question__optional {
+  color: var(--graphite-soft);
+}
+
+.question__help {
+  font-family: 'IBM Plex Serif', serif;
+  font-size: 0.8125rem;
+  font-style: italic;
+  color: var(--graphite-soft);
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.clause {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.5rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--rule);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  padding: 0.9rem 1.1rem;
+  margin-bottom: 0.6rem;
+}
+
+/* Godkänd rad: kanten byter färg. Det är kunden som satt den, och det ska synas. */
+.clause--approved {
+  border-left-color: var(--awarded);
+}
+
+.clause__body {
+  flex: 1 1 26rem;
+}
+
+.clause__statement {
+  margin: 0;
+}
+
+.clause__how {
+  /* Egen rad även när den står som en span i den lästa kravspecen: verifieringsmetoden
+     hör till raden ovanför, men ska gå att skumma förbi. */
+  display: block;
+  margin: 0.35rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--graphite-soft);
+}
+
+.clause__actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.answers {
+  margin: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.answers__row {
+  display: grid;
+  grid-template-columns: minmax(12rem, 22rem) 1fr;
+  gap: 0.5rem 1.5rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--rule);
+}
+
+.answers__row dt {
+  color: var(--graphite-soft);
+  font-size: 0.8125rem;
+}
+
+.answers__row dd {
+  margin: 0;
+}
+
+@media (max-width: 40rem) {
+  .answers__row {
+    grid-template-columns: 1fr;
   }
 }

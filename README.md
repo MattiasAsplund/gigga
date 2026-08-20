@@ -132,6 +132,36 @@ REQ=$(curl -s -X POST $API/requests -H "authorization: Bearer $KT" \
 
 Belopp anges alltid i **minorenhet** — `5000000` är 50 000,00 kr. Aldrig decimaltal.
 
+### 4b. Kim fastställer kravspecen
+
+En förfrågan går inte att bjuda på förrän kunden sagt vilken sorts uppdrag det är, svarat
+på frågorna som hör till den sorten och godkänt acceptanskriterierna. I gränssnittet är
+det en sida — `/requests/<id>/spec` — och den vägen är den avsedda. Samma sak genom API:et:
+
+```bash
+curl -s "$API/gig-types" -H "authorization: Bearer $KT"          # typerna att välja mellan
+
+curl -s -X POST $API/requests/$REQ/spec -H "authorization: Bearer $KT" \
+  -H 'content-type: application/json' -d '{"gigTypes":["integration"]}'
+
+# Svaret bär frågorna. Ett steg i taget, i den form frågetypen anger:
+curl -s -X PUT $API/requests/$REQ/spec/answers -H "authorization: Bearer $KT" \
+  -H 'content-type: application/json' \
+  -d '{"answers":[{"questionKey":"integration.systems","value":"Fortnox och vårt ordersystem"}]}'
+
+# Varje acceptanskriterium godkänns aktivt, och sedan publiceras lydelsen:
+curl -s -X POST $API/requests/$REQ/spec/criteria/$RAD/approval -H "authorization: Bearer $KT"
+curl -s -X POST $API/requests/$REQ/spec/publication -H "authorization: Bearer $KT"
+```
+
+Frågorna är **data**, inte kod: de kommer ur `services/api/catalog/` och en ny uppdragstyp
+är en fil där. En klient ska rendera det den får i `questions` — `kind`, `options` och
+`config` säger hur fältet ser ut — och aldrig hårdkoda en frågenyckel. Villkorade frågor
+dyker upp när svaret på frågan de hänger på är sparat.
+
+`completeness` i svaret säger vad som återstår, och det är samma räkning som publiceringen
+gör: inga överraskningar i sista steget.
+
 ### 5. Robin hittar uppdraget
 
 ```bash
@@ -139,8 +169,10 @@ curl -s "$API/requests" -H "authorization: Bearer $ST"
 ```
 
 Katalogen visar bara uppdrag som faktiskt går att bjuda på: öppna, med deadline kvar. Varje
-post säger hur många anbud som redan finns (`bidCount`), om du själv bjudit (`hasMyBid`)
-och om du får bjuda (`canBid`) — det sista är falskt för dina egna förfrågningar.
+post säger hur många anbud som redan finns (`bidCount`), om du själv bjudit (`hasMyBid`),
+om kravspecen är publicerad (`hasPublishedSpec`) och om du får bjuda (`canBid`) — det
+sista är falskt för dina egna förfrågningar, när du redan bjudit, och när kravspecen inte
+är fastställd.
 
 ### 6. Robin lämnar anbud
 

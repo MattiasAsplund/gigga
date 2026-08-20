@@ -52,6 +52,20 @@ const EXPECTED_OPERATIONS: Record<string, [string, string]> = {
   downloadAttachmentArchive: ['get', '/api/v1/bids/{bidId}/attachments/archive'],
   renameAttachment: ['patch', '/api/v1/bids/{bidId}/attachments/{attachmentId}'],
   deleteAttachment: ['delete', '/api/v1/bids/{bidId}/attachments/{attachmentId}'],
+  listGigTypes: ['get', '/api/v1/gig-types'],
+  previewGigInterview: ['get', '/api/v1/gig-types/interview'],
+  getRequestSpec: ['get', '/api/v1/requests/{requestId}/spec'],
+  openRequestSpec: ['post', '/api/v1/requests/{requestId}/spec'],
+  openSpecRevision: ['post', '/api/v1/requests/{requestId}/spec/revisions'],
+  saveSpecAnswers: ['put', '/api/v1/requests/{requestId}/spec/answers'],
+  addSpecCriterion: ['post', '/api/v1/requests/{requestId}/spec/criteria'],
+  changeSpecCriterion: ['patch', '/api/v1/requests/{requestId}/spec/criteria/{criterionId}'],
+  removeSpecCriterion: ['delete', '/api/v1/requests/{requestId}/spec/criteria/{criterionId}'],
+  approveSpecCriterion: [
+    'post',
+    '/api/v1/requests/{requestId}/spec/criteria/{criterionId}/approval',
+  ],
+  publishRequestSpec: ['post', '/api/v1/requests/{requestId}/spec/publication'],
 };
 
 /** Operationer som kräver token, och därmed ska deklarera bearerAuth. */
@@ -75,6 +89,17 @@ const PROTECTED = new Set([
   'downloadAttachmentArchive',
   'renameAttachment',
   'deleteAttachment',
+  'listGigTypes',
+  'previewGigInterview',
+  'getRequestSpec',
+  'openRequestSpec',
+  'openSpecRevision',
+  'saveSpecAnswers',
+  'addSpecCriterion',
+  'changeSpecCriterion',
+  'removeSpecCriterion',
+  'approveSpecCriterion',
+  'publishRequestSpec',
 ]);
 
 function operations(document: OpenApiDocument): { id: string; op: Operation; where: string }[] {

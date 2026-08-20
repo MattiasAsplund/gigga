@@ -1,0 +1,63 @@
+{
+  "key": "data-migration",
+  "layer": "type",
+  "name": "Datamigrering eller import",
+  "summary": "Data ska flyttas eller läsas in från en källa till ett mål, en eller flera gånger.",
+  "position": 20,
+  "asks": [
+    { "key": "migration.source", "prompt": "Från vilken källa, och i vilket format?", "kind": "text" },
+    { "key": "migration.volume", "prompt": "Ungefärlig datavolym — antal poster och storlek?", "kind": "text" },
+    {
+      "key": "migration.mapping-owner",
+      "prompt": "Vem definierar fältmappningen?",
+      "kind": "choice",
+      "options": [
+        { "key": "customer", "label": "Kunden, före start" },
+        { "key": "supplier", "label": "Leverantören, som en del av uppdraget" },
+        { "key": "together", "label": "Tillsammans, vid ett första möte" }
+      ]
+    },
+    {
+      "key": "migration.bad-rows",
+      "prompt": "Vad ska hända med rader som inte går att tolka?",
+      "kind": "choice",
+      "options": [
+        { "key": "reject-report", "label": "Avvisas och rapporteras, övriga körs vidare" },
+        { "key": "stop", "label": "Hela körningen stoppas" },
+        { "key": "best-effort", "label": "Tas in så långt det går och flaggas" }
+      ]
+    },
+    { "ref": "shared.rerun-allowed" },
+    { "ref": "shared.rollback-plan" }
+  ],
+  "clauses": [
+    {
+      "key": "count-reconciliation",
+      "kind": "criterion",
+      "statement": "När migreringen körts, ska antalet poster i målet stämma mot källan enligt den överenskomna avstämningen, med varje avvikelse förklarad.",
+      "verification": "Avstämningsrapport körd i verifieringsmiljön."
+    },
+    {
+      "key": "bad-row-report",
+      "kind": "criterion",
+      "statement": "Rader som inte kunde tolkas finns i en rapport med orsak angiven per rad.",
+      "verification": "Rapporten lämnas tillsammans med körningen."
+    },
+    {
+      "key": "rerun-idempotent",
+      "kind": "criterion",
+      "statement": "När migreringen körs om mot samma källa, ska resultatet bli detsamma utan dubbletter.",
+      "verification": "Två körningar i följd i verifieringsmiljön, med avstämning efter varje."
+    },
+    {
+      "key": "source-cleanup",
+      "kind": "exclusion",
+      "statement": "Rättning av felaktiga data i källan ingår inte."
+    },
+    {
+      "key": "ongoing-sync",
+      "kind": "exclusion",
+      "statement": "Fortlöpande synkronisering efter migreringen ingår inte."
+    }
+  ]
+}

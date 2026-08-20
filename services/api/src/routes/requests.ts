@@ -62,8 +62,13 @@ export const requestRoutes: FastifyPluginAsyncTypebox = async (app) => {
           buyerDisplayName: request.buyerDisplayName,
           bidCount: request.bidCount,
           hasMyBid: request.hasMyBid,
-          // Egen förfrågan ger 403 och ett andra anbud 409 — säg det direkt istället.
-          canBid: !request.hasMyBid && request.buyerId !== req.user.sub,
+          hasPublishedSpec: request.hasPublishedSpec,
+          // Egen förfrågan ger 403, ett andra anbud 409 och en opublicerad kravspec
+          // också 409 — säg det direkt istället.
+          canBid:
+            !request.hasMyBid &&
+            request.buyerId !== req.user.sub &&
+            request.hasPublishedSpec,
         })),
         nextCursor: page.nextCursor,
       };

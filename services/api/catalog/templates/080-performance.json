@@ -1,0 +1,55 @@
+{
+  "key": "performance",
+  "layer": "type",
+  "name": "Prestanda eller optimering",
+  "summary": "Något fungerar men är för långsamt.",
+  "position": 80,
+  "asks": [
+    {
+      "key": "performance.slow-today",
+      "prompt": "Vad är långsamt idag, och hur är det uppmätt?",
+      "help": "Den här typen får aldrig lämnas utan uppmätt utgångsläge. \"Snabbare\" går inte att verifiera.",
+      "kind": "longtext"
+    },
+    {
+      "key": "performance.baseline",
+      "prompt": "Vilket är utgångsvärdet, med enhet?",
+      "kind": "text"
+    },
+    { "key": "performance.target", "prompt": "Vilket är målvärdet, med enhet?", "kind": "text" },
+    {
+      "key": "performance.load",
+      "prompt": "Under vilken last och med vilken datavolym mäts det?",
+      "kind": "longtext"
+    },
+    {
+      "key": "performance.behaviour-change",
+      "prompt": "Får beteendet ändras för att nå målet?",
+      "kind": "choice",
+      "options": [
+        { "key": "no", "label": "Nej, utfallet ska vara identiskt" },
+        { "key": "agreed", "label": "Ja, om ändringen godkänns i förväg" },
+        { "key": "yes", "label": "Ja, inom uppdragets ramar" }
+      ]
+    }
+  ],
+  "clauses": [
+    {
+      "key": "target-reached",
+      "kind": "criterion",
+      "statement": "När mätningen körs under de angivna förutsättningarna, ska målvärdet nås.",
+      "verification": "Samma mätmetod som utgångsläget, körd av verifieraren."
+    },
+    {
+      "key": "behaviour-unchanged",
+      "kind": "criterion",
+      "statement": "Det funktionella utfallet är oförändrat före och efter, för de angivna fallen.",
+      "verification": "Jämförelse av utdata före och efter optimeringen."
+    },
+    {
+      "key": "infrastructure-cost",
+      "kind": "exclusion",
+      "statement": "Utökad infrastruktur och tillkommande licenskostnader ingår inte."
+    }
+  ]
+}

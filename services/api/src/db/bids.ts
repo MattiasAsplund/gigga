@@ -15,6 +15,8 @@ export interface Bid {
   plan: string;
   compensation: Compensation;
   status: BidStatus;
+  /** Den lydelse av kravspecen anbudet avser. Null när förfrågan saknar publicerad version. */
+  specVersionId: string | null;
   createdAt: Date;
 }
 
@@ -24,12 +26,13 @@ export interface BidRow extends CompensationRow {
   seller_id: string;
   plan: string;
   status: BidStatus;
+  spec_version_id?: string | null;
   created_at: Date;
 }
 
 export const BID_COLUMNS =
   'id, request_id, seller_id, plan, compensation_type, fixed_amount_minor, ' +
-  'hourly_rate_minor, estimated_hours, currency, status, created_at';
+  'hourly_rate_minor, estimated_hours, currency, status, spec_version_id, created_at';
 
 export function toBid(row: BidRow): Bid {
   return {
@@ -39,6 +42,7 @@ export function toBid(row: BidRow): Bid {
     plan: row.plan,
     compensation: fromCompensationColumns(row),
     status: row.status,
+    specVersionId: row.spec_version_id ?? null,
     createdAt: row.created_at,
   };
 }
@@ -54,12 +58,20 @@ export async function insertBid(
 ): Promise<Bid | null> {
   const columns = toCompensationColumns(input.compensation);
 
+  /*
+   * spec_version_id sätts av frågan själv, inte av anroparen: anbudet ska avse den
+   * lydelse som gällde när det lämnades, och den vet databasen bäst i samma ögonblick
+   * som raden skrivs. Saknas publicerad kravspec blir det null.
+   */
   const rows = (await sql`
     INSERT INTO bids (request_id, seller_id, plan, compensation_type,
-                      fixed_amount_minor, hourly_rate_minor, estimated_hours, currency)
+                      fixed_amount_minor, hourly_rate_minor, estimated_hours, currency,
+                      spec_version_id)
     VALUES (${input.requestId}, ${input.sellerId}, ${input.plan}, ${columns.compensationType},
             ${columns.fixedAmountMinor}, ${columns.hourlyRateMinor},
-            ${columns.estimatedHours}, ${columns.currency})
+            ${columns.estimatedHours}, ${columns.currency},
+            (SELECT v.id FROM request_spec_versions v
+             WHERE v.request_id = ${input.requestId} AND v.status = 'published'))
     ON CONFLICT (request_id, seller_id) WHERE status <> 'withdrawn' DO NOTHING
     RETURNING ${sql.unsafe(BID_COLUMNS)}
   `) as BidRow[];

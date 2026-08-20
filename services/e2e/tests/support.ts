@@ -170,3 +170,182 @@ export async function signOut(page: Page): Promise<void> {
   await page.getByTestId('logout').click();
   await expect(page).toHaveURL(/\/login$/);
 }
+
+/**
+ * Publicerar en kravspec via API:et, med köparens egen token.
+ *
+ * Huvudflödet går klickvägen genom intervjun (`runInterview`). Den här genvägen finns
+ * kvar för de kedjor som handlar om något annat — att gå igenom trettio frågor i
+ * gränssnittet för att kunna dra tillbaka ett anbud är att betala för fel sak.
+ */
+export async function publishSpec(
+  page: Page,
+  requestId: string,
+  gigTypes: string[] = ['integration'],
+): Promise<void> {
+  const token = await page.evaluate(() => {
+    const raw = localStorage.getItem('fastgig.account');
+    return raw ? (JSON.parse(raw) as { token: string }).token : null;
+  });
+  if (!token) throw new Error('Ingen inloggad användare att publicera kravspecen som.');
+
+  const headers = { authorization: `Bearer ${token}`, 'content-type': 'application/json' };
+  const base = `/api/v1/requests/${requestId}/spec`;
+
+  const opened = await page.request.post(base, { headers, data: { gigTypes } });
+  if (!opened.ok()) throw new Error(`öppna kravspec: ${opened.status()} ${await opened.text()}`);
+
+  interface Spec {
+    questions: {
+      key: string;
+      kind: string;
+      visible: boolean;
+      answered: boolean;
+      config: Record<string, unknown>;
+      options: { key: string }[];
+    }[];
+    criteria: { id: string; kind: string }[];
+    completeness: { answeredRequired: number; requiredQuestions: number };
+  }
+
+  const value = (question: Spec['questions'][number]): unknown => {
+    switch (question.kind) {
+      case 'bool':
+        return true;
+      case 'integer':
+        return typeof question.config.minimum === 'number' ? question.config.minimum : 1;
+      case 'date':
+        return '2026-09-01';
+      case 'choice':
+        return question.options[0]?.key;
+      case 'multichoice':
+        return [question.options[0]?.key];
+      default:
+        return 'Besvarat i e2e-flödet.';
+    }
+  };
+
+  /*
+   * Rundor, inte ett svep: ett svar kan göra en följdfråga synlig — svarar man "köa" på
+   * vad som ska hända vid fel dyker frågan om vem som larmas upp. Det är hela poängen med
+   * villkoren, och en intervju som svarar på allt måste därför läsa om läget efter varje
+   * omgång tills inget nytt dykt upp.
+   */
+  let spec = (await opened.json()) as Spec;
+  for (let round = 0; round < 5; round += 1) {
+    const unanswered = spec.questions.filter((q) => q.visible && !q.answered);
+    if (unanswered.length === 0) break;
+
+    const answers = await page.request.put(`${base}/answers`, {
+      headers,
+      data: {
+        answers: unanswered.map((question) => ({
+          questionKey: question.key,
+          value: value(question),
+        })),
+      },
+    });
+    if (!answers.ok()) throw new Error(`svara: ${answers.status()} ${await answers.text()}`);
+
+    const reread = await page.request.get(base, { headers });
+    if (!reread.ok()) throw new Error(`läs kravspec: ${reread.status()} ${await reread.text()}`);
+    spec = (await reread.json()) as Spec;
+  }
+
+  for (const criterion of spec.criteria.filter((row) => row.kind === 'criterion')) {
+    const approved = await page.request.post(`${base}/criteria/${criterion.id}/approval`, {
+      headers,
+    });
+    if (!approved.ok()) throw new Error(`godkänn: ${approved.status()} ${await approved.text()}`);
+  }
+
+  const published = await page.request.post(`${base}/publication`, { headers });
+  if (!published.ok()) throw new Error(`publicera: ${published.status()} ${await published.text()}`);
+}
+
+/**
+ * Intervjun genom gränssnittet: välj typ, besvara frågorna, godkänn kriterierna,
+ * publicera.
+ *
+ * Inget här känner till en enskild fråga. Fälten fylls efter `data-kind` — samma sju
+ * former webben renderar — och svaren sparas i rundor, eftersom ett svar kan öppna en
+ * följdfråga. Det är precis vad en kund gör, och därför tål steget att katalogen växer.
+ */
+export async function runInterview(page: Page, typeName: string): Promise<void> {
+  await page.getByTestId('go-spec').click();
+
+  await page.getByTestId('gig-type').filter({ hasText: typeName }).locator('input').check();
+  await page.getByTestId('open-spec').click();
+  await expect(page.getByTestId('completeness')).toBeVisible();
+
+  for (let round = 0; round < 5; round += 1) {
+    const filled = await fillVisibleQuestions(page);
+    if (filled.length === 0) break;
+
+    await page.getByTestId('save-answers').click();
+
+    /*
+     * Väntan hänger på tillståndet, inte på ett svar från nätet: en klick som råkar
+     * landa medan React ritar om skickar ingenting alls, och då väntar man för evigt på
+     * ett anrop som aldrig gjordes. Att frågan blivit besvarad syns i DOM:en, och
+     * assertionen provar om tills den gör det.
+     */
+    await expect(question(page, filled[0]!)).toHaveAttribute('data-answered', 'true');
+  }
+
+  // Kunden godkänner varje rad aktivt — det är det som håller kravspecen hos kunden.
+  for (const id of await page.getByTestId('approve').evaluateAll((buttons) =>
+    buttons.map((button) => button.closest('[data-testid="criterion"]')?.getAttribute('data-id') ?? ''),
+  )) {
+    const row = page.locator(`[data-testid="criterion"][data-id="${id}"]`);
+    await row.getByTestId('approve').click();
+    await expect(row).toHaveAttribute('data-approved', 'true');
+  }
+
+  await expect(page.getByTestId('publish-spec')).toBeEnabled();
+  await page.getByTestId('publish-spec').click();
+  await expect(page.getByTestId('spec-head')).toContainText('published');
+}
+
+const question = (page: Page, key: string) =>
+  page.locator(`[data-testid="question"][data-key="${key}"]`);
+
+/** Fyller de synliga frågor som ännu är tomma, och returnerar vilka som rördes. */
+async function fillVisibleQuestions(page: Page): Promise<string[]> {
+  const touched: string[] = [];
+
+  for (const field of await page.getByTestId('question').all()) {
+    const kind = await field.getAttribute('data-kind');
+    const key = await field.getAttribute('data-key');
+    if (!key) continue;
+    const control = field.getByTestId(`answer-${key}`);
+
+    if (kind === 'multichoice') {
+      const boxes = control.locator('input[type="checkbox"]');
+      if ((await boxes.locator(':checked').count()) > 0) continue;
+      await boxes.first().check();
+      touched.push(key);
+      continue;
+    }
+
+    if ((await control.inputValue()) !== '') continue;
+
+    switch (kind) {
+      case 'bool':
+      case 'choice':
+        await control.selectOption({ index: 1 });
+        break;
+      case 'integer':
+        await control.fill((await control.getAttribute('min')) ?? '1');
+        break;
+      case 'date':
+        await control.fill('2026-09-01');
+        break;
+      default:
+        await control.fill(`Besvarat i e2e-flödet: ${key}.`);
+    }
+    touched.push(key);
+  }
+
+  return touched;
+}

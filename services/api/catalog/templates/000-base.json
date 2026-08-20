@@ -1,0 +1,240 @@
+{
+  "key": "base",
+  "layer": "base",
+  "name": "Basmallen",
+  "summary": "Frågorna som gäller varje gigg oavsett typ: vad som överlämnas, hur det verifieras, vad kunden åtar sig och vem som äger resultatet.",
+  "position": 0,
+  "asks": [
+    {
+      "key": "context.system-age",
+      "prompt": "Nytt eller befintligt system?",
+      "kind": "choice",
+      "options": [
+        { "key": "new", "label": "Nytt, byggs från grunden" },
+        { "key": "existing", "label": "Befintligt, i drift" },
+        { "key": "existing-legacy", "label": "Befintligt, gammalt och sparsamt dokumenterat" }
+      ]
+    },
+    {
+      "key": "context.stack",
+      "prompt": "Vilken teknisk stack? Ange språk, ramverk och databas.",
+      "kind": "text"
+    },
+    {
+      "key": "context.access",
+      "prompt": "Vem har åtkomst till kod och miljöer idag, och vem beslutar om ny åtkomst?",
+      "kind": "longtext"
+    },
+    {
+      "key": "context.urgency",
+      "prompt": "Vad händer om det här inte blir gjort?",
+      "help": "Svaret säger mer om hur skarpt uppdraget är än ett datum gör.",
+      "kind": "longtext"
+    },
+    {
+      "key": "base.deliverables",
+      "prompt": "Vad överlämnas konkret? Ange repo, branch och hur leveransen sker — pull request, tagg eller annat.",
+      "help": "Den här raden är utgångspunkten vid en tvist. Skriv namnet på repo och branch, inte \"koden\".",
+      "kind": "longtext"
+    },
+    {
+      "key": "base.artifacts",
+      "prompt": "Vilka artefakter utöver kod ingår — SQL-skript, konfiguration, migreringsfiler?",
+      "kind": "longtext",
+      "required": false
+    },
+    {
+      "key": "base.documentation",
+      "prompt": "Vilken dokumentation ingår, i vilken omfattning, och var ska den ligga?",
+      "kind": "longtext"
+    },
+    {
+      "key": "base.deployment",
+      "prompt": "Ska något driftsättas som en del av uppdraget?",
+      "kind": "choice",
+      "options": [
+        { "key": "none", "label": "Nej, leveransen är kod och dokument" },
+        { "key": "supplier", "label": "Ja, leverantören driftsätter" },
+        { "key": "customer", "label": "Ja, kunden driftsätter själv" },
+        { "key": "joint", "label": "Ja, tillsammans" }
+      ]
+    },
+    {
+      "key": "base.deployment-environment",
+      "prompt": "I vilken miljö sker driftsättningen, och vem har åtkomst till den?",
+      "kind": "text",
+      "condition": { "question": "base.deployment", "notEquals": "none" }
+    },
+    {
+      "key": "base.verification-environment",
+      "prompt": "Var verifieras leveransen?",
+      "help": "Det här är fältet de flesta fastprisaffärer havererar på. \"Det fungerar hos mig\" är inte en acceptansgrund.",
+      "kind": "choice",
+      "options": [
+        { "key": "customer-test", "label": "Kundens testmiljö" },
+        { "key": "supplier-demo", "label": "Leverantörens demomiljö" },
+        { "key": "customer-prod", "label": "Kundens produktionsmiljö" },
+        { "key": "local", "label": "Lokalt hos leverantören" }
+      ]
+    },
+    {
+      "key": "base.verification-owner",
+      "prompt": "Vem kör verifieringen? Ange namn och roll.",
+      "kind": "text"
+    },
+    {
+      "key": "base.test-data",
+      "prompt": "Vilka testdata används, och vem tillhandahåller dem?",
+      "kind": "longtext"
+    },
+    {
+      "key": "base.verification-record",
+      "prompt": "Hur dokumenteras resultatet av verifieringen?",
+      "kind": "choice",
+      "options": [
+        { "key": "checklist", "label": "Avbockad kriterielista i gigga" },
+        { "key": "screenshots", "label": "Skärmbilder eller inspelning" },
+        { "key": "test-report", "label": "Testrapport" },
+        { "key": "written", "label": "Skriftligt besked rad för rad" }
+      ]
+    },
+    {
+      "key": "base.customer-access",
+      "prompt": "Vilka åtkomster ska du tillhandahålla — repo, miljöer, konton, nycklar?",
+      "kind": "longtext"
+    },
+    {
+      "key": "base.access-deadline",
+      "prompt": "Senast vilket datum finns åtkomsterna på plats?",
+      "help": "Dröjer de pausas leveranstiden dag för dag enligt klockstoppsvillkoret.",
+      "kind": "date"
+    },
+    {
+      "key": "base.contact-person",
+      "prompt": "Vem är namngiven kontaktperson under leveransen?",
+      "kind": "text"
+    },
+    {
+      "key": "base.response-time-days",
+      "prompt": "Din svarstid på frågor under leveransen, i arbetsdagar.",
+      "kind": "integer",
+      "config": { "minimum": 1, "maximum": 10, "default": 2 }
+    },
+    {
+      "key": "base.acceptance-window-days",
+      "prompt": "Hur många arbetsdagar har du på dig att godkänna eller underkänna leveransen?",
+      "kind": "integer",
+      "config": { "minimum": 1, "maximum": 20, "default": 5 }
+    },
+    {
+      "key": "base.rework-rounds",
+      "prompt": "Hur många omtag ingår i priset?",
+      "help": "Därefter blir det en ny gigg.",
+      "kind": "integer",
+      "config": { "minimum": 0, "maximum": 5, "default": 2 }
+    },
+    {
+      "key": "base.ip-owner",
+      "prompt": "Vem äger den levererade koden?",
+      "kind": "choice",
+      "options": [
+        { "key": "customer", "label": "Kunden äger allt som levereras" },
+        { "key": "supplier-license", "label": "Leverantören äger, kunden får nyttjanderätt" },
+        { "key": "shared", "label": "Delat, regleras i avtalet" }
+      ]
+    },
+    {
+      "key": "base.licenses",
+      "prompt": "Vilka tredjepartslicenser accepterar du, och vilka gör du inte?",
+      "help": "Vanlig skrivning: MIT, BSD och Apache 2.0 är tillåtna, copyleft kräver godkännande i förväg.",
+      "kind": "longtext"
+    },
+    {
+      "key": "base.supplier-reuse",
+      "prompt": "Får leverantören återanvända eget befintligt material i leveransen?",
+      "kind": "choice",
+      "options": [
+        { "key": "yes-perpetual", "label": "Ja, med evig nyttjanderätt för kunden" },
+        { "key": "yes-ask", "label": "Ja, men det ska anges innan det används" },
+        { "key": "no", "label": "Nej" }
+      ]
+    }
+  ],
+  "clauses": [
+    {
+      "key": "clean-start",
+      "kind": "minimum",
+      "statement": "Koden går att starta från rent läge enligt medföljande instruktion.",
+      "verification": "Leverantören visar en start i en nyuppsatt miljö."
+    },
+    {
+      "key": "no-secrets",
+      "kind": "minimum",
+      "statement": "Inga hemligheter, nycklar eller lösenord finns i källkod eller repo.",
+      "verification": "Genomsökning av repo och historik."
+    },
+    {
+      "key": "error-handling",
+      "kind": "minimum",
+      "statement": "Applikationen kraschar inte på förutsägbara felfall — felen hanteras och rapporteras.",
+      "verification": "De felfall som anges bland kriterierna körs."
+    },
+    {
+      "key": "no-regressions",
+      "kind": "minimum",
+      "statement": "Ingen funktionalitet som fanns före leveransen slutar fungera.",
+      "verification": "Kundens befintliga rökteslista körs efter leveransen."
+    },
+    {
+      "key": "dependency-licenses",
+      "kind": "minimum",
+      "statement": "Tillkommande tredjepartsberoenden är listade med licens.",
+      "verification": "Listan följer med leveransen."
+    },
+    {
+      "key": "clock-stop",
+      "kind": "term",
+      "statement": "Levererar inte kunden enligt sina åtaganden pausas leveranstiden dag för dag tills åtagandet är uppfyllt."
+    },
+    {
+      "key": "silent-acceptance",
+      "kind": "term",
+      "statement": "Uteblivet svar inom acceptansfönstret räknas som godkännande."
+    },
+    {
+      "key": "rejection-cites-rows",
+      "kind": "term",
+      "statement": "Ett underkännande ska ange vilka kriterierader som inte uppfylls, inte en allmän missnöjesförklaring."
+    },
+    {
+      "key": "warranty",
+      "kind": "term",
+      "statement": "Avvikelser mot godkända acceptanskriterier åtgärdas utan kostnad inom 30 dagar efter acceptans. Nya önskemål är inte garantiärenden — de är nya giggar."
+    },
+    {
+      "key": "ongoing-support",
+      "kind": "exclusion",
+      "statement": "Löpande förvaltning, support och jour efter garantitiden ingår inte."
+    },
+    {
+      "key": "training",
+      "kind": "exclusion",
+      "statement": "Utbildning av kundens personal ingår inte."
+    },
+    {
+      "key": "data-cleanup",
+      "kind": "exclusion",
+      "statement": "Rättning av kundens befintliga data ingår inte."
+    },
+    {
+      "key": "third-party-changes",
+      "kind": "exclusion",
+      "statement": "Ändringar i system som kunden inte råder över ingår inte."
+    },
+    {
+      "key": "new-wishes",
+      "kind": "exclusion",
+      "statement": "Önskemål som tillkommer under leveransen ingår inte — de blir en ny gigg."
+    }
+  ]
+}

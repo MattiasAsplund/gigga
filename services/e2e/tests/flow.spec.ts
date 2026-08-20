@@ -6,7 +6,9 @@ import {
   attach,
   NEW_PASSWORD,
   person,
+  publishSpec,
   registerAndVerify,
+  runInterview,
   resetFromMailbox,
   signIn,
   signOut,
@@ -29,7 +31,9 @@ let requestId = '';
 let bidId = '';
 
 test('hela flödet från förfrågan till signerat avtal', async ({ page }) => {
-  test.slow();
+  // Kedjan är lång i sig, och intervjun lägger på ett trettiotal fält som fylls ett i
+  // taget genom gränssnittet. test.slow() (90 s) räcker inte till för båda.
+  test.setTimeout(180_000);
 
   await test.step('1–2. Konton skapas och adresserna bekräftas', async () => {
     for (const who of [kim, robin, lo]) {
@@ -63,6 +67,15 @@ test('hela flödet från förfrågan till signerat avtal', async ({ page }) => {
     await expect(page.getByTestId('request-title')).toHaveText('Bygg en Fortnox-integration');
     requestId = new URL(page.url()).pathname.split('/').pop()!;
     expect(requestId).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  await test.step('4a. Kim fastställer kravspecen — utan den går inget anbud att lämna', async () => {
+    // Hela intervjun genom gränssnittet: typval, frågor, kriterier, publicering.
+    await runInterview(page, 'Integration mellan två system');
+
+    // Och tillbaka på förfrågan syns den publicerade lydelsen.
+    await page.goto(`/requests/${requestId}`);
+    await expect(page.getByTestId('spec-panel')).toContainText('Acceptanskriterier');
   });
 
   await test.step('4b. Kim kan inte bjuda på sin egen förfrågan', async () => {
@@ -303,6 +316,9 @@ test('säljaren kan ändra och dra tillbaka sitt anbud', async ({ page }) => {
   await expect(page.getByTestId('request-title')).toHaveText('Migrera en rapportdatabas');
   const ändringsRequestId = new URL(page.url()).pathname.split('/').pop()!;
   expect(ändringsRequestId).toMatch(/^[0-9a-f-]{36}$/);
+
+  // Samma sak här: anbud förutsätter publicerad kravspec (F6.9).
+  await publishSpec(page, ändringsRequestId, ['data-migration']);
 
   await signOut(page);
   await signIn(page, robin);

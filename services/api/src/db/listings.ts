@@ -87,7 +87,7 @@ export async function listBuyerRequests(
   const bidRows = (await sql`
     SELECT b.id, b.request_id, b.seller_id, b.plan, b.compensation_type,
            b.fixed_amount_minor, b.hourly_rate_minor, b.estimated_hours, b.currency,
-           b.status, b.created_at,
+           b.status, b.spec_version_id, b.created_at,
            u.display_name,
            ${sql.unsafe(CONTRACT_JOIN_COLUMNS)}
     FROM bids b
@@ -126,7 +126,7 @@ export async function listBidsForRequest(
   const rows = (await sql`
     SELECT b.id, b.request_id, b.seller_id, b.plan, b.compensation_type,
            b.fixed_amount_minor, b.hourly_rate_minor, b.estimated_hours, b.currency,
-           b.status, b.created_at,
+           b.status, b.spec_version_id, b.created_at,
            u.display_name,
            ${sql.unsafe(CONTRACT_JOIN_COLUMNS)}
     FROM bids b
@@ -147,6 +147,8 @@ export interface CatalogRequest extends UppdragsRequest {
   buyerDisplayName: string;
   bidCount: number;
   hasMyBid: boolean;
+  /** Utan publicerad kravspec finns ingen omfattning att prissätta — och inget att bjuda på. */
+  hasPublishedSpec: boolean;
 }
 
 /**
@@ -174,7 +176,10 @@ export async function listOpenRequests(
            EXISTS (SELECT 1 FROM bids b
                     WHERE b.request_id = r.id
                       AND b.seller_id = ${viewerId}
-                      AND b.status <> 'withdrawn') AS has_my_bid
+                      AND b.status <> 'withdrawn') AS has_my_bid,
+           EXISTS (SELECT 1 FROM request_spec_versions v
+                    WHERE v.request_id = r.id AND v.status = 'published')
+             AS has_published_spec
     FROM requests r
     JOIN users u ON u.id = r.buyer_id
     WHERE r.status = 'open'
@@ -189,6 +194,7 @@ export async function listOpenRequests(
     display_name: string;
     bid_count: number;
     has_my_bid: boolean;
+    has_published_spec: boolean;
   })[];
 
   return rows.map((row) => ({
@@ -196,6 +202,7 @@ export async function listOpenRequests(
     buyerDisplayName: row.display_name,
     bidCount: row.bid_count,
     hasMyBid: row.has_my_bid,
+    hasPublishedSpec: row.has_published_spec,
   }));
 }
 
@@ -212,7 +219,7 @@ export async function listSellerBids(
   const rows = (await sql`
     SELECT b.id, b.request_id, b.seller_id, b.plan, b.compensation_type,
            b.fixed_amount_minor, b.hourly_rate_minor, b.estimated_hours, b.currency,
-           b.status, b.created_at,
+           b.status, b.spec_version_id, b.created_at,
            r.title AS request_title,
            c.id AS contract_id, c.status AS contract_status,
            c.buyer_signed_at, c.seller_signed_at

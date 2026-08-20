@@ -1,6 +1,7 @@
 import { test, expect, beforeAll, afterAll } from 'bun:test';
 import { buildTestApp, type TestApp } from '../helpers/app.ts';
 import { actor, type Actor } from '../helpers/actors.ts';
+import { publishSpecFor } from '../helpers/spec.ts';
 
 let ctx: TestApp;
 let buyer: Actor;
@@ -33,6 +34,7 @@ interface CatalogItem {
   bidCount: number;
   hasMyBid: boolean;
   canBid: boolean;
+  hasPublishedSpec: boolean;
   createdAt: string;
 }
 
@@ -44,7 +46,8 @@ interface Page {
 const inFuture = (days: number) =>
   new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
 
-async function createRequest(
+/** En förfrågan utan kravspec: den syns i katalogen men går inte att bjuda på. */
+async function createBareRequest(
   as: Actor,
   title: string,
   overrides: Record<string, unknown> = {},
@@ -58,6 +61,17 @@ async function createRequest(
   });
   if (res.statusCode !== 201) throw new Error(`skapa förfrågan: ${res.body}`);
   return res.json<{ id: string }>().id;
+}
+
+/** Förfrågan som den ser ut när köparen är klar: med publicerad kravspec. */
+async function createRequest(
+  as: Actor,
+  title: string,
+  overrides: Record<string, unknown> = {},
+): Promise<string> {
+  const id = await createBareRequest(as, title, overrides);
+  await publishSpecFor(ctx.sql, id);
+  return id;
 }
 
 const bidBody = {
@@ -232,4 +246,22 @@ test('L8.9 nyaste först', async () => {
   const positions = [first, second].map((id) => items.findIndex((i) => i.id === id));
 
   expect(positions[0]).toBeGreaterThan(positions[1]!);
+});
+
+// ---------------------------------------------------------------- L8.10
+
+test('L8.10 utan publicerad kravspec går förfrågan inte att bjuda på', async () => {
+  const bare = await createBareRequest(buyer, 'Uppdrag utan färdig kravspec');
+  const ready = await createRequest(buyer, 'Uppdrag med publicerad kravspec');
+
+  const items = (await catalog(seller)).json<Page>().items;
+
+  const withoutSpec = items.find((item) => item.id === bare);
+  expect(withoutSpec?.hasPublishedSpec).toBe(false);
+  // Anbudet skulle ändå ge 409 — katalogen säger det i förväg.
+  expect(withoutSpec?.canBid).toBe(false);
+
+  const withSpec = items.find((item) => item.id === ready);
+  expect(withSpec?.hasPublishedSpec).toBe(true);
+  expect(withSpec?.canBid).toBe(true);
 });

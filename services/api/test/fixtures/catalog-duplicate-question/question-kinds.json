@@ -1,0 +1,1 @@
+{ "kinds": [ { "key": "text", "description": "Kort fritext.", "answerSchema": { "type": "string", "minLength": 1 } } ] }

@@ -1,0 +1,83 @@
+{
+  "key": "bugfix",
+  "layer": "type",
+  "name": "Buggfix i befintlig kod",
+  "summary": "Något fungerar inte som det ska och ska sluta göra det.",
+  "position": 70,
+  "asks": [
+    {
+      "key": "bugfix.reproduction",
+      "prompt": "Hur återskapas felet, steg för steg?",
+      "help": "Utan ett återskapningsfall går uppdraget inte att avgränsa, och då går det inte att sätta fast pris.",
+      "kind": "longtext"
+    },
+    { "key": "bugfix.environment", "prompt": "I vilken miljö uppträder felet?", "kind": "text" },
+    {
+      "key": "bugfix.code-access",
+      "prompt": "Har du åtkomst till koden att ge?",
+      "kind": "choice",
+      "options": [
+        { "key": "yes", "label": "Ja, direkt" },
+        { "key": "delayed", "label": "Ja, men det tar några dagar" },
+        { "key": "no", "label": "Nej, koden ligger hos någon annan" }
+      ]
+    },
+    { "key": "bugfix.existing-tests", "prompt": "Finns tester sedan tidigare?", "kind": "bool" },
+    {
+      "key": "bugfix.root-or-symptom",
+      "prompt": "Är det felet som ska bort, eller symtomet?",
+      "kind": "choice",
+      "options": [
+        { "key": "root", "label": "Orsaken, även om det tar längre tid" },
+        { "key": "symptom", "label": "Symtomet räcker tills vidare" }
+      ]
+    },
+    {
+      "key": "bugfix.investigation-cap-hours",
+      "prompt": "Efter hur många timmars felsökning ska uppdraget stanna och räknas om?",
+      "help": "Utredningstiden är okänd innan man börjat. Taket är skyddet åt båda håll.",
+      "kind": "integer",
+      "config": { "minimum": 1, "maximum": 80, "default": 8 }
+    },
+    {
+      "key": "bugfix.neighbours",
+      "prompt": "Vilka angränsande funktioner ska fortsätta fungera oförändrat?",
+      "kind": "longtext"
+    }
+  ],
+  "clauses": [
+    {
+      "key": "reproduction-gone",
+      "kind": "criterion",
+      "statement": "När det beskrivna återskapningsfallet körs, ska felet inte längre uppstå.",
+      "verification": "Verifieraren kör stegen i den angivna miljön."
+    },
+    {
+      "key": "regression-test",
+      "kind": "criterion",
+      "statement": "Ett test som fångar felet finns, och det går igenom efter rättningen.",
+      "verification": "Testet körs mot koden före och efter rättningen."
+    },
+    {
+      "key": "neighbours-intact",
+      "kind": "criterion",
+      "statement": "De angivna angränsande funktionerna fungerar oförändrat.",
+      "verification": "Genomgång av listan i verifieringsmiljön."
+    },
+    {
+      "key": "investigation-cap",
+      "kind": "term",
+      "statement": "Är felet inte lokaliserat inom det angivna timtaket stannar uppdraget, och parterna kommer överens om en betald felsökningsgigg innan arbetet fortsätter."
+    },
+    {
+      "key": "other-bugs",
+      "kind": "exclusion",
+      "statement": "Andra fel som upptäcks under arbetet ingår inte."
+    },
+    {
+      "key": "refactoring",
+      "kind": "exclusion",
+      "statement": "Ombyggnad av kringliggande kod ingår inte."
+    }
+  ]
+}

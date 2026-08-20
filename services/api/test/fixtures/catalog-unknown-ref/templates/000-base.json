@@ -1,0 +1,10 @@
+{
+  "key": "base",
+  "layer": "base",
+  "name": "Basmallen",
+  "position": 0,
+  "asks": [
+    { "key": "base.deliverables", "prompt": "Vad överlämnas?", "kind": "text" },
+    { "ref": "shared.finns-inte" }
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "key": "automation",
+  "layer": "type",
+  "name": "Automatisering eller schemalagt jobb",
+  "summary": "Något som ska köras av sig självt, återkommande.",
+  "position": 60,
+  "asks": [
+    {
+      "key": "automation.work",
+      "prompt": "Vad ska köras, och vad räknas som en lyckad körning?",
+      "kind": "longtext"
+    },
+    {
+      "key": "automation.schedule",
+      "prompt": "Hur ofta ska jobbet köras, och vid vilka tider?",
+      "kind": "text"
+    },
+    { "key": "automation.environment", "prompt": "I vilken miljö körs jobbet?", "kind": "text" },
+    { "ref": "shared.alert-target" },
+    { "ref": "shared.rerun-allowed" },
+    {
+      "key": "automation.log-retention-days",
+      "prompt": "Hur många dagar ska loggarna sparas?",
+      "kind": "integer",
+      "config": { "minimum": 1, "maximum": 3650, "default": 90 }
+    }
+  ],
+  "clauses": [
+    {
+      "key": "runs-on-schedule",
+      "kind": "criterion",
+      "statement": "Jobbet kör enligt angivet schema i angiven miljö, styrkt med minst två körningar.",
+      "verification": "Körningarna syns i loggen med tidpunkt och utfall."
+    },
+    {
+      "key": "alerts-on-failure",
+      "kind": "criterion",
+      "statement": "När en körning misslyckas, ska larm gå till den överenskomna mottagaren.",
+      "verification": "En körning görs avsiktligt misslyckad under verifieringen."
+    },
+    {
+      "key": "manual-rerun",
+      "kind": "criterion",
+      "statement": "Manuell omkörning går att göra av kunden enligt medföljande instruktion.",
+      "verification": "Kunden kör om en körning under verifieringen."
+    },
+    {
+      "key": "monitoring-setup",
+      "kind": "exclusion",
+      "statement": "Övervakningsverktyg och jourrutin ingår inte."
+    }
+  ]
+}

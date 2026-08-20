@@ -1,0 +1,34 @@
+{
+  "key": "other",
+  "layer": "type",
+  "name": "Övrigt",
+  "summary": "Uppdrag som ingen typmall täcker. Basmallen plus en skärpt intervju — vagheten kostar extra frågor.",
+  "position": 900,
+  "asks": [
+    {
+      "key": "other.done-definition",
+      "prompt": "Beskriv hur du kommer avgöra om det här är klart.",
+      "kind": "longtext"
+    },
+    {
+      "key": "other.minimum-viable",
+      "prompt": "Vad är det minsta som måste fungera för att du ska betala?",
+      "kind": "longtext"
+    },
+    {
+      "key": "other.disappointment",
+      "prompt": "Vad skulle göra dig besviken trots att allt du bett om är levererat?",
+      "help": "Frågan fångar det outtalade, och det outtalade är det som sänker fastprisaffärer.",
+      "kind": "longtext"
+    },
+    { "ref": "shared.reference-result" }
+  ],
+  "clauses": [
+    {
+      "key": "minimum-works",
+      "kind": "criterion",
+      "statement": "Det som angetts som minsta fungerande omfattning fungerar i verifieringsmiljön.",
+      "verification": "Genomgång mot svaret på frågan om minsta omfattning."
+    }
+  ]
+}

@@ -125,7 +125,7 @@ bläddringen.
 | `POST /auth/reset-password` | – | Sätter nytt lösenord med koden ur mailet |
 | `GET /requests` | ✔ | Listar öppna uppdrag att lämna anbud på |
 | `POST /requests` | ✔ | Publicerar en uppdragsförfrågan |
-| `POST /requests/{requestId}/bids` | ✔ | Lämnar anbud med plan och ersättning |
+| `POST /requests/{requestId}/bids` | ✔ | Lämnar anbud (kräver publicerad kravspec) |
 | `PATCH /bids/{bidId}` | ✔ | Ändrar plan, ersättning eller båda |
 | `POST /bids/{bidId}/withdrawal` | ✔ | Drar tillbaka anbudet |
 | `GET /me/requests` | ✔ | Egna förfrågningar, var och en med sina anbud |
@@ -140,6 +140,17 @@ bläddringen.
 | `GET /bids/{bidId}/attachments/archive` | ✔ | Laddar ner alla dokument som ZIP |
 | `PATCH /bids/{bidId}/attachments/{attachmentId}` | ✔ | Byter filnamn |
 | `DELETE /bids/{bidId}/attachments/{attachmentId}` | ✔ | Raderar ett dokument |
+| `GET /gig-types` | ✔ | Listar uppdragstyperna kunden väljer mellan |
+| `GET /gig-types/interview` | ✔ | Intervjufrågorna för valda typer, sammanslagna |
+| `GET /requests/{requestId}/spec` | ✔ | Läser kravspecen |
+| `POST /requests/{requestId}/spec` | ✔ | Öppnar kravspecen med valda typer |
+| `POST /requests/{requestId}/spec/revisions` | ✔ | Öppnar nästa utkast som kopia |
+| `PUT /requests/{requestId}/spec/answers` | ✔ | Sparar svar på intervjufrågorna |
+| `POST /requests/{requestId}/spec/criteria` | ✔ | Lägger till en egen kriterierad |
+| `PATCH /requests/{requestId}/spec/criteria/{criterionId}` | ✔ | Skriver om en rad |
+| `DELETE /requests/{requestId}/spec/criteria/{criterionId}` | ✔ | Stryker en rad |
+| `POST /requests/{requestId}/spec/criteria/{criterionId}/approval` | ✔ | Godkänner en rad |
+| `POST /requests/{requestId}/spec/publication` | ✔ | Publicerar kravspecen |
 
 ### Katalogen
 
@@ -249,6 +260,48 @@ tidsstämpeln. Ändras anbudet efter att avtalet skapats rör det inte `terms`.
 
 Endast förfrågans köpare och anbudets säljare är parter; alla andra får `403`.
 
+### Uppdragstyp och kravspec
+
+**Anbud kräver en publicerad kravspec.** Utan den svarar `POST /requests/{id}/bids` med
+`409 spec-not-published`, och katalogen visar `hasPublishedSpec: false` och `canBid: false`
+på förfrågan. Ett utkast räcker inte — det är den publicerade lydelsen anbudet binds till.
+
+
+En förfrågan blir prissättbar först när kunden sagt vilken sorts uppdrag det är och svarat
+på frågorna som hör till den sortens uppdrag. Flödet:
+
+1. `GET /gig-types` — typerna att välja mellan. Flera får väljas.
+2. `POST /requests/{id}/spec` med `{ "gigTypes": ["data-migration"] }` — öppnar kravspecen.
+   Svaret bär `questions` (basmallens frågor plus typernas, sammanslagna) och `criteria`
+   (utkast till acceptanskriterier, minimikrav, ingår-inte och villkor).
+3. `PUT /requests/{id}/spec/answers` — ett steg i taget. Svaren prövas mot frågans egen
+   form; ett heltal där en sträng skickas ⇒ `422` med frågenyckeln som pekare.
+4. `POST|PATCH|DELETE …/spec/criteria…` — kunden lägger till, skriver om och stryker rader.
+5. `…/spec/criteria/{id}/approval` — varje kriterium godkänns aktivt, och godkännandet
+   tidsstämplas. En omskriven rad tappar sitt godkännande.
+6. `POST …/spec/publication` — publicerar, om allt som krävs finns.
+
+**Frågorna är data, inte kod.** Vilka typer som finns och vilka frågor de ställer kommer ur
+`services/api/catalog/`. En klient ska rendera det den får i `questions` — `kind`, `options`
+och `config` säger hur fältet ska se ut — och aldrig hårdkoda en frågenyckel.
+
+**Villkorade frågor.** En fråga med `condition` ställs bara när villkoret stämmer mot redan
+lämnade svar; `visible` i svaret är villkoret redan utvärderat. En dold fråga hindrar inte
+publicering.
+
+**`completeness`** är fullständighetsindikatorn: `requiredQuestions`, `answeredRequired`,
+`criteria`, `approvedCriteria`, `publishable` och `blockers` med en rad per brist. Den räknar
+exakt det publiceringen kräver, så gränssnittet kan visa hur långt kunden kommit i stället
+för att överraska i sista steget.
+
+**Efter publicering är lydelsen låst.** Skrivningar ger `409 spec-not-draft`, och anbud som
+lämnas därefter binds till versionen. Ändras omfattningen under den publika frågefasen:
+`POST …/spec/revisions` öppnar nästa utkast som en kopia — den publicerade versionen står
+kvar som gällande tills det nya publiceras.
+
+**Vem ser vad.** Köparen och den med läsrätt ser sitt utkast. Alla andra inloggade ser den
+publicerade versionen, och `404` innan dess: ett utkast är köparens interna arbete.
+
 ## Ett helt flöde
 
 ```bash
@@ -288,7 +341,8 @@ Signeringsanropen har ingen kropp. `content-type: application/json` utan kropp �
 
 ## Vad som inte finns än
 
-Fritextsökning och sortering i katalogen, ändra eller dra tillbaka anbud, refresh-tokens,
-utloggning, nytt bekräftelsemail på begäran, lösenordsåterställning, betalning och
-tidrapportering. Se §10 i
+Fritextsökning och sortering i katalogen, betalning och tidrapportering, och kriteriernas
+utfall vid acceptans (`met`/`failed`/`waived` finns i modellen men har ingen väg dit).
+Intervjun sparar först när man trycker på Spara — inget autospar per fält — och
+indikatorns brister går inte att klicka sig till. Se §10 i
 [GENOMFORANDE.md](GENOMFORANDE.md).
