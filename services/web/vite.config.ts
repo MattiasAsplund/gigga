@@ -23,6 +23,9 @@ export default defineConfig({
 		strictPort: true,
 		proxy: {
 			"/api": {
+				// API_TARGET sätts av AppHosten och bär API:ets lottade port. Reservvärdet
+				// gäller bara när Vite körs för hand, vid sidan av Aspire — då står API:et på
+				// sin egen standardport (services/api/src/config.ts).
 				target: process.env.API_TARGET ?? "http://localhost:3000",
 				changeOrigin: true,
 				// Utan detta ser varje besökare ut att komma från proxyn, och API:ets kvotgräns

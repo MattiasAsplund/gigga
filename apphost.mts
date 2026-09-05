@@ -180,8 +180,11 @@ const api = await builder
 	// bara till sist — då blir den ett argument till programmet i stället. Därför via
 	// dev-scriptet i services/api/package.json, som äger ordningen.
 	.withRunScript("dev")
-	// Fast port av samma skäl som mailpit: webbens proxy och e2e pekar hit.
-	.withHttpEndpoint({ env: "PORT", port: 3000 })
+	// Lottad port. En fast port ger ett API som ser ohälsosamt ut så fort något annat
+	// redan sitter på 3000 — hälsokontrollen frågar en port som inte är vår. Ingen behöver
+	// den fast heller: webbens proxy får adressen av API_TARGET längre ned, och e2e går
+	// genom webben.
+	.withHttpEndpoint({ env: "PORT" })
 	.withEnvironment("DATABASE_URL", await db.uriExpression())
 	.withEnvironment("JWT_SECRET", jwtSecret)
 	.withEnvironment("SMTP_HOST", await mailpit.host())
@@ -207,7 +210,10 @@ const web = await builder
 	// isProxied: false — Vite binder porten själv i stället för DCP:s proxy, som bara
 	// lyssnar på 127.0.0.1. Det är vad som gör webben nåbar från e2e-containern.
 	.withHttpEndpoint({ env: "PORT", port: 5173, isProxied: false })
-	.withEnvironment("API_TARGET", "http://localhost:3000")
+	// Referensen och inte en sträng: porten är lottad och känd först när api tilldelats
+	// sin, alltså efter att grafen byggts. Vite läser variabeln när servern startar, och
+	// waitFor(api) nedan gör att det aldrig sker innan adressen finns.
+	.withEnvironment("API_TARGET", await api.getEndpoint("http"))
 	.waitFor(api);
 
 // Bekräftelselänkarna pekar på webbens /verify, inte in i API:et — därför webbens
