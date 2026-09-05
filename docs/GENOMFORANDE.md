@@ -139,15 +139,25 @@ fastgig/
 │   └── api/
 │       ├── package.json
 │       ├── tsconfig.json
+│       ├── catalog/            # acceptansmallarna som data — ny typ = ny fil, ingen kod
+│       │   ├── question-kinds.json   # frågetyperna och deras svarsscheman
+│       │   ├── questions/            # frågor flera mallar delar
+│       │   └── templates/            # 000-base.json … 900-other.json
 │       ├── migrations/
 │       │   ├── 001_users.sql
 │       │   ├── 002_requests.sql
 │       │   ├── 003_bids.sql
-│       │   └── 004_contracts.sql
+│       │   ├── 004_contracts.sql
+│       │   ├── …
+│       │   ├── 016_gig_templates.sql # mallar, frågebank, villkor, kriterierader
+│       │   └── 017_request_specs.sql # kravspecens versioner, svar och kriterier
 │       ├── src/
 │       │   ├── server.ts       # buildServer(): FastifyInstance — inga sidoeffekter
 │       │   ├── index.ts        # entrypoint: migrerar och lyssnar  ← bun kör denna direkt
 │       │   ├── config.ts       # env-parsning, validerad med TypeBox
+│       │   ├── catalog/       # katalogfilernas format och inläsning
+│       │   │   ├── definition.ts # TypeBox-scheman för filerna + inläst form
+│       │   │   └── load.ts       # läser, validerar och löser upp hänvisningar
 │       │   ├── db/
 │       │   │   ├── sql.ts      # Bun.SQL-instans
 │       │   │   ├── migrate.ts  # en transaktion per migration
@@ -155,6 +165,8 @@ fastgig/
 │       │   │   ├── requests.ts
 │       │   │   ├── bids.ts
 │       │   │   ├── contracts.ts
+│       │   │   ├── gig-catalog.ts   # synk av katalogen + intervjun för valda typer
+│       │   │   ├── request-specs.ts # kravspecens versioner, svar och kriterierader
 │       │   │   └── listings.ts # frågorna bakom API 3 och 4
 │       │   ├── plugins/
 │       │   │   ├── swagger.ts
@@ -167,11 +179,15 @@ fastgig/
 │       │   │   ├── request.ts
 │       │   │   ├── bid.ts
 │       │   │   ├── contract.ts
+│       │   │   ├── gig.ts     # mallar, frågor, kravspec
 │       │   │   └── me.ts
 │       │   ├── domain/         # ren logik, inga I/O-beroenden och därmed snabba tester
 │       │   │   ├── money.ts          # minorenhet in/ut ur bigint-kolumner
 │       │   │   ├── bid-rules.ts      # diskriminerad ersättning, totalbelopp
 │       │   │   ├── contract-rules.ts # signaturernas tillståndsmaskin
+│       │   │   ├── gig-answers.ts    # svarets schema ur frågetyp + config + alternativ
+│       │   │   ├── gig-conditions.ts # villkorslogiken för vilka frågor som ställs
+│       │   │   ├── spec-completeness.ts # indikatorn och publiceringskontrollen
 │       │   │   └── pagination.ts     # markör på (created_at, id)
 │       │   └── routes/
 │       │       ├── health.ts
@@ -179,13 +195,15 @@ fastgig/
 │       │       ├── requests.ts # API 5
 │       │       ├── bids.ts     # API 6
 │       │       ├── me.ts       # API 3–4
-│       │       └── contracts.ts# API 7
+│       │       ├── contracts.ts# API 7
+│       │       ├── gig-types.ts     # API 26–27
+│       │       └── request-specs.ts # API 28–36
 │       └── test/
 │           ├── helpers/
 │           │   ├── postgres.ts # podman via Bun.$ + malldatabas
 │           │   ├── app.ts      # buildTestApp()
 │           │   └── actors.ts   # actor(app, 'kopare')
-│           ├── fixtures/       # migrationer att pröva runnern mot
+│           ├── fixtures/       # migrationer och trasiga kataloger att pröva mot
 │           ├── contract/       # ett spec-test per API (§7.2)
 │           └── domain/         # snabba enhetstester utan databas
 └── .claude/skills/             # se §8
@@ -334,9 +352,6 @@ contracts    id uuid pk, request_id → requests unique, bid_id → bids unique,
              created_at timestamptz
 ```
 
-`bigint`- och `numeric`-kolumner returneras som `string` av `Bun.SQL`. Konverteringen sker
-på ett ställe — i mapparna i `src/db/` — aldrig utspritt i routes.
-
 ### 5.1 Invarianter (blir ett test var i `test/domain/`)
 
 1. `compensation_type='fixed'` ⇒ `fixed_amount_minor` satt, `hourly_*` null. Och tvärtom.
@@ -350,6 +365,107 @@ på ett ställe — i mapparna i `src/db/` — aldrig utspritt i routes.
 7. Avtal blir `active` först när **båda** signaturerna finns; då sätts förfrågan till
    `awarded` och övriga anbud till `rejected`, i **en** transaktion (`sql.begin`).
 8. En signatur är idempotent: samma part som signerar igen ger 200 och oförändrat tillstånd.
+
+### 5.2 Acceptansmallarna och kravspecen
+
+Modellen bakom `docs/gigga-acceptansmallar.md`. Två halvor: **katalogen**, som är mallarna
+och deras frågor, och **kravspecen**, som är en förfrågans svar och kriterierader.
+
+```
+gig_question_kinds     key pk, description, answer_schema jsonb   -- JSON Schema per frågetyp
+
+gig_questions          id uuid pk, key unique, prompt, help_text, kind → gig_question_kinds,
+                       config jsonb,               -- skärper frågetypens schema
+                       active bool                 -- avaktiveras, raderas aldrig
+
+gig_question_options   question_id → gig_questions, key, label, position
+                       pk (question_id, key)
+
+gig_templates          id uuid pk, key unique, layer enum('base','type'), name, summary,
+                       position int, active bool
+                       unique (layer) where layer='base' and active
+
+gig_template_questions template_id → gig_templates, question_id → gig_questions,
+                       position int, required bool,
+                       condition jsonb null,       -- {"question":…, "equals"|"in"|…}
+                       pk (template_id, question_id)
+
+gig_template_clauses   id uuid pk, template_id → gig_templates, key, position,
+                       kind enum('criterion','minimum','exclusion','term'),
+                       statement text, verification text null
+                       unique (template_id, key)
+
+request_spec_versions  id uuid pk, request_id → requests, version int,
+                       status enum('draft','published','superseded'),
+                       created_at, published_at timestamptz null
+                       unique (request_id, version)
+                       unique (request_id) where status='draft'
+                       unique (request_id) where status='published'
+
+request_spec_types     spec_version_id → request_spec_versions, template_id → gig_templates,
+                       position int, pk (spec_version_id, template_id)
+
+request_answers        id uuid pk, spec_version_id → request_spec_versions,
+                       question_id → gig_questions, question_key text, prompt text,
+                       value jsonb, answered_at
+                       unique (spec_version_id, question_id)
+
+request_criteria       id uuid pk, spec_version_id → request_spec_versions,
+                       kind gig_clause_kind, statement, verification, position,
+                       origin enum('template','custom'),
+                       source_template_key text null, source_clause_key text null,
+                       status enum('pending','met','failed','waived'),
+                       approved_at timestamptz null,
+                       approved_by → users null on delete set null
+
+bids                   … + spec_version_id → request_spec_versions null
+```
+
+Fyra val bär hela modellen:
+
+1. **Frågebanken är skild från mallarna.** En fråga definieras en gång och kopplas till de
+   mallar som ställer den. Kunden får välja flera typer, och då slås frågorna ihop på
+   `question_id` — dubbletterna faller bort utan textjämförelse.
+2. **Katalogen är filer, inte migrationer.** `catalog/` läses och speglas in vid varje boot
+   (`syncGigCatalog`). En ny typmall är en JSON-fil, en ny fråga en rad i `asks`. Frågor och
+   mallar som försvinner ur filerna avaktiveras — aldrig raderas, eftersom lämnade svar
+   pekar på dem.
+3. **Villkoren är data.** Vilka följdfrågor som ställs styrs av `condition`-kolumnen, inte av
+   grenar i koden, och samma utvärdering används både när intervjun visas och när
+   publiceringen kontrollerar att inget obligatoriskt saknas.
+4. **Kriterieraderna är kopior.** Mallens rader kopieras in på kravspecens version med
+   `source_template_key`/`source_clause_key` som spår. Katalogen får skrivas om utan att en
+   kravspec som kunden godkänt ändrar sig, och anbudet pekar på den version det skrevs mot.
+
+**Lägga till en typmall** är en fil under `catalog/templates/` och en omstart:
+
+```json
+{
+  "key": "tillganglighet",
+  "layer": "type",
+  "name": "Tillgänglighetsanpassning",
+  "position": 110,
+  "asks": [
+    { "key": "a11y.standard", "prompt": "Vilken nivå ska uppnås?", "kind": "choice",
+      "options": [{ "key": "wcag-aa", "label": "WCAG 2.2 AA" },
+                  { "key": "wcag-a", "label": "WCAG 2.2 A" }] },
+    { "ref": "shared.reference-result" }
+  ],
+  "clauses": [
+    { "key": "audit-passes", "kind": "criterion",
+      "statement": "När granskningen körs mot angivna sidor, ska inga fel på den valda nivån kvarstå.",
+      "verification": "Granskningsverktyget körs av verifieraren och rapporten bifogas." }
+  ]
+}
+```
+
+`{ "ref": … }` hänvisar till en fråga som någon annan fil definierat — det är så två typer
+delar en fråga utan att kunden får den två gånger. Katalogen valideras vid inläsningen: en
+hänvisning som inte går någonstans, en dubblerad nyckel eller en `choice` utan alternativ
+fäller boot med filnamn och nyckel i felmeddelandet (AM.9, AM.10).
+
+`bigint`- och `numeric`-kolumner returneras som `string` av `Bun.SQL`. Konverteringen sker
+på ett ställe — i mapparna i `src/db/` — aldrig utspritt i routes.
 
 ---
 
@@ -386,6 +502,17 @@ och vid valideringsfel `errors[]`.
 | 23 | `DELETE /api/v1/bids/{bidId}/attachments/{attachmentId}` | ✔ | Radera dokument |
 | 24 | `PATCH /api/v1/bids/{bidId}` | ✔ | Ändra anbud |
 | 25 | `POST /api/v1/bids/{bidId}/withdrawal` | ✔ | Dra tillbaka anbud |
+| 26 | `GET /api/v1/gig-types` | ✔ | Lista uppdragstyper |
+| 27 | `GET /api/v1/gig-types/interview` | ✔ | Förhandsvisa intervjun för valda typer |
+| 28 | `GET /api/v1/requests/{requestId}/spec` | ✔ | Läs kravspecen |
+| 29 | `POST /api/v1/requests/{requestId}/spec` | ✔ | Öppna kravspecen med valda typer |
+| 30 | `POST /api/v1/requests/{requestId}/spec/revisions` | ✔ | Öppna nästa utkast som kopia |
+| 31 | `PUT /api/v1/requests/{requestId}/spec/answers` | ✔ | Spara svar på intervjufrågorna |
+| 32 | `POST /api/v1/requests/{requestId}/spec/criteria` | ✔ | Lägg till en egen kriterierad |
+| 33 | `PATCH /api/v1/requests/{requestId}/spec/criteria/{criterionId}` | ✔ | Skriv om en rad |
+| 34 | `DELETE /api/v1/requests/{requestId}/spec/criteria/{criterionId}` | ✔ | Stryk en rad |
+| 35 | `POST /api/v1/requests/{requestId}/spec/criteria/{criterionId}/approval` | ✔ | Godkänn en rad |
+| 36 | `POST /api/v1/requests/{requestId}/spec/publication` | ✔ | Publicera kravspecen |
 
 ### 6.1 Detaljer per API
 
@@ -789,6 +916,67 @@ räknar redan bort tillbakadragna.
 > tappa något steg i flödet.
 > Om ett explicit accept-steg önskas är det en additiv ändring (nytt API 8), inte en omskrivning.
 
+**Anbud förutsätter publicerad kravspec (API 6).** Utan en publicerad lydelse finns ingen
+omfattning att prissätta, och anbudet skulle inte gå att binda till någon version —
+`409 spec-not-published`. Kontrollen ligger *efter* ägarskapet och förfrågans tillstånd:
+den säger något om köparens arbete, och det angår bara den som faktiskt får bjuda. Ett
+utkast räcker inte; det är den publicerade lydelsen anbudet avser.
+
+Katalogen (API 8) bär därför `hasPublishedSpec`, och `canBid` är falskt utan den — samma
+princip som för egen förfrågan och redan lämnat anbud: säg det i listan i stället för att
+låta säljaren skriva ett anbud som ändå avvisas.
+
+**26–27. Katalogen: `GET /gig-types`, `GET /gig-types/interview?types=a,b`** → `200`
+Typmallarna kunden väljer i steg 1, och intervjun för de valda. Basmallen står inte i
+listan — dess frågor gäller varje gigg och läggs alltid på. Frågorna slås ihop över de
+valda typerna och dubbletterna faller bort, så en fråga som både datamigrering och
+automatisering ställer kommer med en gång. Okänd typ ⇒ `422` med `types` som pekare.
+
+Ingenting i routen känner till någon uppdragstyp: svaret är katalogens rader (§5.2), och en
+ny typmall syns här utan kodändring.
+
+**28–29. Kravspecen: `GET`/`POST /requests/{id}/spec`** → `200` / `201`
+`POST` är steg 1: typerna avgör frågorna och ger kriterieutkastet. Bara köparen får öppna
+och skriva (`403 not-request-owner`), och en förfrågan har en kravspec (`409 spec-exists`).
+
+`GET` svarar olika beroende på vem som frågar. Köparen och den med läsrätt får sitt utkast;
+alla andra inloggade får den **publicerade** versionen, för det är den ett anbud avser.
+Finns ingen publicerad version är svaret `404 spec-not-found` för utomstående — ett utkast
+är köparens interna arbete och ska inte kunna läsas i förväg.
+
+Svaret bär alltid `questions` med villkoren utvärderade mot lämnade svar (`visible`) och
+`completeness` — fullständighetsindikatorn, som räknar exakt det publiceringen kräver.
+Klienten behöver därmed inte veta vilka frågor som finns för att kunna rendera intervjun
+eller visa hur långt kunden kommit.
+
+**30. `POST /requests/{id}/spec/revisions`** → `201`
+Vägen tillbaka in i intervjun när ett svar i den publika frågefasen ändrar omfattningen.
+Nästa utkast är en kopia av den gällande versionen, som står kvar tills det nya
+publiceras — anbud som kommer in under tiden avser en lydelse som inte flyttar sig.
+Utan publicerad version ⇒ `404 no-published-spec`; med ett utkast redan öppet ⇒ `409`.
+
+**31. `PUT /requests/{id}/spec/answers`** → `200`
+Ett steg i intervjun i taget. Varje svar prövas mot frågans egen form — frågetypens JSON
+Schema skärpt av frågans `config` och alternativ — och **hela steget avvisas om något inte
+håller**: halva svar är värre än inga. Fel ⇒ `422` med frågenyckeln som `path`. En fråga
+som de valda typerna inte ställer avvisas på samma sätt.
+
+**32–35. Kriterieraderna** → `201` / `200`
+Kundens egna rader läggs till med samma formkrav som de genererade, skrivs om, stryks och
+godkänns en och en. Ett godkännande tidsstämplas med användaren — det är ansvarsskyddet,
+och det som håller kravspecen hos kunden och inte hos gigga. **En omskriven rad tappar sitt
+godkännande**: kunden har godkänt en text, inte ett radnummer.
+
+**36. `POST /requests/{id}/spec/publication`** → `200`
+Publiceringskontrollen (steg 6): varje *synlig* obligatorisk fråga besvarad, minst tre
+acceptanskriterier, samtliga godkända, och en ingår-inte-lista som inte är tom. Brister
+kommer tillbaka som `422 spec-not-publishable` med **en rad per brist** — samma princip som
+kriterierna själva följer. En dold fråga räknas inte som obesvarad, vilket är hela poängen
+med att villkoren är data.
+
+Efter publicering är lydelsen låst: skrivningar mot den ger `409 spec-not-draft`, och
+anbud som lämnas därefter binds till versionen.
+
 ---
 
 ## 7. Testdriven leverans
@@ -898,6 +1086,7 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | F6.7 | Anbud på okänd förfrågan ⇒ 404 |
 | F6.7b | `requestId` som inte är en uuid ⇒ 422 |
 | F6.8 | Anbud på `awarded` förfrågan ⇒ 422 |
+| F6.9 | Anbud på en förfrågan utan publicerad kravspec ⇒ 409; ett utkast räcker inte |
 | **L3** | **Lista egna förfrågningar med anbud** |
 | L3.1 | Returnerar bara egna förfrågningar, aldrig andras |
 | L3.2 | Inkluderar inlämnade anbud med plan, ersättning, säljarens namn och status |
@@ -959,6 +1148,7 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | L8.7 | Inga anbudsdetaljer läcker — varken plan eller belopp |
 | L8.8 | `?compensationPref` filtrerar; okänt värde ⇒ 422 |
 | L8.9 | Sidbrytning utan dubbletter, nyaste först |
+| L8.10 | `hasPublishedSpec` och `canBid` är falska utan publicerad kravspec |
 | **V** | **E-postverifiering** (API 9) |
 | V.1 | Registrering skickar ett mail till adressen med en verifieringslänk |
 | V.2 | Ett nytt konto är overifierat och bär en egen token, skild från användarens id |
@@ -1115,6 +1305,58 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | G.17 | Utan konfigurerad larmadress skickas inget |
 | G.18 | Ett misslyckat larm fäller inte städningen |
 | G.19 | Larmet är avkortat men säger hur mycket som utelämnats |
+| **AM** | **Acceptansmallarna som data** |
+| AM.1 | Ett svar som följer frågetypens schema godtas |
+| AM.2 | Fel typ i svaret avvisas |
+| AM.3 | Frågans `config` skärper frågetypens schema, men `default` validerar inget |
+| AM.4 | `choice` godtar bara frågans egna alternativnycklar |
+| AM.5 | `multichoice` avvisar okända och upprepade alternativ |
+| AM.6 | Villkoret avgör om frågan ställs (`equals`, `notEquals`, `in`, `answered`) |
+| AM.7 | En fråga utan villkor ställs alltid |
+| AM.8 | Katalogen på disk validerar och bär basmallen plus typmallarna |
+| AM.9 | En hänvisning till en fråga ingen fil definierar fälls vid inläsningen |
+| AM.10 | Samma frågenyckel definierad i två filer fälls vid inläsningen |
+| AM.11 | Synken speglar katalogen och är idempotent — samma id:n efter andra körningen |
+| AM.12 | En fråga som två mallar delar lagras en gång och ställs av båda |
+| AM.13 | Intervjun slår ihop bas och valda typer utan dubbletter, i mallordning |
+| AM.14 | En mall som försvinner ur katalogen avaktiveras men raderas inte |
+| AM.15 | Alternativ, villkor och svarsschema följer med ut till intervjun |
+| AM.16 | Mallens kriterierader läses ut för bas och valda typer, i ordning |
+| **KS** | **Kravspec per förfrågan** |
+| KS.1 | Ett utkast bär de valda typerna och kriterieutkastet ur mallarna; okänd typ ⇒ fel |
+| KS.2 | Ett svar prövas mot frågans egen form |
+| KS.3 | En fråga som de valda typerna inte ställer går inte att besvara |
+| KS.4 | Ett svar per fråga och version — ett nytt ersätter det gamla |
+| KS.5 | Kundens godkännande av en rad tidsstämplas med användaren |
+| KS.6 | En omskriven rad tappar sitt godkännande |
+| KS.7 | Publicering vägras när en obligatorisk fråga saknar svar, och pekar ut den |
+| KS.8 | Publicering vägras när kriterierna är för få eller inte godkända |
+| KS.9 | En fråga som villkoret döljer blockerar inte publiceringen |
+| KS.10 | En publicerad version går inte att ändra |
+| KS.11 | Nästa utkast är en kopia, och den publicerade lydelsen står kvar tills det publiceras |
+| KS.12 | En förfrågan har högst ett utkast och högst en gällande version |
+| KS.13 | Ett anbud binds till den lydelse som gällde när det lämnades |
+| KS.14 | Kriterieraderna är kopior — mallen får ändras utan att kravspecen gör det |
+| KS.15 | Ett raderat konto tar inte med sig godkännandets tidsstämpel |
+| **I** | **Intervjun och kravspecen över HTTP** (API 26–36) |
+| I.1 | Katalogen listar de valbara uppdragstyperna, inte basmallen |
+| I.2 | Katalogen kräver token |
+| I.3 | Intervjun för flera typer slås ihop utan dubbletter, med alternativ och villkor |
+| I.4 | En okänd uppdragstyp ⇒ 422 med fältpekare |
+| I.5 | Kravspecen öppnas med valda typer och kriterieutkast; okänd typ ⇒ 422 |
+| I.6 | Bara förfrågans köpare får öppna och ändra kravspecen ⇒ 403 |
+| I.7 | En andra kravspec på samma förfrågan ⇒ 409 |
+| I.8 | Svar sparas och fullständighetsindikatorn följer med |
+| I.9 | Ett svar som bryter mot frågans form ⇒ 422 med frågan som pekare |
+| I.10 | En fråga som de valda typerna inte ställer ⇒ 422 |
+| I.11 | Kunden lägger till, skriver om och stryker egna rader; okänd rad ⇒ 404 |
+| I.12 | Godkännandet av en rad tidsstämplas med kunden |
+| I.13 | Publicering utan svar och godkännanden ⇒ 422 som pekar ut varje brist |
+| I.14 | En fullständig kravspec publiceras och blir läsbar för alla inloggade |
+| I.15 | Ett utkast syns inte för utomstående före publicering ⇒ 404 |
+| I.16 | En publicerad kravspec går inte att ändra ⇒ 409 |
+| I.17 | En revision öppnar nästa utkast medan den gällande lydelsen står kvar; utan publicerad version ⇒ 404 |
+| I.18 | En dold fråga är varken synlig eller obligatorisk i indikatorn |
 | **X** | **Tvärsnitt** |
 | X.1 | `/docs/json` är OpenAPI 3.1 med ifylld `info` |
 | X.1b | Alla API:er i §6 finns på rätt metod och väg, med rätt `operationId` |
@@ -1129,7 +1371,7 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | X.4b | Fel metod på en känd väg ⇒ 404 i samma format |
 | X.4c | Felsvar från en riktig route är också `application/problem+json` |
 
-Totalt 263 testfall, **alla gröna**. Matrisen är levande — den *ska* ändras i
+Totalt 354 testfall, **alla gröna**. Matrisen är levande — den *ska* ändras i
 dialogen (§8.1).
 
 X-gruppen var grön redan när den skrevs, eftersom den beskriver tvärsnitt som byggdes upp
@@ -1193,7 +1435,7 @@ borttagen så Aspire faller tillbaka på Node).
 ### 8.3 Dialogens spelregler
 
 - **Matrisen i §7.2 är gemensamt språk.** Användaren kan säga "ta bort L3.4, vi skippar
-  sidbrytning" eller "lägg till F6.9: anbud i annan valuta än förfrågan ⇒ 422", och ändringen
+  sidbrytning" eller "lägg till F6.10: anbud i annan valuta än förfrågan ⇒ 422", och ändringen
   slår igenom i både `test/` och detta dokument.
 - **Ett kravskifte som rör §6 markeras som sådant** innan kod skrivs, så API-kontraktet inte
   glider tyst.
@@ -1215,6 +1457,10 @@ Varje etapp är en pull-liknande enhet med en tydlig grön-tröskel.
 | **5** ✅ | Listnings-API:er (API 3–4) | Joins utan N+1, markörsidbrytning, filter, `004_contracts.sql` (tidigarelagd), dubbla valideringsregimer | **Klar.** L3.\*, L4.\* gröna; 68/68 i hela sviten |
 | **6** ✅ | Avtalssignering (API 7) | `domain/contract-rules.ts`, transaktionell tillståndsmaskin med `sql.begin` + `FOR UPDATE OF r`, frysta villkor, tom-kropp-parser | **Klar.** S7.\*, D.3 gröna; 92/92 i hela sviten; hela flödet kört mot levande Aspire |
 | **7** ✅ | Dokumentation & finish | OpenAPI-tvärsnittstester, `docs/API.md` | **Klar.** X.\* gröna; hela sviten 103/103; Swagger UI och hela flödet körda mot levande Aspire |
+| **24** ✅ | Intervjun i webben | `pages/RequestSpec.tsx`, kravspecpanel på förfrågningssidan, katalogens skäl, sju fälttyper i `styles.css` | **Klar.** E2E går klickvägen genom intervjun i stället för API-genvägen: 3/3 gröna mot levande miljö. Två fel funna på vägen: bildspelsfixturens helsidesfoto lämnade skruvade layoutmått så att nästa klick inte skickade formuläret, och indikatorns blockerarlista var en kopia av hela intervjun |
+| **23** ✅ | Anbud kräver publicerad kravspec | Spärr i `POST /requests/{id}/bids`, `hasPublishedSpec` i katalogen, `test/helpers/spec.ts`, `publishSpec` i e2e-sviten | **Klar.** F6.9 och L8.10 gröna; 354/354. Spärren fällde 87 befintliga testfall — samtliga sviter som lämnar anbud fick en publicerad kravspec via `publishSpecFor`. E2E-sviten körd mot levande miljö: 3/3 gröna, med kravspecen publicerad via API:et (klickvägen kom i etapp 24) |
+| **22** ✅ | Intervjun över HTTP (API 26–36) | `routes/gig-types.ts`, `routes/request-specs.ts`, `schemas/gig.ts`, `domain/spec-completeness.ts`, sex nya Problem Details | **Klar.** I.\* gröna; 351/351. X.1c utökad med de elva nya operationerna. Två fel funna på vägen: parallella frågor på en transaktionsanslutning låste sig (readSpec kördes med `Promise.all`), och revisionsvägen svarade 409 där 404 var det upplysande |
+| **21** ✅ | Acceptansmallar som data | `016_gig_templates.sql`, `017_request_specs.sql`, `catalog/` med basmall och elva typmallar, `src/catalog/`, `db/gig-catalog.ts`, `db/request-specs.ts`, `domain/gig-answers.ts`, `domain/gig-conditions.ts` | **Klar.** AM.\* och KS.\* gröna; 330/330. Fyra avsiktliga mutationer (borttagen deduplicering, villkorslös publiceringskontroll, bevarat godkännande efter omskrivning, obunden anbudsversion) fällde precis de fyra testfall de skulle. Ingen route ändrad — API-ytan är fortfarande §6 |
 | **20** ✅ | Larm vid tappat innehåll | `storage/sweep-job.ts`, `mail/storage-alert-email.ts`, `STORAGE_ALERT_EMAIL` | **Klar.** G.13–G.19 gröna; 263/263; larmet läst i mailpit efter att två objekt raderats i MinIO, och andra körningen larmade inte igen |
 | **19** ✅ | Rader utan objekt | `015_attachment_missing_content.sql`, avstämning i sopjobbet, `available` i API:et | **Klar.** G.8–G.12, B.21–B.22 gröna; 256/256; verifierat mot MinIO genom att radera ett objekt bakom ryggen på tjänsten |
 | **18** ✅ | Städning av föräldralösa objekt | `storage/sweeper.ts`, listning i `ObjectStore`, periodiskt jobb i `index.ts` | **Klar.** G.\* gröna; 249/249; körd mot levande MinIO med planterade skräpobjekt — fristen skonade allt, utan frist försvann bara skräpet |
@@ -1249,6 +1495,22 @@ gör resten testdriven. Från etapp 2 gäller §8.1 utan undantag.
 - **Delade kvoträknare** — `/auth/resend-verification` och `/auth/forgot-password` har en
   gräns per anropare (§6.1 punkt 10), men räknarna lever i API-processen: de nollställs vid
   omstart och delas inte mellan instanser. Övriga `/auth/*` är okvoterade.
+- **Intervjun sparas inte medan man skriver** — svaren skickas när kunden trycker på
+  Spara. Lämnar man sidan mitt i ett steg är fälten tomma igen. Ett autospar per fält är
+  nästa steg, och det är den skuld som förfaller först nu.
+- **Blockerarlistan går inte att klicka på** — indikatorn visar de fyra första bristerna
+  som text. Att göra dem till ankare ned till respektive fält är en liten sak som gör
+  listan användbar när kravspecen är stor.
+- **En förfrågan utan publicerad kravspec syns ändå i katalogen** — den märks med
+  `hasPublishedSpec: false` och `canBid: false` i stället för att filtreras bort. Att
+  gömma den vore att gömma köparens halvfärdiga arbete även för köparen själv; att visa
+  den kostar en rad brus i listan. Filtrering är en enrading om bruset blir ett problem.
+- **Kriteriernas utfall vid acceptans** — `request_criteria.status` har `met`/`failed`/
+  `waived` men ingen väg dit. Acceptansfönstret, klockstoppet och omtagen finns som
+  villkorsrader i mallen, inte som mekanik.
+- **Observerbart utfall går inte att kontrollera maskinellt** — publiceringskontrollen
+  räknar kriterierader och kräver godkännande, men kan inte avgöra om en rad går att svara
+  ja eller nej på. Formkravet ligger tills vidare hos den som skriver.
 - **Betalning, fakturering, tidrapportering** — nästa domänområde efter avtalet.
 - **Migrationsverktyg med rollback** — meningslöst mot en icke-persistent databas, men
   krävs innan någon persistent miljö sätts upp. Detta är den skuld som förfaller först.

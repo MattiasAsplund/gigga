@@ -1,6 +1,7 @@
 import { test, expect, beforeAll, afterAll } from 'bun:test';
 import { buildTestApp, type TestApp } from '../helpers/app.ts';
 import { actor, type Actor } from '../helpers/actors.ts';
+import { publishSpecFor } from '../helpers/spec.ts';
 
 let ctx: TestApp;
 let buyer: Actor;
@@ -63,7 +64,11 @@ async function createRequest(title = 'Uppdrag att teckna avtal om'): Promise<str
     compensationPref: 'any',
   });
   if (res.statusCode !== 201) throw new Error(`skapa förfrågan: ${res.body}`);
-  return res.json<{ id: string }>().id;
+
+  const requestId = res.json<{ id: string }>().id;
+  // Anbud kräver publicerad kravspec (F6.9); intervjun har egna testfall.
+  await publishSpecFor(ctx.sql, requestId);
+  return requestId;
 }
 
 async function placeBid(

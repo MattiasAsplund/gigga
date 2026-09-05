@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { call, type CatalogItem } from '../api.ts';
-import { useToken } from '../auth.tsx';
+import { useAuth, useToken } from '../auth.tsx';
 import { Empty, Notice, Status, formatAmount, formatDate, useLoader } from '../components/ui.tsx';
 
 export function Catalog() {
   const token = useToken();
+  const { account } = useAuth();
   const [pref, setPref] = useState('');
 
   const query = pref ? `?compensationPref=${pref}` : '';
@@ -80,7 +81,15 @@ export function Catalog() {
                   </Link>
                 ) : (
                   <span className="mono" data-testid="cannot-bid">
-                    {item.hasMyBid ? 'Du har redan lämnat anbud' : 'Din egen förfrågan'}
+                    {/*
+                      Ordningen följer API:ets: ägarskapet först, sedan eget anbud, sedan
+                      kravspecen. Det är samma skäl anropet ändå hade avvisats med.
+                    */}
+                    {item.buyerId === account?.id
+                      ? 'Din egen förfrågan'
+                      : item.hasMyBid
+                        ? 'Du har redan lämnat anbud'
+                        : 'Kravspecen är inte fastställd'}
                   </span>
                 )}
               </div>

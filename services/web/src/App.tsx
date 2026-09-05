@@ -8,6 +8,7 @@ import { ResetPassword } from './pages/ResetPassword.tsx';
 import { Catalog } from './pages/Catalog.tsx';
 import { NewRequest } from './pages/NewRequest.tsx';
 import { RequestDetail } from './pages/RequestDetail.tsx';
+import { RequestSpec } from './pages/RequestSpec.tsx';
 import { MyRequests } from './pages/MyRequests.tsx';
 import { MyBids } from './pages/MyBids.tsx';
 import { BidDetail } from './pages/BidDetail.tsx';
@@ -100,6 +101,14 @@ function Shell() {
             element={
               <RequireAuth>
                 <RequestDetail />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/requests/:requestId/spec"
+            element={
+              <RequireAuth>
+                <RequestSpec />
               </RequireAuth>
             }
           />

@@ -1,5 +1,6 @@
 import { buildServer } from './server.ts';
 import { migrate } from './db/migrate.ts';
+import { syncGigCatalog } from './db/gig-catalog.ts';
 import { runStorageSweep } from './storage/sweep-job.ts';
 
 const app = await buildServer();
@@ -7,6 +8,11 @@ const app = await buildServer();
 // Databasen är icke-persistent, så schemat byggs upp vid varje start. Idempotent.
 const applied = await migrate(app.sql);
 if (applied.length > 0) app.log.info({ applied }, 'migrationer applicerade');
+
+// Acceptansmallarna är data under catalog/ och speglas in vid varje start. En ny
+// uppdragstyp kräver därmed en fil och en omstart, inte en kodändring.
+const catalog = await syncGigCatalog(app.sql);
+app.log.info(catalog, 'acceptansmallar synkade');
 
 // MinIO startar tom vid varje `aspire run`, så bucketen skapas här.
 await app.objects.ensureReady();

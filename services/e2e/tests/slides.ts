@@ -138,7 +138,20 @@ const tom = (url: string): boolean => url === '' || url === 'about:blank';
  * avtal, en katalog med flera rader — är längre än fönstret, och en beskuren bild klipper
  * bort just det steget handlar om. Bredden följer vyporten, höjden följer sidan.
  */
-const foto = (page: Page): Promise<Buffer> => page.screenshot({ fullPage: true });
+const foto = async (page: Page): Promise<Buffer> => {
+  const bild = await page.screenshot({ fullPage: true });
+
+  /*
+   * Helsidesbilden lämnar sidan med skruvade layoutmått. Nästa klick räknar fram sina
+   * koordinater ur dem, landar bredvid knappen och rapporterar ändå att det gick bra —
+   * formuläret skickas aldrig, och felet dyker upp långt senare som "anbudet syns inte".
+   *
+   * En rullning tvingar fram nya mått. Det märks först på långa sidor, vilket är varför
+   * det låg latent tills förfrågningssidan fick kravspecen under sig.
+   */
+  await page.evaluate(() => window.scrollTo(0, 0));
+  return bild;
+};
 
 /** Vad bilden visar: varifrån, eventuellt vart, eller en anteckning i stället. */
 interface Bildtext {

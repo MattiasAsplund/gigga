@@ -17,6 +17,8 @@ import { meRoutes } from './routes/me.ts';
 import { contractRoutes } from './routes/contracts.ts';
 import { permissionRoutes } from './routes/permissions.ts';
 import { attachmentRoutes } from './routes/attachments.ts';
+import { gigTypeRoutes } from './routes/gig-types.ts';
+import { requestSpecRoutes } from './routes/request-specs.ts';
 import multipart from '@fastify/multipart';
 import { MAX_FILE_BYTES } from './domain/attachments.ts';
 import { registerValidation } from './plugins/validation.ts';
@@ -118,6 +120,8 @@ export async function buildServer(options: BuildServerOptions = {}) {
   await app.register(contractRoutes, { prefix: API_PREFIX });
   await app.register(permissionRoutes, { prefix: API_PREFIX });
   await app.register(attachmentRoutes, { prefix: API_PREFIX });
+  await app.register(gigTypeRoutes, { prefix: API_PREFIX });
+  await app.register(requestSpecRoutes, { prefix: API_PREFIX });
 
   return app;
 }

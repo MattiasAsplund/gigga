@@ -1,8 +1,16 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ApiError, call, type Permission, type RequestDetail as Detail } from '../api.ts';
+import {
+  ApiError,
+  call,
+  loadSpec,
+  type Permission,
+  type RequestDetail as Detail,
+  type RequestSpec as Spec,
+} from '../api.ts';
 import { useAuth, useToken } from '../auth.tsx';
 import { Empty, Notice, Status, formatAmount, formatDate, useLoader } from '../components/ui.tsx';
+import { SpecReading } from './RequestSpec.tsx';
 
 export function RequestDetail() {
   const { requestId = '' } = useParams();
@@ -20,7 +28,13 @@ export function RequestDetail() {
   const myBid = data?.bids.find(
     (bid) => bid.sellerId === account?.id && bid.status !== 'withdrawn',
   );
-  const canBid = Boolean(data) && !isBuyer && !myBid && data?.status === 'open';
+  const spec = useLoader(() => loadSpec(requestId, token), [requestId]);
+  const published = spec.data?.version.status === 'published' ? spec.data : null;
+
+  // Anbud förutsätter en publicerad kravspec — utan den finns ingen omfattning att
+  // prissätta, och API:et hade ändå svarat 409.
+  const canBid =
+    Boolean(data) && !isBuyer && !myBid && data?.status === 'open' && Boolean(published);
 
   return (
     <>
@@ -43,6 +57,13 @@ export function RequestDetail() {
           </div>
 
           <p>{data.description}</p>
+
+          <SpecPanel
+            requestId={requestId}
+            spec={spec.data}
+            isBuyer={isBuyer}
+            canBid={canBid}
+          />
 
           {canBid && <BidForm requestId={requestId} token={token} onDone={reload} />}
 
@@ -96,6 +117,99 @@ export function RequestDetail() {
         </>
       )}
     </>
+  );
+}
+
+/**
+ * Kravspecen på förfrågningssidan.
+ *
+ * För köparen är den vägen in i intervjun och den påminnelse som säger varför inga anbud
+ * kommer. För alla andra är den det som ska prissättas — och den ligger därför läsbar
+ * innan anbudsformuläret, inte efter.
+ */
+function SpecPanel({
+  requestId,
+  spec,
+  isBuyer,
+  canBid,
+}: {
+  requestId: string;
+  spec: Spec | null | undefined;
+  isBuyer: boolean;
+  canBid: boolean;
+}) {
+  if (spec === undefined) return null;
+
+  const published = spec?.version.status === 'published' ? spec : null;
+
+  if (isBuyer) {
+    return (
+      <section className="section" data-testid="spec-panel">
+        <h2>Kravspec</h2>
+        {!spec ? (
+          <>
+            <div className="notice" role="status" data-testid="spec-missing">
+              <strong>Kravspecen är inte fastställd.</strong>
+              <p className="notice__detail">
+                Ingen kan lämna anbud förrän du sagt vilken sorts uppdrag det är, svarat på
+                frågorna och godkänt acceptanskriterierna.
+              </p>
+            </div>
+            <div className="actions">
+              <Link to={`/requests/${requestId}/spec`}>
+                <button data-testid="go-spec">Fastställ kravspecen</button>
+              </Link>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="meta">
+              <span data-testid="spec-version">
+                <span className="eyebrow">Version</span> v{spec.version.version}
+              </span>
+              <Status value={spec.version.status} />
+              <span className="mono" data-testid="spec-progress">
+                {spec.completeness.answeredRequired}/{spec.completeness.requiredQuestions} frågor ·{' '}
+                {spec.completeness.approvedCriteria}/{spec.completeness.criteria} kriterier godkända
+              </span>
+            </div>
+            <div className="actions" style={{ marginTop: '1rem' }}>
+              <Link to={`/requests/${requestId}/spec`}>
+                <button className="secondary" data-testid="go-spec">
+                  {spec.version.status === 'draft' ? 'Fortsätt intervjun' : 'Öppna kravspecen'}
+                </button>
+              </Link>
+            </div>
+            {published && <SpecReading spec={published} />}
+          </>
+        )}
+      </section>
+    );
+  }
+
+  if (!published) {
+    return (
+      <section className="section" data-testid="spec-panel">
+        <h2>Kravspec</h2>
+        <div className="notice" role="status" data-testid="spec-missing">
+          <strong>Köparen har inte fastställt kravspecen än.</strong>
+          <p className="notice__detail">
+            Uppdraget går inte att lämna anbud på förrän omfattningen och
+            acceptanskriterierna är publicerade.
+          </p>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="section" data-testid="spec-panel">
+      <h2>Kravspec v{published.version.version}</h2>
+      <p className="lede">
+        Det här är vad anbudet avser. {canBid ? 'Läs igenom raderna innan du prissätter.' : ''}
+      </p>
+      <SpecReading spec={published} />
+    </section>
   );
 }
 

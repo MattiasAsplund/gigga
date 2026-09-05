@@ -1,6 +1,7 @@
 import { test, expect, beforeAll, afterAll } from 'bun:test';
 import { buildTestApp, type TestApp } from '../helpers/app.ts';
 import { actor, type Actor } from '../helpers/actors.ts';
+import { publishSpecFor } from '../helpers/spec.ts';
 
 let ctx: TestApp;
 let buyer: Actor;
@@ -38,8 +39,8 @@ interface BidBody {
 const inFuture = (days: number) =>
   new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
 
-/** Skapar en förfrågan som köparen äger och returnerar dess id. */
-async function createRequest(overrides: Record<string, unknown> = {}): Promise<string> {
+/** En förfrågan utan kravspec — den går inte att lämna anbud på (F6.9). */
+async function createBareRequest(overrides: Record<string, unknown> = {}): Promise<string> {
   const res = await buyer.post('/api/v1/requests', {
     title: 'Uppdrag att lämna anbud på',
     description: 'Distansuppdrag med tydlig avgränsning.',
@@ -49,6 +50,13 @@ async function createRequest(overrides: Record<string, unknown> = {}): Promise<s
   });
   if (res.statusCode !== 201) throw new Error(`Kunde inte skapa förfrågan: ${res.body}`);
   return res.json<{ id: string }>().id;
+}
+
+/** Skapar en förfrågan med publicerad kravspec — den anbud faktiskt går att lämna på. */
+async function createRequest(overrides: Record<string, unknown> = {}): Promise<string> {
+  const requestId = await createBareRequest(overrides);
+  await publishSpecFor(ctx.sql, requestId);
+  return requestId;
 }
 
 const fixedBid = {
@@ -210,4 +218,29 @@ test('F6.2 anbud utan token ger 401', async () => {
   });
 
   expect(res.statusCode).toBe(401);
+});
+
+// ---------------------------------------------------------------- F6.9
+
+test('F6.9 anbud på en förfrågan utan publicerad kravspec ger 409', async () => {
+  const requestId = await createBareRequest();
+
+  const res = await seller.post(bidsUrl(requestId), fixedBid);
+
+  expect(res.statusCode).toBe(409);
+  expect(res.json<Problem>().type).toContain('spec-not-published');
+
+  // Och när köparen publicerat den går anbudet igenom.
+  await publishSpecFor(ctx.sql, requestId);
+  expect((await seller.post(bidsUrl(requestId), fixedBid)).statusCode).toBe(201);
+});
+
+test('F6.9 ett utkast räcker inte — bara en publicerad lydelse duger', async () => {
+  const requestId = await createBareRequest();
+  await buyer.post(`/api/v1/requests/${requestId}/spec`, { gigTypes: ['other'] });
+
+  const res = await seller.post(bidsUrl(requestId), fixedBid);
+
+  expect(res.statusCode).toBe(409);
+  expect(res.json<Problem>().type).toContain('spec-not-published');
 });

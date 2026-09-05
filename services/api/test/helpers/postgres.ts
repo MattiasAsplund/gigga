@@ -1,5 +1,6 @@
 import { $, SQL } from 'bun';
 import { migrate } from '../../src/db/migrate.ts';
+import { syncGigCatalog } from '../../src/db/gig-catalog.ts';
 
 /**
  * Testdatabas: en Postgres-container som återanvänds mellan körningar, och en färsk
@@ -129,6 +130,9 @@ async function getCluster(): Promise<Cluster> {
     const template = new SQL(urlFor(adminUrl, TEMPLATE_DB));
     try {
       await migrate(template);
+      // Katalogen hör till schemat i praktiken: varje testfil ärver den ur malldatabasen
+      // och slipper betala synken själv.
+      await syncGigCatalog(template);
     } finally {
       // Måste stängas: CREATE DATABASE ... TEMPLATE vägrar om någon är ansluten.
       await template.end();

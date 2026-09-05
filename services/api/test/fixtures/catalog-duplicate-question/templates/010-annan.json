@@ -1,0 +1,7 @@
+{
+  "key": "annan",
+  "layer": "type",
+  "name": "Annan typ",
+  "position": 10,
+  "asks": [{ "key": "base.deliverables", "prompt": "Vad överlämnas, egentligen?", "kind": "text" }]
+}

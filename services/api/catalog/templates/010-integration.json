@@ -1,0 +1,97 @@
+{
+  "key": "integration",
+  "layer": "type",
+  "name": "Integration mellan två system",
+  "summary": "Data ska flyttas mellan två system som redan finns.",
+  "position": 10,
+  "asks": [
+    { "key": "integration.systems", "prompt": "Vilka två system ska kopplas ihop?", "kind": "text" },
+    {
+      "key": "integration.direction",
+      "prompt": "Åt vilket håll går data?",
+      "kind": "choice",
+      "options": [
+        { "key": "outbound", "label": "Från ert system till mottagaren" },
+        { "key": "inbound", "label": "Från det andra systemet in till ert" },
+        { "key": "both", "label": "Åt båda håll" }
+      ]
+    },
+    {
+      "key": "integration.protocol",
+      "prompt": "Vilket protokoll och vilken autentisering används?",
+      "help": "Till exempel REST över HTTPS med OAuth2, SFTP med nyckel, eller meddelandekö.",
+      "kind": "text"
+    },
+    {
+      "key": "integration.target-docs",
+      "prompt": "Finns dokumentation för mottagande system?",
+      "kind": "choice",
+      "options": [
+        { "key": "complete", "label": "Ja, fullständig" },
+        { "key": "partial", "label": "Ja, men ofullständig" },
+        { "key": "vendor", "label": "Nej, men systemets leverantör svarar på frågor" },
+        { "key": "none", "label": "Nej" }
+      ]
+    },
+    {
+      "key": "integration.test-environments",
+      "prompt": "Finns testmiljö på båda sidor?",
+      "kind": "choice",
+      "options": [
+        { "key": "both", "label": "Ja, på båda sidor" },
+        { "key": "one", "label": "Bara på ena sidan" },
+        { "key": "none", "label": "Nej, ingen" }
+      ]
+    },
+    {
+      "key": "integration.frequency",
+      "prompt": "Hur ofta ska data överföras?",
+      "help": "Till exempel vid varje händelse, var femte minut, eller en gång per natt.",
+      "kind": "text"
+    },
+    {
+      "key": "integration.on-failure",
+      "prompt": "Vad ska hända när mottagaren inte svarar?",
+      "kind": "choice",
+      "options": [
+        { "key": "queue", "label": "Köa och försöka igen" },
+        { "key": "alert", "label": "Larma och stanna" },
+        { "key": "discard", "label": "Kasta och logga" }
+      ]
+    },
+    {
+      "ref": "shared.alert-target",
+      "condition": { "question": "integration.on-failure", "in": ["queue", "alert"] }
+    }
+  ],
+  "clauses": [
+    {
+      "key": "roundtrip",
+      "kind": "criterion",
+      "statement": "När ett verkligt testfall skickas i varje överenskommen riktning, ska mottagande system innehålla posten med samtliga överenskomna fält.",
+      "verification": "Körs i verifieringsmiljön av den utpekade verifieraren, med kundens testdata."
+    },
+    {
+      "key": "target-unavailable",
+      "kind": "criterion",
+      "statement": "När målsystemet inte svarar, ska integrationen bete sig enligt den överenskomna felhanteringen utan att tappa poster.",
+      "verification": "Provas genom att stänga av eller peka om mottagaren under verifieringen."
+    },
+    {
+      "key": "transfer-log",
+      "kind": "criterion",
+      "statement": "Varje överföring loggas med tidpunkt, antal poster och utfall, och loggen går att läsa av kunden.",
+      "verification": "Loggraderna visas för verifieraren efter testkörningen."
+    },
+    {
+      "key": "target-system-changes",
+      "kind": "exclusion",
+      "statement": "Ändringar i det mottagande systemet ingår inte, utöver konfiguration som kunden själv råder över."
+    },
+    {
+      "key": "historical-backfill",
+      "kind": "exclusion",
+      "statement": "Överföring av historiska data ingår inte — integrationen gäller från driftsättningen och framåt."
+    }
+  ]
+}

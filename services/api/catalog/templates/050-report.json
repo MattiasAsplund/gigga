@@ -1,0 +1,61 @@
+{
+  "key": "report",
+  "layer": "type",
+  "name": "Rapport, export eller dashboard",
+  "summary": "Siffror ur befintliga data, presenterade på ett bestämt sätt.",
+  "position": 50,
+  "asks": [
+    {
+      "key": "report.figures",
+      "prompt": "Vilka siffror ska visas, från vilka källor, och med vilka filter?",
+      "kind": "longtext"
+    },
+    {
+      "key": "report.refresh",
+      "prompt": "Hur ofta uppdateras den?",
+      "kind": "choice",
+      "options": [
+        { "key": "realtime", "label": "Vid varje visning" },
+        { "key": "scheduled", "label": "Enligt schema" },
+        { "key": "manual", "label": "När någon begär det" }
+      ]
+    },
+    {
+      "key": "report.format",
+      "prompt": "I vilket format ska resultatet lämnas?",
+      "kind": "multichoice",
+      "options": [
+        { "key": "screen", "label": "På skärm" },
+        { "key": "pdf", "label": "PDF" },
+        { "key": "excel", "label": "Excel" },
+        { "key": "csv", "label": "CSV-fil" },
+        { "key": "feed", "label": "Fil till annat system" }
+      ]
+    },
+    { "ref": "shared.reference-result" },
+    {
+      "key": "report.verification-period",
+      "prompt": "Vilken period och vilket dataurval används vid verifieringen?",
+      "kind": "text"
+    }
+  ],
+  "clauses": [
+    {
+      "key": "matches-reference",
+      "kind": "criterion",
+      "statement": "När rapporten körs för den angivna perioden, ska varje summa stämma med referensberäkningen.",
+      "verification": "Sida vid sida mot referensen, av verifieraren."
+    },
+    {
+      "key": "filters-work",
+      "kind": "criterion",
+      "statement": "Varje filter ger det förväntade utfallet för minst ett testfall som angetts i förväg.",
+      "verification": "Ett testfall per filter, med förväntat antal poster angivet innan körningen."
+    },
+    {
+      "key": "source-data-quality",
+      "kind": "exclusion",
+      "statement": "Rättning av fel i underliggande data ingår inte — rapporten visar det källan innehåller."
+    }
+  ]
+}

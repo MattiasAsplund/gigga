@@ -1,0 +1,72 @@
+{
+  "key": "environment",
+  "layer": "type",
+  "name": "Miljö, uppgradering eller driftsättning",
+  "summary": "Arbetet sker på infrastrukturen snarare än i koden.",
+  "position": 90,
+  "asks": [
+    { "key": "environment.from-to", "prompt": "Från vilken version till vilken?", "kind": "text" },
+    {
+      "key": "environment.infrastructure",
+      "prompt": "Vilken infrastruktur körs det på?",
+      "kind": "text"
+    },
+    {
+      "key": "environment.access",
+      "prompt": "Vem har åtkomst till målmiljön?",
+      "kind": "choice",
+      "options": [
+        { "key": "supplier", "label": "Leverantören får åtkomst" },
+        { "key": "customer-executes", "label": "Bara kunden — leverantören instruerar" },
+        { "key": "pairing", "label": "Tillsammans, under bokad tid" }
+      ]
+    },
+    {
+      "key": "environment.downtime",
+      "prompt": "Får driftstopp förekomma?",
+      "kind": "choice",
+      "options": [
+        { "key": "none", "label": "Nej" },
+        { "key": "window", "label": "Ja, inom ett bokat fönster" },
+        { "key": "anytime", "label": "Ja, när som helst" }
+      ]
+    },
+    {
+      "key": "environment.downtime-window",
+      "prompt": "Vilket fönster gäller för driftstoppet?",
+      "kind": "text",
+      "condition": { "question": "environment.downtime", "equals": "window" }
+    },
+    { "ref": "shared.rollback-plan" },
+    {
+      "key": "environment.smoke-list",
+      "prompt": "Vilken rökteslista ska passera efter uppgraderingen?",
+      "kind": "longtext"
+    }
+  ],
+  "clauses": [
+    {
+      "key": "version-live",
+      "kind": "criterion",
+      "statement": "Målmiljön kör den angivna versionen, avläsbart i miljön själv.",
+      "verification": "Versionen läses av i målmiljön av verifieraren."
+    },
+    {
+      "key": "smoke-passes",
+      "kind": "criterion",
+      "statement": "Varje punkt i den angivna rökteslistan passerar efter uppgraderingen.",
+      "verification": "Listan bockas av rad för rad."
+    },
+    {
+      "key": "rollback-documented",
+      "kind": "criterion",
+      "statement": "En dokumenterad väg tillbaka finns, och den är provad.",
+      "verification": "Återställningen provas i testmiljön före uppgraderingen av produktionen."
+    },
+    {
+      "key": "application-adaptations",
+      "kind": "exclusion",
+      "statement": "Anpassningar i applikationen till följd av uppgraderingen ingår inte, utöver de som räknas upp i kriterierna."
+    }
+  ]
+}

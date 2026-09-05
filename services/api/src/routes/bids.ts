@@ -8,6 +8,7 @@ import {
   RequestIdParamsSchema,
 } from '../schemas/bid.ts';
 import { findRequestById } from '../db/requests.ts';
+import { findPublishedSpec } from '../db/request-specs.ts';
 import { findBidById, insertBid, updateBid, withdrawBid, type Bid } from '../db/bids.ts';
 import { findContractByBid } from '../db/contracts.ts';
 import { estimatedTotalMinor } from '../domain/bid-rules.ts';
@@ -19,6 +20,7 @@ import {
   notBidOwner,
   ownRequest,
   requestNotFound,
+  specNotPublished,
   validationFailed,
 } from '../plugins/errors.ts';
 
@@ -46,7 +48,8 @@ export const bidRoutes: FastifyPluginAsyncTypebox = async (app) => {
         summary: 'Registrera anbud',
         description:
           'Lämnar ett anbud med genomförandeplan och ersättningsform på en öppen ' +
-          'förfrågan. En säljare kan ha ett aktivt anbud per förfrågan.',
+          'förfrågan. En säljare kan ha ett aktivt anbud per förfrågan. Förfrågan måste ' +
+          'ha en publicerad kravspec — anbudet binds till den lydelsen.',
         security: [{ bearerAuth: [] }],
         params: RequestIdParamsSchema,
         body: CreateBidBodySchema,
@@ -81,6 +84,14 @@ export const bidRoutes: FastifyPluginAsyncTypebox = async (app) => {
           'Förfrågans deadline har passerat.',
         );
       }
+
+      /*
+       * Utan publicerad kravspec finns ingen omfattning att prissätta, och anbudet skulle
+       * inte gå att binda till någon lydelse (bids.spec_version_id). Kontrollen ligger
+       * efter ägarskapet och förfrågans tillstånd: den säger något om köparens arbete,
+       * och det angår bara den som faktiskt får bjuda.
+       */
+      if (!(await findPublishedSpec(app.sql, request.id))) throw specNotPublished();
 
       const bid = await insertBid(app.sql, {
         requestId: request.id,

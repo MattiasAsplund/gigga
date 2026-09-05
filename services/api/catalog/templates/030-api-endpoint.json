@@ -1,0 +1,70 @@
+{
+  "key": "api-endpoint",
+  "layer": "type",
+  "name": "API-endpoint eller backend-funktion",
+  "summary": "En funktion utan eget gränssnitt, anropad av något annat.",
+  "position": 30,
+  "asks": [
+    {
+      "key": "api.function",
+      "prompt": "Vilken funktion ska den fylla, och vilka in- och utdata har den?",
+      "kind": "longtext"
+    },
+    {
+      "key": "api.auth",
+      "prompt": "Vilken autentisering och behörighet gäller?",
+      "kind": "choice",
+      "options": [
+        { "key": "none", "label": "Öppen" },
+        { "key": "token", "label": "Token för inloggad användare" },
+        { "key": "role", "label": "Token plus rollkrav" },
+        { "key": "service", "label": "Maskin till maskin" }
+      ]
+    },
+    {
+      "key": "api.codebase",
+      "prompt": "Var ska den ligga?",
+      "kind": "choice",
+      "options": [
+        { "key": "existing", "label": "I befintlig kodbas" },
+        { "key": "new", "label": "I en ny tjänst" }
+      ]
+    },
+    {
+      "key": "api.performance",
+      "prompt": "Finns ett prestandakrav, och hur mäts det?",
+      "kind": "text",
+      "required": false
+    },
+    {
+      "key": "api.docs",
+      "prompt": "Ska endpointen dokumenteras i befintlig API-dokumentation?",
+      "kind": "bool"
+    }
+  ],
+  "clauses": [
+    {
+      "key": "contract-honoured",
+      "kind": "criterion",
+      "statement": "När ett giltigt anrop görs enligt det överenskomna kontraktet, ska svaret innehålla de angivna fälten med rätt typer och statuskod.",
+      "verification": "Anrop körs mot verifieringsmiljön av verifieraren."
+    },
+    {
+      "key": "error-codes",
+      "kind": "criterion",
+      "statement": "När ett ogiltigt anrop görs, ska svaret bära den definierade felkoden och en läsbar förklaring — aldrig ett oformaterat serverfel.",
+      "verification": "Ett anrop per definierat felfall."
+    },
+    {
+      "key": "unauthorized-denied",
+      "kind": "criterion",
+      "statement": "När anroparen saknar behörighet, ska anropet nekas och ingen data lämnas ut.",
+      "verification": "Anrop utan behörighet och med fel behörighet."
+    },
+    {
+      "key": "client-changes",
+      "kind": "exclusion",
+      "statement": "Ändringar i anropande klienter ingår inte."
+    }
+  ]
+}

@@ -85,7 +85,7 @@ export async function lockBidForSigning(
   const rows = (await sql`
     SELECT b.id, b.request_id, b.seller_id, b.plan, b.compensation_type,
            b.fixed_amount_minor, b.hourly_rate_minor, b.estimated_hours, b.currency,
-           b.status, b.created_at,
+           b.status, b.spec_version_id, b.created_at,
            r.buyer_id AS r_buyer_id, r.title AS r_title, r.status AS r_status
     FROM bids b
     JOIN requests r ON r.id = b.request_id
