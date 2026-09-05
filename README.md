@@ -46,7 +46,7 @@ bredvid localhost-länken. `PUBLIC_BASE_URL` följer med webbens tunnel, så bek
 utifrån.
 
 API:et får ingen egen tunnel och behöver ingen: Vites `/api`-proxy körs på värden, så det
-sista hoppet till `localhost:3000` sker aldrig över internet och webbläsaren ser bara ett
+sista hoppet till API:et sker aldrig över internet och webbläsaren ser bara ett
 origin.
 
 Tunnelprocesserna är långlivade — de överlever `aspire stop` och återanvänds vid nästa
