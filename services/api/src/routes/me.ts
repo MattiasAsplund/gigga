@@ -3,6 +3,7 @@ import { ProblemSchema } from '../schemas/common.ts';
 import {
   BidsQuerySchema,
   MyBidsResponseSchema,
+  MeResponseSchema,
   MyRequestsResponseSchema,
   PageQuerySchema,
 } from '../schemas/me.ts';
@@ -30,6 +31,33 @@ export function contractSummaryToResponse(contract: ContractSummary | null) {
 
 export const meRoutes: FastifyPluginAsyncTypebox = async (app) => {
   app.get(
+    '/me',
+    {
+      onRequest: app.requireAuth,
+      schema: {
+        operationId: 'getMe',
+        tags: ['me'],
+        summary: 'Den inloggades identitet och organisation',
+        description:
+          'Speglingen av Keycloak-kontot, med det lokala id:t som ägarskap jämförs mot. ' +
+          'Kontot och organisationen skapas vid första anropet om de inte redan finns.',
+        security: [{ bearerAuth: [] }],
+        response: { 200: MeResponseSchema, 401: ProblemSchema, 403: ProblemSchema },
+      },
+    },
+    async (req) => ({
+      id: req.identity.id,
+      email: req.identity.email,
+      displayName: req.identity.displayName,
+      organization: {
+        id: req.identity.organizationId,
+        alias: req.identity.organizationAlias,
+        name: req.identity.organizationName,
+      },
+    }),
+  );
+
+  app.get(
     '/me/requests',
     {
       onRequest: app.requireAuth,
@@ -47,7 +75,7 @@ export const meRoutes: FastifyPluginAsyncTypebox = async (app) => {
     },
     async (req) => {
       const limit = req.query.limit ?? DEFAULT_PAGE_SIZE;
-      const rows = await listBuyerRequests(app.sql, req.user.sub, {
+      const rows = await listBuyerRequests(app.sql, req.identity.organizationId, {
         limit,
         cursor: parseCursor(req.query.cursor),
       });
@@ -59,7 +87,8 @@ export const meRoutes: FastifyPluginAsyncTypebox = async (app) => {
           bids: request.bids.map((bid) => ({
             id: bid.id,
             sellerId: bid.sellerId,
-            sellerDisplayName: bid.sellerDisplayName,
+            sellerOrganizationId: bid.sellerOrganizationId,
+          sellerDisplayName: bid.sellerDisplayName,
             plan: bid.plan,
             compensation: bid.compensation,
             estimatedTotalMinor: estimatedTotalMinor(bid.compensation),
@@ -93,7 +122,7 @@ export const meRoutes: FastifyPluginAsyncTypebox = async (app) => {
       const limit = req.query.limit ?? DEFAULT_PAGE_SIZE;
       const rows = await listSellerBids(
         app.sql,
-        req.user.sub,
+        req.identity.organizationId,
         { limit, cursor: parseCursor(req.query.cursor) },
         req.query.status ?? null,
       );

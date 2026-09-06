@@ -46,9 +46,28 @@ export const ContractSummarySchema = Type.Object({
 });
 
 /** Anbud sett från köparens sida, inuti en av dennes förfrågningar. */
+/**
+ * Den inloggades egen identitet, som gigga känner den.
+ *
+ * Finns för att `sub` i Keycloaks token *inte* är `users.id`. Gränssnittet jämför
+ * ägarskap mot id:n ur API:ets egna svar, och behöver därför fråga vem det är som är
+ * inloggad istället för att som förr läsa det ur token.
+ */
+export const MeResponseSchema = Type.Object({
+  id: UuidSchema,
+  email: Type.String({ format: 'email' }),
+  displayName: Type.String(),
+  organization: Type.Object({
+    id: UuidSchema,
+    alias: Type.String(),
+    name: Type.String(),
+  }),
+});
+
 export const BidSummarySchema = Type.Object({
   id: UuidSchema,
   sellerId: UuidSchema,
+  sellerOrganizationId: UuidSchema,
   sellerDisplayName: Type.String(),
   plan: Type.String(),
   compensation: CompensationSchema,

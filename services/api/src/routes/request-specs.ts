@@ -137,11 +137,14 @@ async function specToResponse(sql: SQL, spec: RequestSpec) {
 }
 
 export const requestSpecRoutes: FastifyPluginAsyncTypebox = async (app) => {
-  /** Kravspecen är köparens arbete: bara ägaren skriver i den. */
-  async function requireOwnedRequest(requestId: string, userId: string) {
+  /**
+   * Kravspecen är köparens arbete: bara köparorganisationen skriver i den. Att den
+   * skrivs av flera händer är själva poängen — en kravspec är sällan en persons verk.
+   */
+  async function requireOwnedRequest(requestId: string, organizationId: string) {
     const request = await findRequestById(app.sql, requestId);
     if (!request) throw requestNotFound();
-    if (request.buyerId !== userId) throw notRequestOwner();
+    if (request.buyerOrganizationId !== organizationId) throw notRequestOwner();
     return request;
   }
 
@@ -183,10 +186,10 @@ export const requestSpecRoutes: FastifyPluginAsyncTypebox = async (app) => {
       if (!request) throw requestNotFound();
 
       const insider =
-        request.buyerId === req.user.sub ||
+        request.buyerOrganizationId === req.identity.organizationId ||
         (await hasReadPermission(app.sql, {
           requestId: request.id,
-          userId: req.user.sub,
+          userId: req.identity.id,
         }));
 
       const spec = insider
@@ -226,7 +229,7 @@ export const requestSpecRoutes: FastifyPluginAsyncTypebox = async (app) => {
       },
     },
     async (req, reply) => {
-      await requireOwnedRequest(req.params.requestId, req.user.sub);
+      await requireOwnedRequest(req.params.requestId, req.identity.organizationId);
 
       const existing =
         (await findDraftSpec(app.sql, req.params.requestId)) ??
@@ -268,7 +271,7 @@ export const requestSpecRoutes: FastifyPluginAsyncTypebox = async (app) => {
       },
     },
     async (req, reply) => {
-      await requireOwnedRequest(req.params.requestId, req.user.sub);
+      await requireOwnedRequest(req.params.requestId, req.identity.organizationId);
 
       // Ordningen är avsiktlig: finns ingen gällande version är det den som saknas, och
       // ett utkast som redan står öppet är först därefter det som är i vägen.
@@ -308,7 +311,7 @@ export const requestSpecRoutes: FastifyPluginAsyncTypebox = async (app) => {
       },
     },
     async (req) => {
-      await requireOwnedRequest(req.params.requestId, req.user.sub);
+      await requireOwnedRequest(req.params.requestId, req.identity.organizationId);
       const draft = await requireDraft(req.params.requestId);
 
       const saved = await saveAnswers(app.sql, {
@@ -356,7 +359,7 @@ export const requestSpecRoutes: FastifyPluginAsyncTypebox = async (app) => {
       },
     },
     async (req, reply) => {
-      await requireOwnedRequest(req.params.requestId, req.user.sub);
+      await requireOwnedRequest(req.params.requestId, req.identity.organizationId);
       const draft = await requireDraft(req.params.requestId);
 
       const criterion = await addCriterion(app.sql, {
@@ -401,7 +404,7 @@ export const requestSpecRoutes: FastifyPluginAsyncTypebox = async (app) => {
       },
     },
     async (req) => {
-      await requireOwnedRequest(req.params.requestId, req.user.sub);
+      await requireOwnedRequest(req.params.requestId, req.identity.organizationId);
       await requireCriterionIn(req.params.requestId, req.params.criterionId);
 
       const changed = await updateCriterion(app.sql, {
@@ -439,7 +442,7 @@ export const requestSpecRoutes: FastifyPluginAsyncTypebox = async (app) => {
       },
     },
     async (req) => {
-      await requireOwnedRequest(req.params.requestId, req.user.sub);
+      await requireOwnedRequest(req.params.requestId, req.identity.organizationId);
       await requireCriterionIn(req.params.requestId, req.params.criterionId);
 
       const removed = await removeCriterion(app.sql, req.params.criterionId).catch(asProblem);
@@ -474,12 +477,12 @@ export const requestSpecRoutes: FastifyPluginAsyncTypebox = async (app) => {
       },
     },
     async (req) => {
-      await requireOwnedRequest(req.params.requestId, req.user.sub);
+      await requireOwnedRequest(req.params.requestId, req.identity.organizationId);
       await requireCriterionIn(req.params.requestId, req.params.criterionId);
 
       const approved = await approveCriterion(app.sql, {
         criterionId: req.params.criterionId,
-        userId: req.user.sub,
+        userId: req.identity.id,
       }).catch(asProblem);
 
       if (!approved) throw criterionNotFound();
@@ -513,7 +516,7 @@ export const requestSpecRoutes: FastifyPluginAsyncTypebox = async (app) => {
       },
     },
     async (req) => {
-      await requireOwnedRequest(req.params.requestId, req.user.sub);
+      await requireOwnedRequest(req.params.requestId, req.identity.organizationId);
       const draft = await requireDraft(req.params.requestId);
 
       const result = await publishSpec(app.sql, draft.version.id).catch(asProblem);

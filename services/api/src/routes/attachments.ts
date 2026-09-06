@@ -35,6 +35,7 @@ import { randomUUID } from 'node:crypto';
 import { findBidById } from '../db/bids.ts';
 import { findRequestById } from '../db/requests.ts';
 import { hasReadPermission } from '../db/permissions.ts';
+import type { Identity } from '../db/identities.ts';
 import {
   attachmentNotFound,
   bidNotFound,
@@ -87,23 +88,27 @@ export const attachmentRoutes: FastifyPluginAsyncTypebox = async (app) => {
     return { bid, request };
   }
 
-  /** Skriv: bara säljaren som lämnat anbudet. */
-  async function requireBidOwner(bidId: string, userId: string) {
+  /** Skriv: bara säljarorganisationen som lämnat anbudet. */
+  async function requireBidOwner(bidId: string, identity: Identity) {
     const context = await loadBid(bidId);
-    if (context.bid.sellerId !== userId) throw notBidOwner();
+    if (context.bid.sellerOrganizationId !== identity.organizationId) throw notBidOwner();
     return context;
   }
 
-  /** Läs: säljaren, förfrågans köpare, eller den som tilldelats läsrätt. */
-  async function requireReader(bidId: string, userId: string) {
+  /**
+   * Läs: säljarens organisation, köparens organisation, eller den enskilda person som
+   * tilldelats läsrätt. De två första går på medlemskap — dokumenten hör till affären,
+   * och affären förs mellan företag.
+   */
+  async function requireReader(bidId: string, identity: Identity) {
     const context = await loadBid(bidId);
 
     const allowed =
-      context.bid.sellerId === userId ||
-      context.request.buyerId === userId ||
+      context.bid.sellerOrganizationId === identity.organizationId ||
+      context.request.buyerOrganizationId === identity.organizationId ||
       (await hasReadPermission(app.sql, {
         requestId: context.request.id,
-        userId,
+        userId: identity.id,
       }));
 
     if (!allowed) throw noAttachmentAccess();
@@ -138,7 +143,7 @@ export const attachmentRoutes: FastifyPluginAsyncTypebox = async (app) => {
       },
     },
     async (req, reply) => {
-      await requireBidOwner(req.params.bidId, req.user.sub);
+      await requireBidOwner(req.params.bidId, req.identity);
 
       const upload = await req.file();
       if (!upload) {
@@ -214,7 +219,7 @@ export const attachmentRoutes: FastifyPluginAsyncTypebox = async (app) => {
       },
     },
     async (req) => {
-      await requireReader(req.params.bidId, req.user.sub);
+      await requireReader(req.params.bidId, req.identity);
 
       const items = await listAttachments(app.sql, req.params.bidId);
       return { items: items.map(attachmentToResponse) };
@@ -251,7 +256,7 @@ export const attachmentRoutes: FastifyPluginAsyncTypebox = async (app) => {
       },
     },
     async (req, reply) => {
-      await requireReader(req.params.bidId, req.user.sub);
+      await requireReader(req.params.bidId, req.identity);
 
       const files = await listAttachmentsForArchive(app.sql, req.params.bidId);
 
@@ -312,7 +317,7 @@ export const attachmentRoutes: FastifyPluginAsyncTypebox = async (app) => {
       },
     },
     async (req) => {
-      await requireBidOwner(req.params.bidId, req.user.sub);
+      await requireBidOwner(req.params.bidId, req.identity);
 
       const current = await findAttachment(app.sql, {
         bidId: req.params.bidId,
@@ -361,7 +366,7 @@ export const attachmentRoutes: FastifyPluginAsyncTypebox = async (app) => {
       },
     },
     async (req) => {
-      await requireBidOwner(req.params.bidId, req.user.sub);
+      await requireBidOwner(req.params.bidId, req.identity);
 
       const storageKey = await deleteAttachment(app.sql, {
         bidId: req.params.bidId,

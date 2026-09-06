@@ -22,11 +22,14 @@ export function RequestDetail() {
     [requestId],
   );
 
-  const isBuyer = data?.buyerId === account?.id;
+  // Organisationen är part: en kollega på köparsidan ser och gör samma sak som den som
+  // skapade förfrågan.
+  const isBuyer = data?.buyerOrganizationId === account?.organization.id;
   // Ett tillbakadraget anbud spärrar inte: API:et släpper igenom ett nytt, och katalogens
   // hasMyBid räknar likadant. Utan filtret vore knappen borta fast anbudet vore tillåtet.
   const myBid = data?.bids.find(
-    (bid) => bid.sellerId === account?.id && bid.status !== 'withdrawn',
+    (bid) =>
+      bid.sellerOrganizationId === account?.organization.id && bid.status !== 'withdrawn',
   );
   const spec = useLoader(() => loadSpec(requestId, token), [requestId]);
   const published = spec.data?.version.status === 'published' ? spec.data : null;

@@ -15,11 +15,6 @@ const ConfigSchema = Type.Object({
    * på `/verify` där. Sätts av AppHosten.
    */
   PUBLIC_BASE_URL: Type.String({ default: '' }),
-  /**
-   * Sida där användaren sätter nytt lösenord. Tom betyder att återställningsmailet
-   * bär koden i klartext istället för en länk — se mail/password-reset-email.ts.
-   */
-  PASSWORD_RESET_URL: Type.String({ default: '' }),
   /** Objektlagring för anbudsdokument. Sätts av AppHosten från MinIO-resursen. */
   S3_ENDPOINT: Type.String({ default: 'http://127.0.0.1:9000' }),
   S3_BUCKET: Type.String({ default: 'fastgig-attachments' }),
@@ -31,12 +26,25 @@ const ConfigSchema = Type.Object({
   /** Adress som larmas när lagringen tappat innehåll. Tom stänger av larmen. */
   STORAGE_ALERT_EMAIL: Type.String({ default: '' }),
   /**
-   * Kvotgräns per anropare för /auth/resend-verification och /auth/forgot-password.
-   * Kylperioden per konto ligger kvar i SQL; det här stoppar den som varierar adressen.
+   * Realmet i Keycloak. Ingår i issuern och i JWKS-adressen.
    */
-  AUTH_RATE_LIMIT_PER_WINDOW: Type.Integer({ minimum: 1, default: 5 }),
-  AUTH_RATE_LIMIT_WINDOW_MINUTES: Type.Integer({ minimum: 1, default: 15 }),
-  JWT_SECRET: Type.String({ minLength: 32 }),
+  OIDC_REALM: Type.String({ default: 'fastgig', minLength: 1 }),
+  /**
+   * Issuern att kräva i token. Tom betyder "räkna ut den ur PUBLIC_BASE_URL" — se
+   * loadConfig nedan. Anledningen till att den följer webbens adress och inte Keycloaks
+   * egen är att Keycloak ligger bakom Vites /auth-proxy och bygger sin issuer ur
+   * Host-huvudet: det webbläsaren såg är det som står i token.
+   */
+  OIDC_ISSUER: Type.String({ default: '' }),
+  /**
+   * Var de publika nycklarna hämtas. Tom betyder "räkna ut den ur issuern", vilket är
+   * vad OIDC-discovery ändå hade svarat: nycklarna som hör till en issuer publiceras av
+   * den issuern. Att hämta dem någon annanstans ifrån vore att lita på en nyckel som
+   * inte kan visa att den hör ihop med det som skrev token.
+   */
+  OIDC_JWKS_URI: Type.String({ default: '' }),
+  /** Mottagaren token ska vara utställd för. Sätts av audience-mapparen i realmet. */
+  OIDC_AUDIENCE: Type.String({ default: 'fastgig-api' }),
   LOG_LEVEL: Type.Union(
     [
       Type.Literal('fatal'),
@@ -65,6 +73,24 @@ export function loadConfig(env: Record<string, string | undefined> = Bun.env): C
       .map((e) => `  ${e.path.replace(/^\//, '') || '(root)'}: ${e.message}`)
       .join('\n');
     throw new Error(`Ogiltig konfiguration:\n${problems}`);
+  }
+
+  /*
+   * Issuern räknas ut i efterhand hellre än att sättas i AppHosten: PUBLIC_BASE_URL är
+   * redan den adress användaren ser, och skrivs om till tunnelns när miljön startas med
+   * --enable-cloudflare. Att härleda issuern ur den gör att båda rättas på en gång, och
+   * att en felkonfiguration inte kan yttra sig som tokens som avvisas utan förklaring.
+   *
+   * Reservvärdet är webbens standardport, inte API:ets: det är webbens origin Keycloak
+   * ligger under, även när tjänsterna körs för hand vid sidan av Aspire.
+   */
+  if (!raw.OIDC_ISSUER) {
+    const base = raw.PUBLIC_BASE_URL || 'http://localhost:5173';
+    raw.OIDC_ISSUER = `${base.replace(/\/+$/, '')}/auth/realms/${raw.OIDC_REALM}`;
+  }
+
+  if (!raw.OIDC_JWKS_URI) {
+    raw.OIDC_JWKS_URI = `${raw.OIDC_ISSUER}/protocol/openid-connect/certs`;
   }
 
   return raw;

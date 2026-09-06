@@ -15,6 +15,8 @@ export const ContractTermsSchema = Type.Object({
   bidId: UuidSchema,
   requestId: UuidSchema,
   buyerId: UuidSchema,
+  buyerOrganizationId: UuidSchema,
+  sellerOrganizationId: UuidSchema,
   sellerId: UuidSchema,
   requestTitle: Type.String(),
   plan: Type.String(),

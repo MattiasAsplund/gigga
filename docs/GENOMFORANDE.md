@@ -24,8 +24,9 @@ paketinstallation och testkörning.
 | Objektlagring | MinIO i container, `Bun.S3Client` | Anbudsdokument hör inte hemma i en anslutningspool. S3-klienten är inbyggd i Bun. |
 | DB-klient | **`Bun.SQL`** (inbyggd) | Ingen `pg`-dependency. Taggade template-literals är parametriserade som standard, `sql.begin()` ger transaktioner. Verifierat mot Postgres 17 (§2.2). |
 | Migrationer | Numrerade `.sql`-filer som körs idempotent vid boot | Eftersom databasen ändå är tom vid start är boot-migrering både enklast och alltid korrekt. |
-| Lösenord | **`Bun.password.hash/verify`** (argon2id) | Inbyggt, inget native-bygge, bättre än scrypt-varianten och kräver ingen dependency. |
-| Token | `@fastify/jwt` (HS256) | Verifierad på Bun (§2.2). |
+| Identitet | **Keycloak 26 via OIDC**, orkestrerad av Aspire | Konton, lösenord, e-postbekräftelse och sessioner är löst problem. Realmet checkas in som data (`keycloak/realm/`), inte som klick i en adminkonsol. |
+| Flerföretagsstöd | **Keycloak Organizations** | GA sedan Keycloak 26, byggd för B2B. Organisationen är part i affären; `organization`-claimen bär aliaset. |
+| Token | **RS256, verifierad mot realmets JWKS** med `jose` | API:et utfärdar ingenting — det är resursserver. `jose` stöder Bun, cachar JWKS och roterar nycklar av sig själv. |
 | Orkestrering | Aspire 13.4.6, **TypeScript-AppHost körd med Bun** | Krav. `aspire run` startar Postgres + API + dashboard med en kommandorad. |
 | Containerruntime | **podman** (aldrig docker) | docker finns inte på maskinen. Se §2.1. |
 | Test | **`bun test`** + `fastify.inject()` | Inbyggd Jest-kompatibel körare med watch-läge. `inject()` ger full HTTP-semantik utan portbindning. Noll testberoenden. |
@@ -132,6 +133,9 @@ fastgig/
 ├── package.json                # bun-workspace-rot + AppHost-beroenden
 ├── bun.lock                    # checkas in — styr Aspires val av runtime (§4.1)
 ├── .aspire/modules/*.mts       # genererad SDK — gitignorerad, regenereras med `aspire restore`
+├── keycloak/
+│   └── realm/
+│       └── fastgig-realm.json  # klienter, organisationer, SMTP och verifieringskravet
 ├── docs/
 │   ├── GENOMFORANDE.md         # detta dokument
 │   └── API.md                  # kort, handskriven översikt; Swagger är sanningen
@@ -162,15 +166,18 @@ fastgig/
 │       │   │   ├── sql.ts      # Bun.SQL-instans
 │       │   │   ├── migrate.ts  # en transaktion per migration
 │       │   │   ├── users.ts
+│       │   │   ├── identities.ts    # speglingen av Keycloak-kontot och dess organisation
 │       │   │   ├── requests.ts
 │       │   │   ├── bids.ts
 │       │   │   ├── contracts.ts
 │       │   │   ├── gig-catalog.ts   # synk av katalogen + intervjun för valda typer
 │       │   │   ├── request-specs.ts # kravspecens versioner, svar och kriterierader
 │       │   │   └── listings.ts # frågorna bakom API 3 och 4
+│       │   ├── auth/
+│       │   │   └── keys.ts     # Keycloaks nycklar; testerna skickar in egna
 │       │   ├── plugins/
 │       │   │   ├── swagger.ts
-│       │   │   ├── auth.ts       # JWT + requireAuth
+│       │   │   ├── auth.ts       # OIDC-verifiering + requireAuth
 │       │   │   ├── errors.ts     # Problem Details
 │       │   │   └── validation.ts # två Ajv-regimer + tom-kropp-parser
 │       │   ├── schemas/        # TypeBox-scheman, delade mellan route och OpenAPI
@@ -471,26 +478,24 @@ på ett ställe — i mapparna i `src/db/` — aldrig utspritt i routes.
 
 ## 6. API-kontrakt
 
-Prefix `/api/v1`. Autentisering: `Authorization: Bearer <jwt>`. Fel returneras som
+Prefix `/api/v1`. Autentisering: `Authorization: Bearer <jwt>`, där token är utfärdad av
+**Keycloak** och verifieras mot realmets JWKS — API:et utfärdar inga egna. Fel returneras som
 RFC 9457 Problem Details (`application/problem+json`) med `type`, `title`, `status`, `detail`
 och vid valideringsfel `errors[]`.
 
 | # | Metod & väg | Auth | Syfte |
 |---|---|---|---|
-| 1 | `POST /api/v1/auth/register` | – | Registrering av konto |
-| 2 | `POST /api/v1/auth/login` | – | Inloggning |
-| 3 | `GET /api/v1/me/requests` | ✔ | Egna förfrågningar **med inlämnade anbud** |
-| 4 | `GET /api/v1/me/bids` | ✔ | Egna anbud med status |
+| 1 | `GET /api/v1/me` | ✔ | Egen identitet och organisation |
+| 3 | `GET /api/v1/me/requests` | ✔ | **Organisationens** förfrågningar med inlämnade anbud |
+| 4 | `GET /api/v1/me/bids` | ✔ | **Organisationens** anbud med status |
 | 5 | `POST /api/v1/requests` | ✔ | Registrera förfrågan |
 | 6 | `POST /api/v1/requests/{requestId}/bids` | ✔ | Registrera anbud |
 | 7 | `POST /api/v1/bids/{bidId}/contract/signatures` | ✔ | Signera avtal |
 | 8 | `GET /api/v1/requests` | ✔ | Lista öppna förfrågningar (katalogen) |
-| 9 | `GET /api/v1/validate-user` | – | Bekräfta e-postadress via länken i mailet |
-| 10 | `POST /api/v1/auth/resend-verification` | – | Begär ett nytt bekräftelsemail |
-| 11 | `POST /api/v1/auth/forgot-password` | – | Begär lösenordsåterställning |
-| 12 | `POST /api/v1/auth/reset-password` | – | Sätt nytt lösenord med koden ur mailet |
-| 13 | `POST /api/v1/auth/logout` | ✔ | Avsluta den session token tillhör |
-| 14 | `POST /api/v1/auth/refresh` | – | Byt refresh-token mot en ny access-token |
+
+Nummer 2 och 9–14 är borta: registrering, inloggning, e-postbekräftelse, glömt lösenord,
+utloggning och refresh ligger hos Keycloak sedan OIDC-bytet. Numreringen står kvar som den
+var — den refereras från testfallsmatrisen och från commit-historiken.
 | 15 | `GET /api/v1/requests/{requestId}` | ✔ | Läs en förfrågan med dess anbud |
 | 16 | `POST /api/v1/requests/{requestId}/permissions` | ✔ | Ge läsrätt |
 | 17 | `GET /api/v1/requests/{requestId}/permissions` | ✔ | Lista tilldelade rättigheter |
@@ -516,169 +521,70 @@ och vid valideringsfel `errors[]`.
 
 ### 6.1 Detaljer per API
 
-**1. `POST /auth/register`** → `201`
-`{ email, password, displayName }` → `{ id, email, displayName, emailVerified, token }`.
-Skickar ett bekräftelsemail med en verifieringslänk. Går mailet inte fram misslyckas
-registreringen — bättre än ett konto som aldrig går att logga in på.
-Lösenord ≥ 12 tecken, hashas med `Bun.password.hash` (argon2id). Dubblett-e-post ⇒ `409`.
-E-post normaliseras (trim + lowercase, `citext`).
+**1. `GET /me`** → `200`
 
-**9. `GET /validate-user?token=<uuid>`** → `200`
-Öppen — den anropas för en användare som ännu inte kan logga in. Sätter
-`email_verified = true` och svarar `{ verified, email }`.
+`{ id, email, displayName, organization: { id, alias, name } }`.
 
-**Länken i mailet pekar inte hit, utan på webbens `/verify?token=…`.** Den sidan gör
-anropet åt användaren och stannar kvar med ett besked: bekräftat, med vägen vidare till
-inloggningen — eller felet, med hur man begär ett nytt mail. Pekade länken rakt hit
-skulle en användare som klickar i sitt mailprogram få ett JSON-svar i webbläsaren, och
-en utgången token bara ett felobjekt. Därför är `PUBLIC_BASE_URL` **webbens** adress,
-inte API:ets (V.26).
-Idempotent: länken tål att klickas flera gånger. Okänd token ⇒ `404`, token som inte är en
-uuid ⇒ `422`.
+Speglingen av Keycloak-kontot. Finns för att `sub` i token **inte** är `users.id`:
+domänens främmande nycklar pekar på den lokala raden, och gränssnittet jämför ägarskap mot
+id:n ur API:ets egna svar. Kontot och organisationen skapas vid första anropet om de inte
+redan finns — se §6.2.
 
-`verification_token` är en **egen uuid på users**, inte användarens id. Id:t syns i
-API-svaren och i avtalens frysta villkor, och får därför inte kunna användas för att
-bekräfta ett konto.
+**2, 9–14** — registrering, inloggning, e-postbekräftelse, glömt lösenord, utloggning och
+refresh sköts av Keycloak. gigga har ingen egen autentiseringsyta kvar.
 
-**Länken gäller i 24 timmar.** En passerad länk ger `410 Gone` med
-`verification-token-expired`, inte 404: skillnaden är åtgärdbar för användaren — begär ett
-nytt mail — medan en okänd token inte är det. Att skilja dem kostar en extra `SELECT`, men
-bara i missfallet.
+### 6.2 Identiteten kommer utifrån
 
-Idempotensen väger tyngre än utgångstiden för ett **redan bekräftat** konto: en länk som
-fungerade igår ska inte plötsligt bli ett fel, så `email_verified = true` kortsluter
-utgångskontrollen (V.25).
+`requireAuth` verifierar token mot realmets JWKS (RS256) och kräver rätt `iss` och `aud`.
+Alla misslyckanden med själva token — saknad, utgången, manipulerad, fel issuer, fel
+mottagare — ger samma `401`. Att skilja dem åt vore att berätta för den som prövar sig
+fram vad som var nästan rätt.
 
-**10. `POST /auth/resend-verification`** → `202`
-`{ email }` → `{ accepted: true }`. Öppen, eftersom den som behöver den inte kan logga in.
+Därefter tre krav på innehållet:
 
-**Svaret är identiskt i alla utfall** — okänd adress, redan bekräftat konto, eller begäran
-inom kylperioden. Villkoren ligger i `WHERE`-satsen i `rotateVerificationToken`, så routen
-*kan* inte råka svara olika: den vet inte vilket fall det var. Utan det vore endpointen ett
-sätt att kartlägga vilka adresser som är registrerade.
+- `email_verified` måste vara sant, annars `403 email-not-verified`. Keycloak spärrar
+  visserligen inloggningen tills adressen är bekräftad, men en token kan ha utfärdats
+  innan kravet slog till, och gränsen ska hållas här också.
+- `organization` måste bära **exakt ett** alias. Inget ger `403 organization-missing`,
+  flera ger `403 organization-ambiguous`. gigga handlar mellan företag, och utan ett val i
+  gränssnittet vore vilket som helst en gissning.
+- Adressen måste finnas.
 
-**Token roteras**, vilket gör den föregående länken ogiltig. Bara det senast utskickade
-mailet gäller — utan utgångstid är det den enda begränsningen som finns.
+Sedan speglas identiteten till `users` och `organizations` (`db/identities.ts`).
+Normalfallet är **ett uppslag** — samma kostnad som det uppslag `requireAuth` gjorde förut
+för tokenversion och bekräftad adress. Skrivningen sker bara när något faktiskt skiljer
+sig: första gången kontot syns, eller när adressen, namnet eller organisationen ändrats i
+Keycloak. Att blint skriva hade gjort varje läsning till en rad i WAL:en.
 
-**Kylperiod på 60 sekunder.** En oautentiserad endpoint som skickar mail är annars ett sätt
-att bombardera en adress. `verification_sent_at` bär tidsstämpeln; inom kylperioden skickas
-inget, men svaret är detsamma.
+**Organisationens visningsnamn följer inte med.** `organization`-claimen bär bara aliaset,
+och API:et ska inte behöva Keycloaks admin-API för att ta emot en begäran. Namnet sätts
+därför till aliaset vid första mötet. Noterat i §10.
 
-**Kvotgräns per anropare: 5 anrop per 15 minuter, för API 10 och 11 var för sig.** Över
-gränsen ⇒ `429 too-many-requests` med `retry-after`. Kylperioden ligger per *konto* och
-biter därför inte på den som varierar adressen — vilket är precis vad en kartläggning gör.
-Spärren är en `onRequest`-hook, alltså före hanteraren: ett kvoterat anrop skickar inget
-mail alls (K.5).
+**Inbjudan är enda vägen in.** Realmet har `registrationAllowed: false`. Frågan "vem
+godkänner att `test@nordvind.test` blir medlem i Nordvind?" hade annars inget svar: vem som
+helst kunde registrera adressen, och organisationernas domäner avgör ingenting om
+medlemskap — Keycloak använder dem bara för att styra identitetsförd inloggning vidare
+till ett företags egen inloggningstjänst. En adress som *ser ut* att höra till ett företag
+är alltså inget bevis, och risken är inte att någon kommer åt data (de möts av 403) utan
+att en administratör längre fram kopplar in dem *för att domänen ser trovärdig ut*.
 
-`429` står inte i statustabellen ovan. Tabellen beskriver vad som är fel med *anropet*,
-och här är anropet i sig felfritt — det är takten som inte duger, och ingen annan kod
-säger det.
+Med inbjudan är svaret ett namn: den som redan är medlem och bjöd in. Den som tar emot
+inbjudan blir medlem när lösenordet satts, och bekräftar adressen därefter — så
+medlemskapet finns **före** bekräftelsen, och bekräftelselänken landar i katalogen i
+stället för på ett `403 organization-missing`.
 
-**Anroparen identifieras med `req.ip`, vilket kräver `trustProxy`.** Webben proxar `/api`
-vidare till API:et, så utan det ser varje besökare ut att komma från proxyn och skulle
-dela ett och samma tak. Vites proxy sätter huvudet med `xfwd: true`. Priset är att
-huvudet måste komma från något betrott: utan proxy framför går det att sätta själv.
+Ett konto utan organisation kan ändå uppstå i drift, och `403 organization-missing` är
+prövat för det.
 
-**Räknarna lever i processen** och nollställs vid omstart. Med en API-process räcker det;
-skalas tjänsten ut behöver de flytta till delad lagring. Gränsen är konfigurerbar med
-`AUTH_RATE_LIMIT_PER_WINDOW` och `AUTH_RATE_LIMIT_WINDOW_MINUTES` — testsviten höjer den,
-eftersom räknaren delas av hela testfilen och sviter som med rätta anropar de här
-endpointsen många gånger annars skulle fällas av varandra.
+**Gränssnittet skiljer avvisad från utloggad.** Det låter självklart men var det inte:
+första utkastet slog ihop alla fel från `/me` till `null`, alltså till "ingen är inloggad",
+och skickade användaren till Keycloak — som loggade in direkt igen och studsade tillbaka.
+En giltig session som avvisas av API:et visar därför skälet ur Problem Details och en väg
+ut, och begär ingen ny inloggning. `auth.tsx` håller isär `signedIn` och `account` för just
+det.
 
-**11–12. Lösenordsåterställning**
-`POST /auth/forgot-password` `{ email }` → `202 { accepted: true }`, samma
-läckagefria mönster och kylperiod som API 10.
-`POST /auth/reset-password` `{ token, password }` → `200 { reset, email }`.
+### 6.3 Detaljer per API, forts.
 
-**Egna kolumner, skilda från verifieringen.** En återställningskod får aldrig kunna
-användas för att bekräfta en adress, eller tvärtom — därför `password_reset_token` och inte
-återanvänd `verification_token`.
-
-**Koden gäller i 1 timme** — kortare än bekräftelselänkens 24, eftersom den är känsligare:
-den byter lösenord i stället för att bara bekräfta en adress.
-
-**Engångsbruk.** Vid lyckad återställning nollas token. Andra försöket ger `404`, inte
-`410`: koden finns inte längre alls. Ett *misslyckat* försök — för kort lösenord — bränner
-den däremot inte (R.10).
-
-**Återställning bekräftar inte adressen.** Att kunna läsa mailen bevisar visserligen
-kontroll över brevlådan, men flödena hålls isär: den som glömt lösenordet före bekräftelsen
-får bekräfta separat (R.14). Enklare att resonera om, och de två koderna byter aldrig roll.
-
-**Alla tidigare access-tokens slutar gälla.** `users.token_version` höjs i samma `UPDATE`
-som byter lösenordet, och varje token bär versionen som `ver`-claim. `requireAuth` jämför
-dem — uppslaget gör den ändå för verifieringskontrollen, så revokeringen kostar ingenting
-extra. En token utan `ver`, utfärdad innan versionerna fanns, matchar aldrig och avvisas.
-
-Svaret är `401 token-revoked` med besked om att lösenordet ändrats. Att säga varför röjer
-inget: bäraren har redan en giltigt signerad token för kontot.
-
-Det här är ett versionsnummer, inte ett sessionsregister. Det räcker för "byt lösenord och
-lås ut alla", men inte för att logga ut en enskild enhet — det kräver fortfarande arbetet
-i §10.
-
-**13. `POST /auth/logout`** → `200 { loggedOut: true }`
-Avslutar **den session token tillhör**. Andra sessioner för samma konto berörs inte — logga
-ut på telefonen utan att datorn kastas ut. Vill man avsluta samtliga: byt lösenord.
-
-En stateless JWT går inte att ta tillbaka, bara att neka. Varje token bär därför ett eget
-`jti`, och utloggningen lägger det i `revoked_tokens` **till tokenens egen utgångstid** —
-inte längre, raden behövs inte efter det.
-
-Kontrollen kostar ingenting extra: `EXISTS`-uttrycket ryms i samma uppslag som redan görs
-för tokenversion och e-postbekräftelse. Tabellen städas opportunistiskt vid varje
-utloggning, vilket är precis när den växer — inget bakgrundsjobb behövs.
-
-Andra gången samma token loggas ut ger `401 session-ended`; den är redan avslutad och
-kommer aldrig förbi `requireAuth`.
-
-**14. `POST /auth/refresh`** → `200 { token, expiresIn, refreshToken, refreshExpiresIn }`
-Öppen: den som behöver refresha har per definition ingen giltig access-token.
-Registrering och inloggning returnerar nu också `refreshToken` (30 dagar).
-
-**Ogenomskinliga slumpsträngar, aldrig JWT.** De lever länge och måste gå att återkalla,
-vilket en stateless token inte kan. Lagras som SHA-256 — värdet är redan 256 bitar slump,
-så det finns inget att brute-forca, och uppslaget måste vara en indexträff (argon2 vore
-fel verktyg här, till skillnad från för lösenord).
-
-**Rotation med återanvändningsdetektering.** Varje token duger en gång. Dyker en redan
-förbrukad upp igen finns den på två ställen — den ursprungliga klienten och någon annan —
-och då avslutas hela sessionen. Den bestulne får logga in igen, tjuven kommer ingenstans.
-
-**`session_id` överlever rotationen** och binder ihop kedjan med access-tokens `sid`-claim.
-Det är så utloggning kan avsluta hela sessionen; utan den kopplingen räcker det att refresha
-för att komma tillbaka in efter utloggning, och API 13 vore verkningslös.
-
-**Lösenordsbyte återkallar alla sessioner.** `token_version` stänger access-tokens, men
-refresh-tokens har ingen version att jämföra mot och måste återkallas var för sig.
-
-**`consumed_at` och `revoked_at` är skilda kolumner**, för de betyder olika saker för den
-som presenterar token: förbrukad-och-återanvänd betyder att den läckt, återkallad betyder
-att sessionen avslutats. Slås de ihop får den som *loggat ut normalt* beskedet att deras
-token blivit stulen. Det upptäcktes först när flödet kördes mot levande Aspire — testerna
-kontrollerade bara statuskoden, som är 401 i båda fallen.
-
-**2. `POST /auth/login`** → `200`
-`{ email, password }` → `{ token, expiresIn }`. Fel användare *och* fel lösenord ger
-samma `401` med samma svarstid (`Bun.password.verify` körs mot en dummyhash även för okänd
-e-post — se testfall A2.3).
-
-Login-schemat har medvetet **ingen** `minLength` på lösenordet, till skillnad från
-register-schemat: annars kan man läsa ut lösenordsreglerna genom att se ett kort lösenord
-ge `422` istället för `401`.
-
-**Obekräftad adress ⇒ `403 email-not-verified`.** Kontrollen sker *efter* lösenordet, inte
-före: annars gick det att kartlägga vilka adresser som finns registrerade genom att jämföra
-`401` mot `403`. Den som redan kan lösenordet får däremot veta exakt vad som saknas.
-
-Samma spärr gäller **varje skyddad route**, inte bara inloggningen: `requireAuth` slår upp
-kontot efter att token verifierats och avvisar obekräftade med `403`, samt token vars konto
-inte längre finns med `401`. Det kostar en primärnyckelträff per skyddad begäran.
-
-Alternativet — `email_verified` som claim i token — vore fel byte: claimen blir inaktuell i
-samma stund användaren klickar på bekräftelselänken, och registreringens token skulle då
-aldrig kunna börja fungera. Med uppslaget gäller i stället att **samma token börjar fungera
-direkt efter bekräftelsen, utan ny inloggning** (V.11).
 
 **3. `GET /me/requests`** → `200`
 `{ items: [{ …request, bids: [{ id, sellerId, sellerDisplayName, plan, compensation, estimatedTotalMinor, status, contract, createdAt }] }], nextCursor }`.
@@ -1036,14 +942,22 @@ inga portkonflikter, millisekunder per anrop. Verifierat på Bun (§2.2).
 `buyer.post(url, body)` som redan bär rätt `Authorization`-huvud. Testerna handlar då om
 domänen, inte om token-hantering.
 
-Hjälparen bygger på `POST /auth/register` och kunde därför inte skrivas förrän det API:t
-fanns. Den landade i **etapp 2**, driven av A1-testfallen, inte i etapp 1 — att skriva en
-hjälpare som ingenting kan köra är precis den sortens obekräftad kod planen försöker
-undvika.
+Hjälparen **skriver sin egen token** sedan Keycloak tog över identiteten.
+ `test/helpers/keys.ts`, `signedIn`/`blocked` i webbens auth slår fram en RS256-nyckel per körning, appen får den publika delen
+insprutad genom `createLocalKeys` (samma söm som minnesmailern), och aktören signerar med
+den privata. Ingen Keycloak, ingen port, inget nät — sviten behåller sin karaktär.
+
+Det är ingen genväg förbi speglingen: kontot och organisationen skapas ändå på riktigt, av
+`requireAuth`, vid aktörens första anrop.
+
+**Varje aktör får ett eget företag** om inget annat sägs. `actor(app, 'kim')` och
+`actor(app, 'robin')` menar två motparter, och delade de organisation vore robins anbud
+plötsligt ett anbud på den egna förfrågan. Kollegor begärs uttryckligen, med
+`colleagueOf(app, kim, 'lo')`.
 
 **Prövning utan publik route.** `buildTestApp({ extraRoutes })` registrerar routes som bara
-finns i testet, före `app.ready()`. Det är så `requireAuth` prövas (A2.1, A2.4) utan att
-API-ytan växer utanför den som står i §6.
+finns i testet, före `app.ready()`. Numera prövas `requireAuth` mot `GET /me`, som är en
+riktig route — men möjligheten står kvar för det som inte har en egen.
 
 ### 7.2 Testfallsmatris
 
@@ -1052,16 +966,20 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 
 | ID | Test |
 |---|---|
-| **A1** | **Registrering** |
-| A1.1 | Giltig registrering ⇒ 201, lösenordet syns inte i svaret, och token duger först efter bekräftelse |
-| A1.2 | Dubblett-e-post (även med annan skiftlägesform) ⇒ 409 |
-| A1.3 | Lösenord < 12 tecken ⇒ 422 med fältpekare |
-| A1.4 | Trasig e-postadress ⇒ 422 |
-| A1.5 | Lösenordet lagras aldrig i klartext (kontroll direkt mot tabellen, hashen är argon2id) |
-| **A2** | **Inloggning** |
-| A2.1 | Rätt uppgifter ⇒ 200 + token som accepteras av ett skyddat API |
-| A2.2 + A2.3 | Fel lösenord respektive okänd e-post ⇒ 401 med **byte-identisk** kropp (ett testfall, eftersom likheten är själva påståendet) |
-| A2.4 | Utgången, manipulerad, obegriplig och saknad token ⇒ 401 |
+| **O** | **Token från Keycloak** |
+| O.1 | En giltig token från realmet släpps in |
+| O.2 | Saknad, tom och trasig `Authorization` ⇒ 401 |
+| O.3 | Manipulerad signatur ⇒ 401 |
+| O.4 | Fel issuer ⇒ 401 — en annan realm duger inte |
+| O.5 | Fel mottagare ⇒ 401 — en token för en annan klient i samma realm duger inte |
+| O.6 | Utgången token ⇒ 401 |
+| O.7 | Obekräftad e-postadress ⇒ **403**, inte 401 — skillnaden är åtgärdbar för användaren |
+| O.8 | Utan organisation ⇒ 403 `organization-missing` |
+| O.9 | Flera organisationer ⇒ 403 `organization-ambiguous`, inte ett godtyckligt val |
+| O.10 | Speglingen skapas en gång och står still över flera anrop |
+| O.11 | Ändrad adress och namn i Keycloak slår igenom i speglingen |
+| O.12 | Två konton i samma organisation delar organisationsrad |
+| O.13 | `/me` lämnar ut det lokala id:t, inte Keycloaks subjekt |
 | **F5** | **Registrera förfrågan** |
 | F5.1 | Giltig förfrågan ⇒ 201, status `open`, buyerId = anroparen, budget som `number` |
 | F5.1b | Budget och deadline är valfria ⇒ `null` i svaret, inte utelämnade fält |
@@ -1149,77 +1067,18 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | L8.8 | `?compensationPref` filtrerar; okänt värde ⇒ 422 |
 | L8.9 | Sidbrytning utan dubbletter, nyaste först |
 | L8.10 | `hasPublishedSpec` och `canBid` är falska utan publicerad kravspec |
-| **V** | **E-postverifiering** (API 9) |
-| V.1 | Registrering skickar ett mail till adressen med en verifieringslänk |
-| V.2 | Ett nytt konto är overifierat och bär en egen token, skild från användarens id |
-| V.3 | Länken ur mailet sätter `email_verified` och svarar `{ verified, email }` |
-| V.4 | Samma länk igen är ofarlig — 200 och oförändrat svar |
-| V.5 | Okänd token ⇒ 404 |
-| V.6 | Token som inte är uuid ⇒ 422; helt utan token ⇒ 422 |
-| V.7 | Inloggning före verifiering ⇒ 403 `email-not-verified` |
-| V.7b | Fel lösenord på ett overifierat konto ⇒ fortfarande 401, inget läckage |
-| V.8 | Inloggning efter verifiering fungerar |
-| V.9 | Mailet innehåller inte lösenordet |
-| V.10 | Registreringens token duger inte mot ett skyddat API före verifiering ⇒ 403 |
-| V.11 | Samma token börjar fungera när adressen bekräftats, utan ny inloggning |
-| V.12 | Token för ett konto som inte finns kvar ⇒ 401 |
-| V.13 | Begäran om nytt mail skickar ett nytt mail med en ny länk |
-| V.14 | Den gamla länken slutar gälla ⇒ 404 |
-| V.15 | Den nya länken verifierar kontot, och inloggning fungerar därefter |
-| V.16 | Okänd adress ⇒ 202 utan att något mail skickas |
-| V.17 | Redan verifierat konto ⇒ 202 utan mail |
-| V.18 | Svaret är byte-identiskt i alla tre fallen |
-| V.19 | Upprepad begäran inom kylperioden skickar inte fler mail |
-| V.20 | Trasig e-postadress ⇒ 422 |
-| V.21 | Utgångstiden sätts vid registrering och ligger ~24 h fram |
-| V.22 | En passerad länk ⇒ 410 `verification-token-expired`, och kontot förblir obekräftat |
-| V.23 | Ett nytt bekräftelsemail ger en länk som fungerar igen |
-| V.24 | Rotationen flyttar fram utgångstiden |
-| V.25 | Ett redan bekräftat konto tål att länken passerat — idempotensen består |
-| V.26 | Länken pekar på webbens `/verify`, inte rakt in i API:et |
-| **R** | **Lösenordsåterställning** (API 11–12) |
-| R.1 | Begäran skickar ett mail med en kod, och utan det gamla lösenordet |
-| R.2 | Okänd adress ⇒ 202 utan mail |
-| R.3 | Svaret är identiskt för känd och okänd adress |
-| R.4 | Kylperioden stoppar upprepade utskick |
-| R.5 | Koden sätter ett nytt lösenord, och inloggning med det fungerar |
-| R.6 | Det gamla lösenordet slutar fungera ⇒ 401 |
-| R.7 | Koden går bara att använda en gång ⇒ 404 andra gången |
-| R.8 | Utgången kod ⇒ 410, och det gamla lösenordet gäller fortfarande |
-| R.9 | Okänd kod ⇒ 404 |
-| R.10 | För kort nytt lösenord ⇒ 422, och koden bränns inte |
-| R.11 | En ny begäran ogiltigförklarar den förra koden |
-| R.12 | Trasig e-postadress ⇒ 422 |
-| R.13 | Kod som inte är uuid ⇒ 422 |
-| R.14 | Återställning bekräftar inte adressen |
-| R.15 | En token utfärdad före återställningen ⇒ 401 `token-revoked` |
-| R.16 | En token utfärdad efter återställningen fungerar |
-| R.17 | Andra användares tokens påverkas inte |
-| R.18 | En token utan `ver`-claim avvisas |
-| R.19 | Varje återställning ogiltigförklarar den föregående sessionen |
-| R.20 | Mailet bär en länk till webbens `/reset-password`, inte koden i klartext |
-| **U** | **Utloggning** (API 13) |
-| U.1 | Utloggning ⇒ 200, och token ger sedan 401 `session-ended` |
-| U.2 | Utloggning utan token ⇒ 401 |
-| U.3 | Samma token loggar inte ut två gånger ⇒ 401 |
-| U.4 | Andra sessioner för samma användare påverkas inte |
-| U.5 | Andra användare påverkas inte |
-| U.6 | Ny inloggning efter utloggning fungerar |
-| U.7 | Utloggning städar bort utgångna rader ur `revoked_tokens` |
-| U.8 | Utloggning och lösenordsbyte krockar inte |
-| **T** | **Refresh-tokens** (API 14) |
-| T.1 | Inloggning returnerar en refresh-token med egen, längre livslängd |
-| T.2 | Registrering returnerar också en |
-| T.3 | Refresh ger en ny fungerande access-token, utan att kräva någon |
-| T.4 | Rotation: den förbrukade token slutar gälla, den nya fungerar |
-| T.5 | Återanvänd token ⇒ 401 `refresh-token-reused`, och hela kedjan dör |
-| T.6 | Okänd token ⇒ 401; tom ⇒ 422 |
-| T.7 | Utgången token ⇒ 401 |
-| T.8 | Utloggning hindrar refresh — och ger `invalid`, inte `reused` |
-| T.9 | Utloggning berör bara sin egen session |
-| T.10 | Lösenordsbyte dödar alla refresh-tokens, utan att anklaga någon |
-| T.11 | Token lagras aldrig i klartext |
-| T.12 | En token ger access till sitt eget konto, inte anroparens |
+| **FTG** | **Organisationen som part** |
+| FTG.1 | Kollegor delar organisation, motparter gör det inte — men är skilda personer |
+| FTG.2 | Kollegan ser organisationens förfrågningar bland "mina"; motparten gör det inte |
+| FTG.3 | Kollegan kan inte lämna anbud på den egna organisationens förfrågan ⇒ 403 |
+| FTG.4 | Ett aktivt anbud per **organisation**, inte per person ⇒ 409 för kollegans andra |
+| FTG.5 | Kollegan får ändra organisationens anbud |
+| FTG.6 | Läsrätt till en kollega avvisas ⇒ 422 — medlemskapet räcker redan |
+| FTG.7 | Läsrätt över företagsgränsen fungerar fortfarande ⇒ 201 |
+| FTG.8 | Kollegan ser alla anbud på organisationens förfrågan, en utomstående bara sitt eget |
+| FTG.9 | Kollegan på köparsidan kan signera avtalet — parten är företaget |
+| FTG.10 | En utomstående organisation är inte part och får inte signera ⇒ 403 |
+| FTG.11 | Katalogen räknar organisationens anbud som "mitt" |
 | **P** | **Läsrättigheter** (API 15–18) |
 | P.1 | Köparen kan ge en kollega läsrätt ⇒ 201 |
 | P.2 | Dubbel tilldelning är idempotent ⇒ 200, oförändrad tidpunkt |
@@ -1279,12 +1138,6 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | Ä.15 | Bara säljaren får dra tillbaka ⇒ 403 |
 | Ä.16 | Tillbakadragande när avtalet finns ⇒ 409 |
 | Ä.17 | Tillbakadragande av okänt anbud ⇒ 404 |
-| **K** | **Kvotgräns per anropare** (API 10–11) |
-| K.1 | Anrop upp till gränsen släpps igenom |
-| K.2 | Anropet över gränsen ⇒ 429 `too-many-requests` med `retry-after` |
-| K.3 | Gränsen är per anropare — en annan adress påverkas inte |
-| K.4 | Egen räknare per endpoint; båda endpointsen har samma gräns |
-| K.5 | Andra endpoints är opåverkade, och ett kvoterat anrop skickar inget mail |
 | **G** | **Städning av föräldralösa objekt** |
 | G.1 | Ett föräldralöst objekt äldre än fristen raderas |
 | G.2 | Ett objekt med rad i databasen rörs inte |
@@ -1457,6 +1310,7 @@ Varje etapp är en pull-liknande enhet med en tydlig grön-tröskel.
 | **5** ✅ | Listnings-API:er (API 3–4) | Joins utan N+1, markörsidbrytning, filter, `004_contracts.sql` (tidigarelagd), dubbla valideringsregimer | **Klar.** L3.\*, L4.\* gröna; 68/68 i hela sviten |
 | **6** ✅ | Avtalssignering (API 7) | `domain/contract-rules.ts`, transaktionell tillståndsmaskin med `sql.begin` + `FOR UPDATE OF r`, frysta villkor, tom-kropp-parser | **Klar.** S7.\*, D.3 gröna; 92/92 i hela sviten; hela flödet kört mot levande Aspire |
 | **7** ✅ | Dokumentation & finish | OpenAPI-tvärsnittstester, `docs/API.md` | **Klar.** X.\* gröna; hela sviten 103/103; Swagger UI och hela flödet körda mot levande Aspire |
+| **25** ✅ | Keycloak, OIDC och organisationer | `Aspire.Hosting.Keycloak` i AppHosten, `keycloak/realm/fastgig-realm.json`, `auth/keys.ts` (`jose`), omskriven `plugins/auth.ts`, `018_keycloak_identities.sql`, `db/identities.ts`, organisationsskopning på åtta ställen, `GET /me`, `oidc-client-ts` i webben,  `test/helpers/keys.ts`, `signedIn`/`blocked` i webbens auth | **Klar.** O.\* och FTG.\* gröna; 286/286; e2e 3/3 mot levande miljö, hela vägen från Keycloaks registreringssida via bekräftelsemailet i mailpit till signerat avtal. Åtta API:er, sju migrationers kolumner och sex kontraktsviter försvann. Fyra fel funna genom att gå på dem: featureflaggan heter `organization` i singular, `KC_HTTP_RELATIVE_PATH` flyttar även hälsokontrollen (`KC_HTTP_MANAGEMENT_RELATIVE_PATH` pinnar tillbaka den), en fast port 8080 krockade med en typst-server på maskinen, och webbläsaren i e2e-containern saknade `crypto.subtle` utanför en säker kontext |
 | **24** ✅ | Intervjun i webben | `pages/RequestSpec.tsx`, kravspecpanel på förfrågningssidan, katalogens skäl, sju fälttyper i `styles.css` | **Klar.** E2E går klickvägen genom intervjun i stället för API-genvägen: 3/3 gröna mot levande miljö. Två fel funna på vägen: bildspelsfixturens helsidesfoto lämnade skruvade layoutmått så att nästa klick inte skickade formuläret, och indikatorns blockerarlista var en kopia av hela intervjun |
 | **23** ✅ | Anbud kräver publicerad kravspec | Spärr i `POST /requests/{id}/bids`, `hasPublishedSpec` i katalogen, `test/helpers/spec.ts`, `publishSpec` i e2e-sviten | **Klar.** F6.9 och L8.10 gröna; 354/354. Spärren fällde 87 befintliga testfall — samtliga sviter som lämnar anbud fick en publicerad kravspec via `publishSpecFor`. E2E-sviten körd mot levande miljö: 3/3 gröna, med kravspecen publicerad via API:et (klickvägen kom i etapp 24) |
 | **22** ✅ | Intervjun över HTTP (API 26–36) | `routes/gig-types.ts`, `routes/request-specs.ts`, `schemas/gig.ts`, `domain/spec-completeness.ts`, sex nya Problem Details | **Klar.** I.\* gröna; 351/351. X.1c utökad med de elva nya operationerna. Två fel funna på vägen: parallella frågor på en transaktionsanslutning låste sig (readSpec kördes med `Promise.all`), och revisionsvägen svarade 409 där 404 var det upplysande |
@@ -1472,7 +1326,7 @@ Varje etapp är en pull-liknande enhet med en tydlig grön-tröskel.
 | **12** ✅ | Lösenordsåterställning (API 11–12) | `008_password_reset.sql`, engångskod med 1 h giltighet, `mail/password-reset-email.ts` | **Klar.** R.\* gröna; 158/158; hela flödet kört mot mailpit i levande Aspire |
 | **11** ✅ | Utgångstid på verifieringslänken | `007_verification_expiry.sql`, tre utfall ur `verifyUserByToken` | **Klar.** V.21–V.25 gröna; 144/144; 410-vägen och återhämtningen via nytt mail körda mot levande Aspire |
 | **10** ✅ | Nytt bekräftelsemail (API 10) | `006_verification_resend.sql`, `rotateVerificationToken` med kylperiod | **Klar.** V.13–V.20 gröna; 138/138; kylperiod, rotation och läckagefrihet verifierade mot mailpit |
-| **9** ✅ | E-postverifiering (API 9) | `005_email_verification.sql`, mailpit i AppHosten, `src/mail/`, spärr i både `/auth/login` och `requireAuth` | **Klar.** V.\* gröna; 130/130; hela flödet kört mot mailpit i levande Aspire |
+| **9** ✅ | E-postverifiering (API 9) | `005_email_verification.sql`, mailpit i AppHosten, `src/mail/`, spärr i både `/auth/login` och `requireAuth` | **Klar.** V.\* gröna; 130/130; hela flödet kört mot mailpit i levande Aspire. *Ersatt i etapp 25: Keycloak äger verifieringen, mailpit står kvar.* |
 | **8** ✅ | Katalogen (API 8) | `GET /requests` med `bidCount`/`hasMyBid`/`canBid`, filter och sidbrytning | **Klar.** L8.\* gröna; 116/116; körd mot levande Aspire. Tillkom efter att luckan påpekats — säljare kunde bara lägga anbud på förfrågningar de kände till ID:t för |
 
 Etapp 0–1 är infrastruktur och skrivs inte testdrivet i strikt mening — de *är* verktyget som
@@ -1482,19 +1336,40 @@ gör resten testdriven. Från etapp 2 gäller §8.1 utan undantag.
 
 ## 10. Medvetet utelämnat (skuld, inte glömska)
 
-- **Lista aktiva sessioner** — `refresh_tokens` har allt som behövs (`session_id`,
-  `created_at`, `revoked_at`), men inget API exponerar det. Ett `GET /me/sessions` med
-  möjlighet att avsluta en enskild är nästa naturliga steg.
+- **Organisationens visningsnamn** — `organization`-claimen bär bara aliaset, så
+  speglingen sätter `organizations.name` till aliaset första gången företaget syns.
+  "Nordvind Bygg" står i realm-filen men når aldrig fram. Att hämta det ur Keycloaks
+  admin-API vid speglingen vore ett beroende API:et klarar sig utan; en mapper som lägger
+  namnet i claimen vore bättre, om Keycloak börjar stödja det.
+- **Ett konto, en organisation** — `requireAuth` kräver exakt ett alias i claimen och
+  avvisar flera med `403 organization-ambiguous`. En konsult som arbetar för två företag
+  behöver ett val i gränssnittet, och det valet måste följa med i varje begäran.
+- **Läsrätt går bara att ge den som varit här.** `POST /requests/{id}/permissions` slår upp
+  adressen i `users`, och den raden skapas först vid personens första anrop mot API:et. En
+  inbjuden kollega som ännu bara satt sitt lösenord i Keycloak finns inte där, och
+  tilldelningen ger `404 user-not-found`. Rimligt — man delar inte med en identitet gigga
+  aldrig sett — men det gör den första inloggningen till ett steg i onboardingen.
+- **Inbjudningarna skickas i Keycloaks adminkonsol, inte i gigga.** Den som ska bjuda in
+  en kollega behöver alltså ett adminkonto i realmet. En egen yta för det — "bjud in till
+  min organisation", med behörighet knuten till medlemskapet — är nästa steg.
+- **Adminkontot är `admin`/`admin`** i den här utvecklingsmiljön, satt i klartext i
+  AppHosten. Keycloak lever på localhost och är icke-persistent; en driftsatt miljö sätter
+  uppgifterna som hemligheter.
+- **Lista aktiva sessioner** — Keycloak äger sessionerna nu, och kan visa och avsluta dem
+  i sitt eget kontogränssnitt. Ett `GET /me/sessions` som speglar det vore bekvämt men är
+  inte nödvändigt längre.
 - **Åtgärd för markerade dokument** — `available: false` syns, men det finns ingen väg att
   ladda upp innehållet på nytt till en befintlig rad. Säljaren får radera och ladda upp
   igen, vilket ger ett nytt id.
 - **Fler rättighetsnivåer** — `permission_level` har bara `read`. Kolumnen finns för att
   slippa en migrering den dag det behövs fler.
-- **Städning av `refresh_tokens`** — rader ligger kvar efter utgång. `revoked_tokens`
-  städas vid utloggning; motsvarande saknas här.
-- **Delade kvoträknare** — `/auth/resend-verification` och `/auth/forgot-password` har en
-  gräns per anropare (§6.1 punkt 10), men räknarna lever i API-processen: de nollställs vid
-  omstart och delas inte mellan instanser. Övriga `/auth/*` är okvoterade.
+- **Realmet släpper in vilken redirect-adress som helst** — `redirectUris` och
+  `webOrigins` står på `*` i `keycloak/realm/fastgig-realm.json`. Det är med flit i en
+  miljö där adressen lottas fram (tunnlar, containerbryggor, lottade portar), men ett
+  skarpt realm måste peka ut dem.
+- **Kvotgränsen per anropare är borta** — den satt på `/auth/resend-verification` och
+  `/auth/forgot-password`, som Keycloak äger nu. Realmet har `bruteForceProtected` i
+  stället. Övriga API:er är okvoterade, som förut.
 - **Intervjun sparas inte medan man skriver** — svaren skickas när kunden trycker på
   Spara. Lämnar man sidan mitt i ett steg är fälten tomma igen. Ett autospar per fält är
   nästa steg, och det är den skuld som förfaller först nu.

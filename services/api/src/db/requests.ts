@@ -6,7 +6,10 @@ export type RequestStatus = 'open' | 'awarded' | 'cancelled';
 
 export interface UppdragsRequest {
   id: string;
+  /** Vem som skapade förfrågan. Ägarskapet ligger på organisationen, inte här. */
   buyerId: string;
+  /** Företaget som är köpare. Det är den här behörighetskontrollerna jämför mot. */
+  buyerOrganizationId: string;
   title: string;
   description: string;
   compensationPref: CompensationPref;
@@ -19,6 +22,7 @@ export interface UppdragsRequest {
 export interface RequestRow {
   id: string;
   buyer_id: string;
+  buyer_organization_id: string;
   title: string;
   description: string;
   compensation_pref: CompensationPref;
@@ -34,6 +38,7 @@ export function toRequest(row: RequestRow): UppdragsRequest {
   return {
     id: row.id,
     buyerId: row.buyer_id,
+    buyerOrganizationId: row.buyer_organization_id,
     title: row.title,
     description: row.description,
     compensationPref: row.compensation_pref,
@@ -45,12 +50,13 @@ export function toRequest(row: RequestRow): UppdragsRequest {
 }
 
 export const REQUEST_COLUMNS =
-  'id, buyer_id, title, description, compensation_pref, budget_minor, currency, deadline_at, status, created_at';
+  'id, buyer_id, buyer_organization_id, title, description, compensation_pref, budget_minor, currency, deadline_at, status, created_at';
 
 export async function insertRequest(
   sql: SQL,
   input: {
     buyerId: string;
+    buyerOrganizationId: string;
     title: string;
     description: string;
     compensationPref: CompensationPref;
@@ -59,9 +65,10 @@ export async function insertRequest(
   },
 ): Promise<UppdragsRequest> {
   const rows = (await sql`
-    INSERT INTO requests (buyer_id, title, description, compensation_pref,
+    INSERT INTO requests (buyer_id, buyer_organization_id, title, description, compensation_pref,
                           budget_minor, currency, deadline_at)
-    VALUES (${input.buyerId}, ${input.title}, ${input.description}, ${input.compensationPref},
+    VALUES (${input.buyerId}, ${input.buyerOrganizationId},
+            ${input.title}, ${input.description}, ${input.compensationPref},
             ${input.budget ? toMinorColumn(input.budget.amountMinor) : null},
             ${input.budget?.currency ?? 'SEK'},
             ${input.deadlineAt})

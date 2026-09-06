@@ -11,66 +11,81 @@ för att förklara konventioner som ett schema inte kan uttrycka.
 
 ## Autentisering
 
-`POST /auth/register` och `POST /auth/login` ger en **access-token** (1 timme) och en
-**refresh-token** (30 dagar). Skicka access-token som `Authorization: Bearer <token>`.
+**gigga utfärdar inga tokens.** Identiteten ligger i **Keycloak**, och API:et är
+resursserver: det verifierar access-token mot realmets JWKS (RS256) och kräver rätt
+`iss` och `aud`. Skicka den som `Authorization: Bearer <token>`.
 
-När access-token gått ut: `POST /auth/refresh` med `{ refreshToken }` ger ett nytt par.
-Den gamla refresh-token förbrukas i samma anrop — **spara alltid den nya**. Använder du en
-redan förbrukad token antas den ha läckt, och hela sessionen avslutas (`401
-refresh-token-reused`); då återstår inloggning med lösenord.
+Token hämtas genom att logga in i webbgränssnittet, som gör authorization code + PKCE mot
+Keycloak. Vill du anropa API:et för hand är enklaste vägen att logga in i webben och kopiera
+token därifrån.
 
-**Utloggning.** `POST /auth/logout` avslutar den session token tillhör; därefter svarar
-den `401 session-ended`. Andra sessioner för samma konto påverkas inte — logga ut på
-telefonen utan att datorn kastas ut. För att avsluta samtliga sessioner: byt lösenord.
+Alla misslyckanden med själva token — saknad, utgången, manipulerad, fel issuer, fel
+mottagare — ger samma `401`. Skillnaden mellan dem säger bara något till den som gissar.
 
-**E-postadressen måste bekräftas.** Registreringen skickar ett mail med en länk till
-webbens `/verify?token=<uuid>`, som i sin tur anropar `GET /validate-user?token=<uuid>`
-och visar hur det gick. Innan den klickats svarar `/auth/login` med
-`403 email-not-verified` — och **det gör varje skyddad endpoint också**, även med den token
-registreringen returnerade. Länken är idempotent och tål att klickas flera gånger.
+### Keycloak nås under `/auth`
 
-Samma token börjar fungera direkt när länken klickats; ingen ny inloggning behövs. En token
-vars konto inte finns kvar ger `401`.
+Realmet ligger på webbens egen origin, proxat dit av Vite:
+`http://localhost:5173/auth/realms/fastgig`. Det är inte bara bekvämt — Keycloak bygger
+sin issuer ur adressen du kom in på, så tokenens `iss` blir densamma vare sig du surfar på
+localhost, kör e2e-sviten i en container eller går genom en cloudflare-tunnel.
 
-**Länken gäller i 24 timmar.** Därefter svarar den `410 verification-token-expired`. En
-länk som redan använts fortsätter dock svara `200` även efter utgången — kontot är ju
-bekräftat.
+Adminkonsolen ligger på Keycloak-resursens egen URL i Aspire-dashboarden. Användarnamn och
+lösenord genereras vid start och står som parametrar i dashboarden (`keycloak-user`,
+`keycloak-password`).
 
-**Tappat mailet, eller gått ut?** `POST /auth/resend-verification` med `{ email }` skickar
-ett nytt och gör den gamla länken ogiltig — bara det senaste mailet gäller. Svaret är alltid
-`202 { "accepted": true }`, oavsett om adressen finns, redan är bekräftad eller nyss fått
-ett mail. Det är avsiktligt: allt annat vore ett sätt att ta reda på vilka adresser som är
-registrerade. Ett nytt mail skickas som mest en gång per minut och konto.
+### E-postadressen måste bekräftas
+
+Realmet har `verifyEmail`, så Keycloak skickar bekräftelsemailet och släpper inte igenom
+inloggningen förrän länken klickats. API:et kontrollerar dessutom `email_verified` i token
+och svarar `403 email-not-verified` — en token kan ha utfärdats innan kravet slog till.
 
 I utvecklingsmiljön går ingen post ut på riktigt: **mailpit** fångar allt, och dess
-webbgränssnitt ligger som egen URL i Aspire-dashboarden. Det är där du hämtar länken.
+webbgränssnitt ligger som egen URL i Aspire-dashboarden. Det är där du hämtar länken — nu
+för både bekräftelse och glömt lösenord, som båda skickas av Keycloak.
 
-**Rollerna är inte fasta.** Samma konto kan vara köpare i en förfrågan och säljare i en
-annan. Behörighet avgörs alltid av ägarskap i just den raden, aldrig av en roll på kontot.
+### Varje konto hör till en organisation
 
-### Glömt lösenord
+gigga är en marknadsplats mellan företag, och **organisationen är part i affären** — inte
+personen. Token bär företaget i `organization`-claimen, och API:et kräver **exakt ett**:
 
-`POST /auth/forgot-password` med `{ email }` skickar en kod och svarar alltid
-`202 { "accepted": true }` — samma läckagefria mönster och kylperiod som bekräftelsemailen.
+| Utfall | Svar |
+|---|---|
+| Ingen organisation | `403 organization-missing` |
+| Flera organisationer | `403 organization-ambiguous` |
 
-Båda endpointsen har dessutom en **kvotgräns per anropare: 5 anrop per 15 minuter**, var
-för sig. Över gränsen svarar de `429 too-many-requests` med `retry-after` i sekunder, och
-inget mail skickas. Kylperioden ligger per konto och biter inte på den som varierar
-adressen — det är vad kvoten är till för.
+**Ingen registrerar sig själv.** Realmet har `registrationAllowed: false`, och inbjudan är
+enda vägen in. Den skickas av någon som redan är medlem i organisationen — det är svaret
+på vem som godkänner att ett konto hör hemma i ett företag.
 
-`POST /auth/reset-password` med `{ token, password }` sätter det nya lösenordet. Koden
-gäller i **en timme** och **en gång**: efter användning ger den `404`, efter utgången `410`.
-Ett misslyckat försök — för kort lösenord — bränner den inte.
+Organisationernas domäner avgör *ingenting* om medlemskap. Keycloak använder dem för att
+styra identitetsförd inloggning vidare till ett företags egen inloggningstjänst. Att en
+adress ser ut att höra till ett företag är alltså inget bevis för att den gör det, och
+inget i systemet påstår att någon företräder en domän.
 
-**Mailet bär koden i klartext med instruktioner**, eftersom webben ännu inte har någon
-sida för att sätta nytt lösenord — till skillnad från bekräftelselänken, som går via
-`/verify`. Sätt `PASSWORD_RESET_URL` när sidan finns, så skickas en klickbar länk i stället.
+Den som tar emot inbjudan blir medlem när lösenordet satts, och bekräftar adressen
+därefter. Notera att gigga känner till en person först efter hens **första inloggning**:
+`users`-raden skapas då. Att ge läsrätt till någon som ännu bara finns i Keycloak ger
+`404 user-not-found`. Ordningen är avsiktlig: medlemskapet finns **före** bekräftelsen, så
+bekräftelselänken kan landa i katalogen i stället för på ett `403 organization-missing`.
 
-**Alla tidigare access-tokens slutar gälla** vid lösenordsbytet och ger `401 token-revoked`.
-Logga in igen för att få en ny. Andra användares tokens berörs förstås inte.
+Gränssnittet skiljer det från att vara utloggad. En giltig session som avvisas av API:et
+visar skälet och en väg ut; den skickas *inte* tillbaka till inloggningen, som bara hade
+loggat in igen och studsat tillbaka.
 
-En sak att känna till: återställningen **bekräftar inte** e-postadressen — det är ett eget
-flöde.
+**Vad det betyder i praktiken:** en kollega ser organisationens förfrågningar och anbud
+utan att något delats ut, får ändra företagets anbud och får signera dess avtal — men får
+inte lämna anbud på den egna organisationens förfrågan. Tilldelad läsrätt
+(API 16–18) är därmed vägen **över** företagsgränsen, inte inom den.
+
+`GET /me` svarar `{ id, email, displayName, organization }`. Id:t där är gigga:s eget, inte
+Keycloaks `sub` — det är det som ägarskap i övriga svar jämförs mot.
+
+**Rollerna är inte fasta.** Samma organisation kan vara köpare i en förfrågan och säljare i
+en annan. Behörighet avgörs alltid av ägarskap i just den raden.
+
+### Glömt lösenord, utloggning, sessioner
+
+Allt detta sköts av Keycloak, på dess egna sidor. gigga har inga sådana endpoints kvar.
 
 ## Konventioner
 
@@ -95,11 +110,10 @@ kr. Aldrig decimaltal. `currency` är valfri och betyder `SEK` om den utelämnas
 
 | Kod | Betyder |
 |---|---|
-| 202 | Mottaget — utan besked om vad som hände (se resend-verification) |
-| 401 | Token saknas, är utgången, ogiltig — eller återkallad av ett lösenordsbyte |
-| 403 | Inloggad, men fel part för resursen — eller obekräftad e-postadress |
+| 401 | Token saknas, är utgången eller ogiltig — inklusive fel issuer och fel mottagare |
+| 403 | Inloggad, men fel part för resursen — eller obekräftad adress, eller ingen organisation |
 | 404 | Resursen finns inte |
-| 410 | Fanns, men gäller inte längre — utgången verifieringslänk |
+| 410 | Fanns, men gäller inte längre |
 | 409 | Konflikt med befintligt tillstånd |
 | 413 | Filen är större än 10 MB |
 | 415 | Filtypen tas inte emot, eller innehållet matchar inte ändelsen |
@@ -115,20 +129,13 @@ bläddringen.
 
 | Metod & väg | Auth | Gör |
 |---|---|---|
-| `POST /auth/register` | – | Skapar konto, returnerar token |
-| `POST /auth/login` | – | Loggar in, returnerar token |
-| `GET /validate-user` | – | Bekräftar e-postadressen; anropas av webbens `/verify` |
-| `POST /auth/resend-verification` | – | Begär ett nytt bekräftelsemail |
-| `POST /auth/refresh` | – | Byter refresh-token mot en ny access-token |
-| `POST /auth/logout` | ✔ | Avslutar den session token tillhör |
-| `POST /auth/forgot-password` | – | Begär lösenordsåterställning |
-| `POST /auth/reset-password` | – | Sätter nytt lösenord med koden ur mailet |
+| `GET /me` | ✔ | Egen identitet och organisation |
 | `GET /requests` | ✔ | Listar öppna uppdrag att lämna anbud på |
 | `POST /requests` | ✔ | Publicerar en uppdragsförfrågan |
 | `POST /requests/{requestId}/bids` | ✔ | Lämnar anbud (kräver publicerad kravspec) |
 | `PATCH /bids/{bidId}` | ✔ | Ändrar plan, ersättning eller båda |
 | `POST /bids/{bidId}/withdrawal` | ✔ | Drar tillbaka anbudet |
-| `GET /me/requests` | ✔ | Egna förfrågningar, var och en med sina anbud |
+| `GET /me/requests` | ✔ | Organisationens förfrågningar, var och en med sina anbud |
 | `GET /me/bids` | ✔ | Egna anbud med status och avtalsläge |
 | `POST /bids/{bidId}/contract/signatures` | ✔ | Signerar avtalet |
 | `GET /requests/{requestId}` | ✔ | Läser en förfrågan med dess anbud |
@@ -307,16 +314,11 @@ publicerade versionen, och `404` innan dess: ett utkast är köparens interna ar
 ```bash
 API=http://localhost:PORT/api/v1   # porten syns i Aspire-dashboarden
 
-kopare=$(curl -s -X POST $API/auth/register -H 'content-type: application/json' \
-  -d '{"email":"kim@example.se","password":"ett-langt-losenord","displayName":"Kim"}')
-saljare=$(curl -s -X POST $API/auth/register -H 'content-type: application/json' \
-  -d '{"email":"robin@example.se","password":"ett-langt-losenord","displayName":"Robin"}')
-
-# Hämta bekräftelselänkarna ur mailpit (URL:en syns i Aspire-dashboarden) och klicka dem
-# innan inloggning. Registreringens token fungerar direkt, men /auth/login kräver bekräftelse.
-
-KT=$(echo "$kopare"  | bun -e 'console.log((await Bun.stdin.json()).token)')
-ST=$(echo "$saljare" | bun -e 'console.log((await Bun.stdin.json()).token)')
+# Kontona skapas i Keycloak, inte här: öppna webben, registrera Kim och Robin, klicka
+# bekräftelselänkarna i mailpit, och koppla var och en till sin organisation. Därefter
+# hämtas token ur webbläsarens sessionStorage (nyckeln börjar på "oidc.user:").
+KT=<Kims access-token>
+ST=<Robins access-token>
 
 REQ=$(curl -s -X POST $API/requests -H "authorization: Bearer $KT" \
   -H 'content-type: application/json' \

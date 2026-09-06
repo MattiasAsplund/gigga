@@ -64,17 +64,17 @@ function toContractSummary(row: ContractColumns): ContractSummary | null {
  */
 export async function listBuyerRequests(
   sql: SQL,
-  buyerId: string,
+  buyerOrganizationId: string,
   page: PageQuery,
 ): Promise<RequestWithBids[]> {
   const cursorAt = page.cursor?.createdAt ?? null;
   const cursorId = page.cursor?.id ?? null;
 
   const requestRows = (await sql`
-    SELECT id, buyer_id, title, description, compensation_pref,
+    SELECT id, buyer_id, buyer_organization_id, title, description, compensation_pref,
            budget_minor, currency, deadline_at, status, created_at
     FROM requests
-    WHERE buyer_id = ${buyerId}
+    WHERE buyer_organization_id = ${buyerOrganizationId}
       AND (${cursorAt}::timestamptz IS NULL
            OR (created_at, id) < (${cursorAt}::timestamptz, ${cursorId}::uuid))
     ORDER BY created_at DESC, id DESC
@@ -85,7 +85,7 @@ export async function listBuyerRequests(
   if (requests.length === 0) return [];
 
   const bidRows = (await sql`
-    SELECT b.id, b.request_id, b.seller_id, b.plan, b.compensation_type,
+    SELECT b.id, b.request_id, b.seller_id, b.seller_organization_id, b.plan, b.compensation_type,
            b.fixed_amount_minor, b.hourly_rate_minor, b.estimated_hours, b.currency,
            b.status, b.spec_version_id, b.created_at,
            u.display_name,
@@ -124,7 +124,7 @@ export async function listBidsForRequest(
   requestId: string,
 ): Promise<BidWithSeller[]> {
   const rows = (await sql`
-    SELECT b.id, b.request_id, b.seller_id, b.plan, b.compensation_type,
+    SELECT b.id, b.request_id, b.seller_id, b.seller_organization_id, b.plan, b.compensation_type,
            b.fixed_amount_minor, b.hourly_rate_minor, b.estimated_hours, b.currency,
            b.status, b.spec_version_id, b.created_at,
            u.display_name,
@@ -160,7 +160,7 @@ export interface CatalogRequest extends UppdragsRequest {
  */
 export async function listOpenRequests(
   sql: SQL,
-  viewerId: string,
+  viewerOrganizationId: string,
   page: PageQuery,
   compensationPref: CompensationPref | null,
 ): Promise<CatalogRequest[]> {
@@ -168,14 +168,14 @@ export async function listOpenRequests(
   const cursorId = page.cursor?.id ?? null;
 
   const rows = (await sql`
-    SELECT r.id, r.buyer_id, r.title, r.description, r.compensation_pref,
+    SELECT r.id, r.buyer_id, r.buyer_organization_id, r.title, r.description, r.compensation_pref,
            r.budget_minor, r.currency, r.deadline_at, r.status, r.created_at,
            u.display_name,
            (SELECT count(*) FROM bids b
              WHERE b.request_id = r.id AND b.status <> 'withdrawn')::int AS bid_count,
            EXISTS (SELECT 1 FROM bids b
                     WHERE b.request_id = r.id
-                      AND b.seller_id = ${viewerId}
+                      AND b.seller_organization_id = ${viewerOrganizationId}
                       AND b.status <> 'withdrawn') AS has_my_bid,
            EXISTS (SELECT 1 FROM request_spec_versions v
                     WHERE v.request_id = r.id AND v.status = 'published')
@@ -209,7 +209,7 @@ export async function listOpenRequests(
 /** Säljarens egna anbud, nyaste först, med förfrågans titel och avtalets signaturläge. */
 export async function listSellerBids(
   sql: SQL,
-  sellerId: string,
+  sellerOrganizationId: string,
   page: PageQuery,
   status: BidStatus | null,
 ): Promise<BidWithContext[]> {
@@ -217,7 +217,7 @@ export async function listSellerBids(
   const cursorId = page.cursor?.id ?? null;
 
   const rows = (await sql`
-    SELECT b.id, b.request_id, b.seller_id, b.plan, b.compensation_type,
+    SELECT b.id, b.request_id, b.seller_id, b.seller_organization_id, b.plan, b.compensation_type,
            b.fixed_amount_minor, b.hourly_rate_minor, b.estimated_hours, b.currency,
            b.status, b.spec_version_id, b.created_at,
            r.title AS request_title,
@@ -226,7 +226,7 @@ export async function listSellerBids(
     FROM bids b
     JOIN requests r ON r.id = b.request_id
     LEFT JOIN contracts c ON c.bid_id = b.id
-    WHERE b.seller_id = ${sellerId}
+    WHERE b.seller_organization_id = ${sellerOrganizationId}
       AND (${status}::bid_status IS NULL OR b.status = ${status}::bid_status)
       AND (${cursorAt}::timestamptz IS NULL
            OR (b.created_at, b.id) < (${cursorAt}::timestamptz, ${cursorId}::uuid))

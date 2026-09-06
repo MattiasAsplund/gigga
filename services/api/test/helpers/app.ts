@@ -6,6 +6,8 @@ import {
   type MemoryObjectStore,
 } from '../../src/storage/object-store.ts';
 import { freshDatabase, type TestDatabase } from './postgres.ts';
+import { createLocalKeys } from '../../src/auth/keys.ts';
+import { testKeys, TEST_AUDIENCE, TEST_ISSUER } from './keys.ts';
 
 export interface TestApp {
   app: App;
@@ -19,21 +21,12 @@ export interface TestApp {
   close(): Promise<void>;
 }
 
-const TEST_JWT_SECRET = 'test-secret-som-ar-minst-fyrtioatta-tecken-langt-abc';
-
 export interface BuildTestAppOptions {
   /**
    * Registreras före app.ready(). Används för att pröva sådant som inte har en egen
    * publik route — t.ex. requireAuth — utan att API-ytan växer utanför §6 i planen.
    */
   extraRoutes?: (app: App) => Promise<void>;
-  /**
-   * Kvotgränsen per anropare. Höjd som grundvärde: räknaren lever i processen och delas
-   * av hela testfilen, så skarpa fem anrop hade fällt de sviter som med rätta anropar
-   * resend och forgot många gånger. Kvoten prövas i sitt eget testfall, med sitt eget
-   * värde här.
-   */
-  authRateLimitPerWindow?: number;
 }
 
 /**
@@ -50,14 +43,16 @@ export async function buildTestApp(options: BuildTestAppOptions = {}): Promise<T
       PORT: 0,
       HOST: '127.0.0.1',
       DATABASE_URL: db.url,
-      JWT_SECRET: TEST_JWT_SECRET,
       LOG_LEVEL: 'silent',
       SMTP_HOST: '127.0.0.1',
       SMTP_PORT: 1025,
       MAIL_FROM: 'fastgig <no-reply@test>',
       PUBLIC_BASE_URL: 'http://fastgig.test',
-      // Tomt: återställningsmailen bär koden i klartext, som utan frontend.
-      PASSWORD_RESET_URL: '',
+      OIDC_REALM: 'fastgig',
+      OIDC_ISSUER: TEST_ISSUER,
+      // Aldrig hämtad: testerna skickar in nyckeluppsättningen nedan.
+      OIDC_JWKS_URI: 'http://fastgig.test/aldrig-hamtad',
+      OIDC_AUDIENCE: TEST_AUDIENCE,
       S3_ENDPOINT: 'http://minne',
       S3_BUCKET: 'test',
       S3_ACCESS_KEY_ID: 'test',
@@ -65,12 +60,11 @@ export async function buildTestApp(options: BuildTestAppOptions = {}): Promise<T
       S3_REGION: 'us-east-1',
       ORPHAN_SWEEP_INTERVAL_MINUTES: 0,
       STORAGE_ALERT_EMAIL: '',
-      AUTH_RATE_LIMIT_PER_WINDOW: options.authRateLimitPerWindow ?? 100_000,
-      AUTH_RATE_LIMIT_WINDOW_MINUTES: 15,
     },
     sql: db.sql,
     mailer: mail,
     objects,
+    keys: createLocalKeys((await testKeys()).jwks),
   });
 
   await options.extraRoutes?.(app);
@@ -102,14 +96,16 @@ export async function buildTestAppWithBrokenDatabase(url: string): Promise<TestA
       PORT: 0,
       HOST: '127.0.0.1',
       DATABASE_URL: url,
-      JWT_SECRET: TEST_JWT_SECRET,
       LOG_LEVEL: 'silent',
       SMTP_HOST: '127.0.0.1',
       SMTP_PORT: 1025,
       MAIL_FROM: 'fastgig <no-reply@test>',
       PUBLIC_BASE_URL: 'http://fastgig.test',
-      // Tomt: återställningsmailen bär koden i klartext, som utan frontend.
-      PASSWORD_RESET_URL: '',
+      OIDC_REALM: 'fastgig',
+      OIDC_ISSUER: TEST_ISSUER,
+      // Aldrig hämtad: testerna skickar in nyckeluppsättningen nedan.
+      OIDC_JWKS_URI: 'http://fastgig.test/aldrig-hamtad',
+      OIDC_AUDIENCE: TEST_AUDIENCE,
       S3_ENDPOINT: 'http://minne',
       S3_BUCKET: 'test',
       S3_ACCESS_KEY_ID: 'test',
@@ -117,12 +113,11 @@ export async function buildTestAppWithBrokenDatabase(url: string): Promise<TestA
       S3_REGION: 'us-east-1',
       ORPHAN_SWEEP_INTERVAL_MINUTES: 0,
       STORAGE_ALERT_EMAIL: '',
-      AUTH_RATE_LIMIT_PER_WINDOW: 100_000,
-      AUTH_RATE_LIMIT_WINDOW_MINUTES: 15,
     },
     sql,
     mailer: mail,
     objects,
+    keys: createLocalKeys((await testKeys()).jwks),
   });
   await app.ready();
 

@@ -38,6 +38,8 @@ function freezeTerms(context: SigningContext, frozenAt: Date): ContractTerms {
     requestId: request.id,
     buyerId: request.buyerId,
     sellerId: bid.sellerId,
+    buyerOrganizationId: request.buyerOrganizationId,
+    sellerOrganizationId: bid.sellerOrganizationId,
     requestTitle: request.title,
     plan: bid.plan,
     compensation: bid.compensation,
@@ -74,15 +76,17 @@ export const contractRoutes: FastifyPluginAsyncTypebox = async (app) => {
     },
     async (req, reply) => {
       const now = new Date();
-      const userId = req.user.sub;
+      const organizationId = req.identity.organizationId;
 
       const contract = await app.sql.begin(async (tx) => {
         // Låser förfrågningsraden — hela flödet nedan är serialiserat per förfrågan.
         const context = await lockBidForSigning(tx, req.params.bidId);
         if (!context) throw bidNotFound();
 
-        const isBuyer = context.request.buyerId === userId;
-        const isSeller = context.bid.sellerId === userId;
+        // Parterna är företagen. Vem som håller i pennan får variera — den som
+        // tecknar firman idag är inte nödvändigtvis den som skrev förfrågan i förrgår.
+        const isBuyer = context.request.buyerOrganizationId === organizationId;
+        const isSeller = context.bid.sellerOrganizationId === organizationId;
         if (!isBuyer && !isSeller) throw notAParty();
         const role: SignerRole = isBuyer ? 'buyer' : 'seller';
 

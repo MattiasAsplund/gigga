@@ -492,6 +492,8 @@ function bidContract(
       requestId: summary.requestId,
       buyerId: '',
       sellerId: '',
+      buyerOrganizationId: '',
+      sellerOrganizationId: '',
       requestTitle: summary.requestTitle,
       plan: summary.plan,
       compensation: summary.compensation,

@@ -24,8 +24,9 @@ const HTTP_METHODS = ['get', 'put', 'post', 'delete', 'options', 'head', 'patch'
 
 /** API:erna ur planens §6, som operationId → metod och väg. */
 const EXPECTED_OPERATIONS: Record<string, [string, string]> = {
-  register: ['post', '/api/v1/auth/register'],
-  login: ['post', '/api/v1/auth/login'],
+  // Registrering, inloggning, bekräftelse, glömt lösenord, utloggning och refresh ligger
+  // hos Keycloak sedan OIDC-bytet — API:et har ingen egen autentiseringsyta kvar.
+  getMe: ['get', '/api/v1/me'],
   listMyRequests: ['get', '/api/v1/me/requests'],
   listMyBids: ['get', '/api/v1/me/bids'],
   createRequest: ['post', '/api/v1/requests'],
@@ -34,15 +35,6 @@ const EXPECTED_OPERATIONS: Record<string, [string, string]> = {
   withdrawBid: ['post', '/api/v1/bids/{bidId}/withdrawal'],
   signContract: ['post', '/api/v1/bids/{bidId}/contract/signatures'],
   listOpenRequests: ['get', '/api/v1/requests'],
-  // Klickas ur ett mail, alltså utan token — därför inte i PROTECTED.
-  validateUser: ['get', '/api/v1/validate-user'],
-  // Anropas av någon som inte kan logga in än, alltså också öppen.
-  resendVerification: ['post', '/api/v1/auth/resend-verification'],
-  forgotPassword: ['post', '/api/v1/auth/forgot-password'],
-  resetPassword: ['post', '/api/v1/auth/reset-password'],
-  logout: ['post', '/api/v1/auth/logout'],
-  // Öppen: den som behöver refresha har ingen giltig access-token.
-  refreshSession: ['post', '/api/v1/auth/refresh'],
   getRequest: ['get', '/api/v1/requests/{requestId}'],
   grantRequestPermission: ['post', '/api/v1/requests/{requestId}/permissions'],
   listRequestPermissions: ['get', '/api/v1/requests/{requestId}/permissions'],
@@ -70,6 +62,7 @@ const EXPECTED_OPERATIONS: Record<string, [string, string]> = {
 
 /** Operationer som kräver token, och därmed ska deklarera bearerAuth. */
 const PROTECTED = new Set([
+  'getMe',
   'listMyRequests',
   'listMyBids',
   'createRequest',
@@ -78,8 +71,6 @@ const PROTECTED = new Set([
   'withdrawBid',
   'signContract',
   'listOpenRequests',
-  // Kräver token — det är just den sessionen som avslutas.
-  'logout',
   'getRequest',
   'grantRequestPermission',
   'listRequestPermissions',

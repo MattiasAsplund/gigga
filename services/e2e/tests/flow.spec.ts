@@ -7,7 +7,12 @@ import {
   NEW_PASSWORD,
   person,
   publishSpec,
-  registerAndVerify,
+  acceptInvitation,
+  inviteAndOnboard,
+  unaffiliatedAccount,
+  attemptSignIn,
+  ensureSignedOut,
+  submit,
   runInterview,
   resetFromMailbox,
   signIn,
@@ -23,9 +28,13 @@ import {
  */
 test.describe.configure({ mode: 'serial' });
 
-const kim = person('kim');
-const robin = person('robin');
-const lo = person('lo');
+// Kim och Lo är kollegor på Nordvind, Robin säljare på Sydlig. Att Lo delar företag med
+// Kim är inte kosmetik: det är vad som gör att hen ser förfrågan utan att få läsrätt
+// tilldelad, och vad som hindrar hen från att lämna anbud på den.
+const kim = person('kim', 'nordvind');
+const lo = person('lo', 'nordvind');
+const robin = person('robin', 'sydlig');
+const mio = person('mio', 'granskaren');
 
 let requestId = '';
 let bidId = '';
@@ -33,22 +42,33 @@ let bidId = '';
 test('hela flödet från förfrågan till signerat avtal', async ({ page }) => {
   // Kedjan är lång i sig, och intervjun lägger på ett trettiotal fält som fylls ett i
   // taget genom gränssnittet. test.slow() (90 s) räcker inte till för båda.
-  test.setTimeout(180_000);
+  //
+  // Onboardingen kostar numera mest: fyra personer som var och en bjuds in, tar emot,
+  // bekräftar sin adress och loggar in en första gång — fyra fulla OIDC-rundor och två
+  // brev per person.
+  test.setTimeout(360_000);
 
-  await test.step('1–2. Konton skapas och adresserna bekräftas', async () => {
-    for (const who of [kim, robin, lo]) {
-      await registerAndVerify(page, who);
+  await test.step('1–2. Kontona bjuds in, tar emot och bekräftar sina adresser', async () => {
+    // Ingen registrerar sig själv — realmet har `registrationAllowed: false`. Den som
+    // ska in i ett företag bjuds in av någon som redan är där, och medlemskapet finns
+    // därmed innan adressen ens bekräftats.
+    for (const who of [kim, robin, lo, mio]) {
+      await inviteAndOnboard(page, who);
     }
   });
 
-  await test.step('3. Obekräftat konto släpps inte in, bekräftat gör det', async () => {
-    // Kontrollen är värd sitt steg: hela verifieringen vore teater utan den.
-    const okänd = person('okand');
-    await page.goto('/login');
-    await page.getByTestId('email').fill(okänd.email);
-    await page.getByTestId('password').fill(okänd.password);
-    await page.getByTestId('submit').click();
-    await expect(page.getByTestId('notice')).toBeVisible();
+  await test.step('3. Obekräftad adress släpps inte in, bekräftad gör det', async () => {
+    // Kontrollen är värd sitt steg: hela verifieringen vore teater utan den. Kontot
+    // skapas men brevet lämnas oöppnat, och Keycloak stannar på sin egen sida med ett
+    // besked i stället för att släppa vidare till gigga.
+    const obekräftad = person('obekraftad');
+    await acceptInvitation(page, obekräftad);
+    await expect(page.getByText(/verify|bekräfta/i).first()).toBeVisible();
+
+    // Och ett nytt försök att logga in leder tillbaka till samma krav, inte in.
+    await ensureSignedOut(page);
+    await attemptSignIn(page, obekräftad);
+    await expect(page.getByTestId('current-user')).toHaveCount(0);
 
     await signIn(page, kim);
   });
@@ -151,15 +171,20 @@ test('hela flödet från förfrågan till signerat avtal', async ({ page }) => {
   await test.step('7c. Kim har glömt sitt lösenord och sätter ett nytt', async () => {
     await signOut(page);
 
-    await page.goto('/login');
-    await page.getByTestId('forgot-password').click();
-    await page.getByTestId('email').fill(kim.email);
-    await page.getByTestId('submit').click();
-    await expect(page.getByTestId('reset-requested')).toBeVisible();
+    // Keycloaks egen glömt-lösenord-sida. Länken sitter vid lösenordsfältet, inte på
+    // första sidan: inloggningen är identitetsförd, så adressen anges först.
+    await ensureSignedOut(page);
+    await page.goto('/');
+    await page.getByTestId('login').click();
+    await page.locator('#username').fill(kim.email);
+    await submit(page).click();
+
+    await page.getByRole('link', { name: /glömt|forgot/i }).click();
+    // Adressen är redan ifylld på återställningssidan — det räcker att skicka.
+    await submit(page).click();
 
     // Koden ligger i mailet, så vägen går genom brevlådan — samma väg som bekräftelsen.
     await resetFromMailbox(page, kim, NEW_PASSWORD);
-    await expect(page.getByTestId('password-reset')).toBeVisible();
   });
 
   await test.step('8. Kim läser anbudet och hämtar dokumenten som ZIP', async () => {
@@ -196,14 +221,29 @@ test('hela flödet från förfrågan till signerat avtal', async ({ page }) => {
     expect(bytes.byteLength).toBeGreaterThan(100);
   });
 
-  await test.step('8b. Kim ger Lo läsrätt, och tar tillbaka den', async () => {
-    await page.goto(`/requests/${requestId}`);
-    await page.getByTestId('grant-email').fill(lo.email);
-    await page.getByTestId('grant-submit').click();
-    await expect(page.getByTestId('permission')).toContainText(lo.email);
-
+  await test.step('8b. Lo är kollega och ser anbuden utan att ha fått något tilldelat', async () => {
+    // Det här är hela skillnaden mot förut: ingen delar ut något, och ändå ser Lo både
+    // förfrågan och anbuden. Parten är Nordvind, och Lo arbetar där.
     await signOut(page);
     await signIn(page, lo);
+    await page.goto(`/requests/${requestId}`);
+    await expect(page.getByTestId('request-title')).toHaveText('Bygg en Fortnox-integration');
+    await expect(page.getByTestId('bid')).toHaveCount(1);
+
+    // Och kollegan får inte bjuda på det egna företagets förfrågan.
+    await expect(page.getByTestId('bid-form')).toHaveCount(0);
+  });
+
+  await test.step('8c. Kim ger Mio på ett annat företag läsrätt, och tar tillbaka den', async () => {
+    await signOut(page);
+    await signIn(page, kim);
+    await page.goto(`/requests/${requestId}`);
+    await page.getByTestId('grant-email').fill(mio.email);
+    await page.getByTestId('grant-submit').click();
+    await expect(page.getByTestId('permission')).toContainText(mio.email);
+
+    await signOut(page);
+    await signIn(page, mio);
     await page.goto(`/requests/${requestId}`);
     await expect(page.getByTestId('request-title')).toHaveText('Bygg en Fortnox-integration');
     await expect(page.getByTestId('bid')).toHaveCount(1);
@@ -215,7 +255,7 @@ test('hela flödet från förfrågan till signerat avtal', async ({ page }) => {
     await expect(page.getByTestId('permission')).toHaveCount(0);
 
     await signOut(page);
-    await signIn(page, lo);
+    await signIn(page, mio);
     await page.goto(`/requests/${requestId}`);
     // Läsrätten är borta, men förfrågan går fortfarande att läsa — varje säljare måste
     // kunna öppna den för att kunna lämna anbud. Det är anbuden som stängs.
@@ -380,11 +420,46 @@ test('säljaren kan ändra och dra tillbaka sitt anbud', async ({ page }) => {
   });
 });
 
-test('en bekräftelselänk som inte gäller ger besked, inte ett rått JSON-svar', async ({
+test('ett bekräftat konto utan organisation får veta varför, inte skickas till inloggningen', async ({
   page,
 }) => {
-  await page.goto('/verify?token=00000000-0000-4000-8000-000000000000');
+  /*
+   * Ett konto som finns och är bekräftat, men som ingen kopplat till ett företag —
+   * en indragen inbjudan, eller ett konto upplagt för hand. API:et svarar
+   * `403 organization-missing`.
+   *
+   * Det får inte tolkas som "utloggad". Gör man det skickas användaren till Keycloak,
+   * som loggar in direkt igen och studsar tillbaka — och beskedet om vad som faktiskt
+   * saknas kommer aldrig fram.
+   */
+  const hemlös = person('hemlos');
 
-  await expect(page.getByTestId('notice')).toContainText('gäller inte');
-  await expect(page.getByTestId('verified')).toHaveCount(0);
+  // Går inte att åstadkomma genom gränssnittet numera — läget uppstår ändå i drift.
+  await unaffiliatedAccount(page, hemlös);
+  await attemptSignIn(page, hemlös);
+
+  const besked = page.getByTestId('blocked');
+  await expect(besked).toBeVisible();
+  await expect(besked).toContainText(/organisation/i);
+  // Och kvar i gigga, inte på Keycloaks inloggningssida.
+  await expect(page.getByTestId('login')).toHaveCount(0);
+});
+
+test('en bekräftelselänk som inte gäller ger besked, inte ett rått felsvar', async ({
+  page,
+}) => {
+  /*
+   * Länken pekar in i Keycloak sedan bekräftelsen flyttade dit, så det är Keycloaks
+   * besked som ska prövas — inte en egen /verify-sida, som inte finns längre.
+   *
+   * Poängen står kvar: en förbrukad eller påhittad länk ska mötas av en läsbar sida,
+   * inte av ett rått fel. Keycloak svarar med sin egen felsida och en väg vidare.
+   */
+  await page.goto('/auth/realms/fastgig/login-actions/action-token?key=inte-en-riktig-nyckel');
+
+  // Keycloak svarar 400, men med en sida: en rubrik och ett besked om vad man gör nu.
+  await expect(page.locator('#kc-error-message')).toContainText(
+    /error|fel|sorry|ledsen|login again|logga in/i,
+  );
+  await expect(page.locator('h1')).toBeVisible();
 });

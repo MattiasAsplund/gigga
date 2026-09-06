@@ -25,13 +25,19 @@ vidare till:
 |---|---|
 | **web** | Gränssnittet — registrera, publicera, lämna anbud, signera |
 | **api** | Swagger UI på `/docs`, OpenAPI 3.1 på `/docs/json` |
+| **keycloak** | Konton, lösenord och organisationer. Adminkonsolen; uppgifterna står som parametrar i dashboarden |
 | **mailpit** | Läser bekräftelse- och återställningsmail — inget skickas på riktigt |
 | **pgweb** | Bläddrar i tabellerna |
 | **minio** | Ser anbudsdokumenten som objekt |
 | **e2e** | Playwright-sviten. Startas på begäran, inte vid `aspire run` |
 
-Postgres och MinIO är **icke-persistenta**: allt försvinner vid `aspire stop`. Schemat
-byggs upp vid varje start.
+Postgres, MinIO och Keycloak är **icke-persistenta**: allt försvinner vid `aspire stop`.
+Schemat byggs upp vid varje start, och realmet importeras om ur
+`keycloak/realm/fastgig-realm.json`.
+
+Keycloak nås under `/auth` på webbens egen adress (`http://localhost:5173/auth`), proxad
+dit av Vite. Det är vad som gör att tokenens issuer blir densamma vare sig du surfar på
+localhost, kör e2e-sviten i en container eller går genom en cloudflare-tunnel.
 
 ### Visa upp miljön utanför maskinen
 
@@ -80,42 +86,66 @@ Nio steg. Sätt `API` till API:ets adress från dashboarden.
 API=http://localhost:PORT/api/v1
 ```
 
-### 1. Två konton
+### 1. Ingen registrerar sig själv
+
+Realmet har `registrationAllowed: false`. **Inbjudan är enda vägen in**, och den skickas av
+någon som redan är medlem i organisationen — det är svaret på vem som godkänner att ett
+konto hör hemma i ett företag.
+
+Domänerna på organisationerna (`nordvind.test` och de andra) avgör *ingenting* om
+medlemskap. Keycloak använder dem för att styra identitetsförd inloggning vidare till ett
+företags egen inloggningstjänst, inget mer. Att en adress ser ut att höra till ett företag
+är alltså inget bevis för att den gör det.
+
+Fyra organisationer finns i realmet:
+
+| Alias | Namn | Domän | Roll i genomgången |
+|---|---|---|---|
+| `gigga` | Gigga AB | `provider.test` | marknadsplatsen själv — härifrån bjuds kundföretagen in |
+| `nordvind` | Nordvind Bygg | `nordvind.test` | köpare |
+| `sydlig` | Sydlig Teknik | `sydlig.test` | säljare |
+| `granskaren` | Granskaren AB | `granskaren.test` | utomstående med tilldelad läsrätt |
+
+### 2. Bjud in fyra personer
+
+Öppna **keycloak** i dashboarden och logga in som **`admin` / `admin`** — ett fast konto,
+satt i AppHosten, så att inbjudningar går att skicka utan att slå upp ett lottat lösenord
+vid varje omstart. Det gäller bara den här utvecklingsmiljön; Keycloak här är
+icke-persistent och lever på localhost.
+
+Välj realmet **fastgig** → *Organizations* → företaget → *Members* → *Invite member*, och
+bjud in:
+
+| Person | Företag | Roll i flödet |
+|---|---|---|
+| Kim | `nordvind` | köpare |
+| Lo | `nordvind` | Kims kollega |
+| Robin | `sydlig` | säljare |
+| Mio | `granskaren` | utomstående som får läsrätt |
+
+### 3. Ta emot inbjudan och bekräfta adressen
+
+Öppna **mailpit** och klicka länken i inbjudan. Den leder till ett registreringsformulär —
+trots att självregistreringen är avstängd. Det är token i länken som öppnar dörren, och
+bara för den adressen. Namnet är ifyllt; lösenordet är det som saknas.
+
+När lösenordet satts är kontot **medlem i företaget direkt**, med bekräftelsen kvar som
+krav. Ordningen är värd att lägga märke till: medlemskapet finns *före* bekräftelsen, så
+bekräftelselänken kan landa i katalogen i stället för på ett `403 organization-missing`.
+
+Logga sedan in i **web**. Keycloak kräver bekräftad adress, skickar brevet, och när länken
+klickats är man inne.
+
+### 3b. Token för curl
+
+Resten av det här dokumentet anropar API:et direkt. Token hämtas ur webbläsaren efter
+inloggning — `sessionStorage`, nyckeln som börjar på `oidc.user:`:
 
 ```bash
-curl -X POST $API/auth/register -H 'content-type: application/json' \
-  -d '{"email":"kim@example.se","password":"ett-langt-losenord","displayName":"Kim"}'
-curl -X POST $API/auth/register -H 'content-type: application/json' \
-  -d '{"email":"robin@example.se","password":"ett-langt-losenord","displayName":"Robin"}'
+API=http://localhost:5173/api/v1   # genom webbens proxy, samma origin som gränssnittet
+KT=<Kims access-token>             # köparen
+ST=<Robins access-token>           # säljaren
 ```
-
-Kim blir köpare, Robin säljare. Registreringen returnerar en access-token direkt — men den
-duger inte förrän adressen är bekräftad.
-
-### 2. Bekräfta adresserna
-
-Öppna **mailpit** i dashboarden och klicka länken i vartdera mailet. Länken går till
-webbens `/verify?token=…`, som gör anropet mot API:et och visar hur det gick. Den gäller i
-24 timmar och tål att klickas flera gånger. Tappat mailet? `POST /auth/resend-verification`
-— högst fem gånger per kvart och anropare.
-
-Utan det här steget svarar både inloggning och varje skyddad endpoint `403
-email-not-verified`.
-
-### 3. Logga in
-
-```bash
-token() {
-  curl -s -X POST $API/auth/login -H 'content-type: application/json' \
-    -d "{\"email\":\"$1\",\"password\":\"ett-langt-losenord\"}" \
-    | bun -e 'console.log((await Bun.stdin.json()).token)'
-}
-KT=$(token kim@example.se)      # köparen
-ST=$(token robin@example.se)    # säljaren
-```
-
-Access-token gäller en timme, refresh-token trettio dagar. Byt den utgångna mot en ny med
-`POST /auth/refresh` — varje refresh-token duger en gång och byts mot en ny.
 
 ### 4. Kim publicerar en förfrågan
 
@@ -236,7 +266,8 @@ Anropet är idempotent: samma part kan signera igen utan att något ändras.
 | **Förfrågningar** | Publicera, läsa egna med anbud, katalog över öppna med filter och sidbrytning |
 | **Anbud** | Fast pris eller timpris, beräknat totalbelopp, ett aktivt anbud per säljare och förfrågan, ändra och dra tillbaka |
 | **Dokument** | Markdown och PDF i objektlagring, namnbyte, radering, nedladdning av alla som ZIP |
-| **Delning** | Läsrätt på en förfrågan till namngivna användare, återkallningsbar |
+| **Företag** | Organisationen är part i affären: kollegor delar förfrågningar, anbud och avtal genom sitt medlemskap |
+| **Delning** | Läsrätt över företagsgränsen till namngivna användare, återkallningsbar |
 | **Avtal** | Tvåpartssignering med frysta villkor, tilldelning och avslag i en transaktion |
 | **Drift** | `/health`, OpenAPI som genereras ur koden, städning av lagringen med larm |
 
@@ -262,11 +293,14 @@ Utöver det:
 - **Ett dokument vars innehåll tappats går inte att ersätta.** Raden markeras
   `available: false`; säljaren får radera och ladda upp på nytt, vilket ger ett nytt id.
 - **Bara läsrätt finns som rättighetsnivå.** Kolumnen är förberedd för fler.
-- **Aktiva sessioner går inte att lista.** Utloggning kräver att man har sin egen token.
-- **Kvoträknarna lever i processen.** `/auth/resend-verification` och
-  `/auth/forgot-password` har en gräns per anropare utöver kylperioden per konto, men
-  räknarna nollställs vid omstart och delas inte mellan instanser. Övriga endpoints är
-  okvoterade.
+- **Onboarding saknar sista steget.** Ett konto som registrerats i Keycloak hör inte till
+  någon organisation, och måste kopplas för hand innan det kan användas. Keycloak har
+  inbjudningar; gigga använder dem inte än.
+- **Ett konto kan bara höra till ett företag.** Flera organisationer i token ger
+  `403 organization-ambiguous` — en konsult som arbetar för två bolag behöver ett val i
+  gränssnittet, och det valet måste följa med i varje begäran.
+- **Organisationens visningsnamn når aldrig fram.** `organization`-claimen bär bara
+  aliaset, så "Nordvind Bygg" visas som `nordvind`.
 - **Migrationer kan inte rullas tillbaka.** Ofarligt mot en icke-persistent databas, men
   måste lösas innan någon miljö blir persistent.
 
@@ -281,6 +315,11 @@ står i §11 i [genomförandeplanen](docs/GENOMFORANDE.md).
 Bun, Fastify och PostgreSQL, orkestrerat av Aspire med en TypeScript-AppHost. Podman kör
 containrarna. Scheman skrivs en gång i TypeBox och driver både validering, TS-typer och
 OpenAPI-dokumentationen — inget skrivs för hand två gånger.
+
+Identiteten ligger i **Keycloak** över OIDC: API:et utfärdar inga tokens utan verifierar
+Keycloaks mot realmets JWKS. Webben loggar in med authorization code + PKCE mot Keycloaks
+egna sidor. Realmet — klienter, organisationer, SMTP och verifieringskravet — är en
+incheckad JSON-fil, inte klick i en adminkonsol.
 
 Testerna är specifikationen: 263 fall med stabila ID:n som API:erna byggts fram genom.
 Matrisen finns i §7.2 i [genomförandeplanen](docs/GENOMFORANDE.md).

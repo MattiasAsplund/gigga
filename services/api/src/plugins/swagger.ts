@@ -20,15 +20,24 @@ export async function registerSwagger(app: FastifyInstance): Promise<void> {
       },
       components: {
         securitySchemes: {
-          bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
+          // Tokens utfärdas av Keycloak, inte av gigga. Schemat är oförändrat http/bearer
+          // — det är fortfarande en JWT i Authorization-huvudet — men den hämtas genom
+          // inloggningen i webben och klistras in här.
+          bearerAuth: {
+            type: 'http',
+            scheme: 'bearer',
+            bearerFormat: 'JWT',
+            description:
+              'Access-token från Keycloak-realmet fastgig. Hämtas genom att logga in i ' +
+              'webbgränssnittet; API:et utfärdar inga egna tokens.',
+          },
         },
       },
       tags: [
-        { name: 'auth', description: 'Registrering och inloggning' },
         { name: 'requests', description: 'Uppdragsförfrågningar' },
         { name: 'bids', description: 'Anbud' },
         { name: 'contracts', description: 'Avtal och signering' },
-        { name: 'me', description: 'Egna förfrågningar och anbud' },
+        { name: 'me', description: 'Egen identitet, organisationens förfrågningar och anbud' },
         { name: 'system', description: 'Drift' },
       ],
     },

@@ -1,4 +1,5 @@
 import { test, expect, beforeAll, afterAll } from 'bun:test';
+import { insertUser } from '../helpers/rows.ts';
 import { freshDatabase, type TestDatabase } from '../helpers/postgres.ts';
 import { createMemoryObjectStore } from '../../src/storage/object-store.ts';
 import { sweepOrphanedObjects } from '../../src/storage/sweeper.ts';
@@ -17,18 +18,15 @@ const HOUR = 60 * 60 * 1000;
 
 /** Ett anbud att hänga dokumentrader på. */
 async function bid(): Promise<string> {
-  const [user] = (await db.sql`
-    INSERT INTO users (email, password_hash, display_name)
-    VALUES (${`sweep-${crypto.randomUUID()}@example.test`}, 'h', 'S')
-    RETURNING id
-  `) as { id: string }[];
+  const user = await insertUser(db.sql);
   const [request] = (await db.sql`
-    INSERT INTO requests (buyer_id, title, description, compensation_pref)
-    VALUES (${user!.id}, 'T', 'D', 'any') RETURNING id
+    INSERT INTO requests (buyer_id, buyer_organization_id, title, description, compensation_pref)
+    VALUES (${user.id}, ${user.organizationId}, 'T', 'D', 'any') RETURNING id
   `) as { id: string }[];
   const [row] = (await db.sql`
-    INSERT INTO bids (request_id, seller_id, plan, compensation_type, fixed_amount_minor)
-    VALUES (${request!.id}, ${user!.id}, 'P', 'fixed', 1000) RETURNING id
+    INSERT INTO bids (request_id, seller_id, seller_organization_id, plan,
+                      compensation_type, fixed_amount_minor)
+    VALUES (${request!.id}, ${user.id}, ${user.organizationId}, 'P', 'fixed', 1000) RETURNING id
   `) as { id: string }[];
 
   return row!.id;
@@ -240,17 +238,15 @@ test('G.12 en tom bucket markerar ingenting', async () => {
   // fil försvunnit. Att markera allt som trasigt vore lika fel som att radera.
   const scratch = await freshDatabase();
   try {
-    const [user] = (await scratch.sql`
-      INSERT INTO users (email, password_hash, display_name)
-      VALUES ('tom@example.test', 'h', 'T') RETURNING id
-    `) as { id: string }[];
+    const user = await insertUser(scratch.sql);
     const [request] = (await scratch.sql`
-      INSERT INTO requests (buyer_id, title, description, compensation_pref)
-      VALUES (${user!.id}, 'T', 'D', 'any') RETURNING id
+      INSERT INTO requests (buyer_id, buyer_organization_id, title, description, compensation_pref)
+      VALUES (${user.id}, ${user.organizationId}, 'T', 'D', 'any') RETURNING id
     `) as { id: string }[];
     const [row] = (await scratch.sql`
-      INSERT INTO bids (request_id, seller_id, plan, compensation_type, fixed_amount_minor)
-      VALUES (${request!.id}, ${user!.id}, 'P', 'fixed', 1000) RETURNING id
+      INSERT INTO bids (request_id, seller_id, seller_organization_id, plan,
+                        compensation_type, fixed_amount_minor)
+      VALUES (${request!.id}, ${user.id}, ${user.organizationId}, 'P', 'fixed', 1000) RETURNING id
     `) as { id: string }[];
     await scratch.sql`
       INSERT INTO bid_attachments (bid_id, filename, content_type, size_bytes, storage_key)

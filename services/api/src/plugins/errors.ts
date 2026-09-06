@@ -89,8 +89,29 @@ export const emailNotVerified = () =>
     status: 403,
     slug: 'email-not-verified',
     title: 'E-postadressen är inte bekräftad',
-    // Röjs först efter rätt lösenord, så det säger inget till den som gissar.
+    // Keycloak spärrar inloggningen tills adressen är bekräftad, men en token kan ha
+    // hunnit utfärdas innan dess. Kontrollen ligger därför kvar här också.
     detail: 'Klicka på länken i bekräftelsemailet innan du loggar in.',
+  });
+
+export const organizationMissing = () =>
+  new ProblemError({
+    status: 403,
+    slug: 'organization-missing',
+    title: 'Kontot tillhör ingen organisation',
+    detail:
+      'gigga handlar mellan företag, och varje konto måste höra till ett. ' +
+      'Be den som bjöd in dig att koppla kontot till organisationen.',
+  });
+
+export const organizationAmbiguous = () =>
+  new ProblemError({
+    status: 403,
+    slug: 'organization-ambiguous',
+    title: 'Kontot tillhör flera organisationer',
+    detail:
+      'Kontot är medlem i mer än en organisation, och gigga vet inte vilken du handlar ' +
+      'för. Tills ett val går att göra i gränssnittet måste kontot höra till exakt en.',
   });
 
 export const verificationTokenNotFound = () =>
