@@ -18,6 +18,7 @@ export function requestToResponse(request: UppdragsRequest) {
   return {
     id: request.id,
     buyerId: request.buyerId,
+    buyerOrganizationId: request.buyerOrganizationId,
     title: request.title,
     description: request.description,
     compensationPref: request.compensationPref,
@@ -50,7 +51,7 @@ export const requestRoutes: FastifyPluginAsyncTypebox = async (app) => {
       const limit = req.query.limit ?? DEFAULT_PAGE_SIZE;
       const rows = await listOpenRequests(
         app.sql,
-        req.user.sub,
+        req.identity.organizationId,
         { limit, cursor: parseCursor(req.query.cursor) },
         req.query.compensationPref ?? null,
       );
@@ -65,9 +66,10 @@ export const requestRoutes: FastifyPluginAsyncTypebox = async (app) => {
           hasPublishedSpec: request.hasPublishedSpec,
           // Egen förfrågan ger 403, ett andra anbud 409 och en opublicerad kravspec
           // också 409 — säg det direkt istället.
+          // Kollegans förfrågan är lika mycket "egen" som ens egen — parten är företaget.
           canBid:
             !request.hasMyBid &&
-            request.buyerId !== req.user.sub &&
+            request.buyerOrganizationId !== req.identity.organizationId &&
             request.hasPublishedSpec,
         })),
         nextCursor: page.nextCursor,
@@ -108,7 +110,8 @@ export const requestRoutes: FastifyPluginAsyncTypebox = async (app) => {
       }
 
       const created = await insertRequest(app.sql, {
-        buyerId: req.user.sub,
+        buyerId: req.identity.id,
+        buyerOrganizationId: req.identity.organizationId,
         title,
         description,
         compensationPref,

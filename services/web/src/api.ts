@@ -96,6 +96,7 @@ export type Compensation =
 export interface RequestSummary {
   id: string;
   buyerId: string;
+  buyerOrganizationId: string;
   title: string;
   description: string;
   compensationPref: 'fixed' | 'hourly' | 'any';
@@ -124,6 +125,7 @@ export interface ContractSummary {
 export interface BidSummary {
   id: string;
   sellerId: string;
+  sellerOrganizationId: string;
   sellerDisplayName: string;
   plan: string;
   compensation: Compensation;
@@ -173,6 +175,8 @@ export interface ContractTerms {
   requestId: string;
   buyerId: string;
   sellerId: string;
+  buyerOrganizationId: string;
+  sellerOrganizationId: string;
   requestTitle: string;
   plan: string;
   compensation: Compensation;

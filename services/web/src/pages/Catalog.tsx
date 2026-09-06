@@ -85,8 +85,8 @@ export function Catalog() {
                       Ordningen följer API:ets: ägarskapet först, sedan eget anbud, sedan
                       kravspecen. Det är samma skäl anropet ändå hade avvisats med.
                     */}
-                    {item.buyerId === account?.id
-                      ? 'Din egen förfrågan'
+                    {item.buyerOrganizationId === account?.organization.id
+                      ? 'Din organisations egen förfrågan'
                       : item.hasMyBid
                         ? 'Du har redan lämnat anbud'
                         : 'Kravspecen är inte fastställd'}

@@ -70,7 +70,7 @@ export default async function nyttBildspel(config: FullConfig): Promise<void> {
       '<!-- _class: lead -->',
       '<!-- _paginate: false -->',
       '',
-      '# fastgig',
+      '# gigga',
       '',
       '## Flödet genom gränssnittet',
       '',
@@ -96,7 +96,7 @@ export default async function nyttBildspel(config: FullConfig): Promise<void> {
       '  y: 1.5cm',
       '---',
       '',
-      '# fastgig — flödet genom gränssnittet',
+      '# gigga — flödet genom gränssnittet',
       '',
       'En bild per navigering, i den ordning Playwright-sviten går vägen. Bilderna är',
       'tagna över hela sidan och inte bara det som ryms i fönstret, så höjden varierar',
@@ -148,8 +148,13 @@ const foto = async (page: Page): Promise<Buffer> => {
    *
    * En rullning tvingar fram nya mått. Det märks först på långa sidor, vilket är varför
    * det låg latent tills förfrågningssidan fick kravspecen under sig.
+   *
+   * Att den får misslyckas är inte slarv. Inloggningen går genom Keycloak, alltså genom
+   * omdirigeringar, och ett klick som navigerar river sidans exekveringskontext medan
+   * bilden tas: *"Execution context was destroyed"*. Bilden är redan tagen då, och måtten
+   * hör till en sida som inte finns kvar — det finns ingenting att rätta till.
    */
-  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.evaluate(() => window.scrollTo(0, 0)).catch(() => {});
   return bild;
 };
 
@@ -259,7 +264,17 @@ class Fotograf {
   async klick(): Promise<void> {
     this.lös();
     if (tom(this.page.url())) return;
-    this.väntande = { shot: await foto(this.page), från: this.page.url(), ifylld: this.ifylld };
+
+    /*
+     * En bild som inte gick att ta får inte fälla steget. Inloggningen går genom
+     * Keycloak, och där sker klick medan sidan redan är på väg någon annanstans —
+     * skärmbilden kapplöper med navigeringen och förlorar ibland. Bildspelet tappar då
+     * en ruta; testet hade annars tappat hela flödet.
+     */
+    const shot = await foto(this.page).catch(() => null);
+    if (!shot) return;
+
+    this.väntande = { shot, från: this.page.url(), ifylld: this.ifylld };
     this.ifylld = false;
   }
 

@@ -112,7 +112,9 @@ export const BidIdParamsSchema = Type.Object({ bidId: UuidSchema });
 export const BidResponseSchema = Type.Object({
   id: UuidSchema,
   requestId: UuidSchema,
+  /** Vem som lämnade anbudet. Parten är sellerOrganizationId. */
   sellerId: UuidSchema,
+  sellerOrganizationId: UuidSchema,
   plan: Type.String(),
   compensation: CompensationSchema,
   estimatedTotalMinor: Type.Integer({

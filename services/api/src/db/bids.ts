@@ -11,7 +11,10 @@ export type BidStatus = 'submitted' | 'withdrawn' | 'accepted' | 'rejected';
 export interface Bid {
   id: string;
   requestId: string;
+  /** Vem som lämnade anbudet. Parten är organisationen. */
   sellerId: string;
+  /** Företaget som är säljare — det behörighetskontrollerna jämför mot. */
+  sellerOrganizationId: string;
   plan: string;
   compensation: Compensation;
   status: BidStatus;
@@ -24,6 +27,7 @@ export interface BidRow extends CompensationRow {
   id: string;
   request_id: string;
   seller_id: string;
+  seller_organization_id: string;
   plan: string;
   status: BidStatus;
   spec_version_id?: string | null;
@@ -31,7 +35,7 @@ export interface BidRow extends CompensationRow {
 }
 
 export const BID_COLUMNS =
-  'id, request_id, seller_id, plan, compensation_type, fixed_amount_minor, ' +
+  'id, request_id, seller_id, seller_organization_id, plan, compensation_type, fixed_amount_minor, ' +
   'hourly_rate_minor, estimated_hours, currency, status, spec_version_id, created_at';
 
 export function toBid(row: BidRow): Bid {
@@ -39,6 +43,7 @@ export function toBid(row: BidRow): Bid {
     id: row.id,
     requestId: row.request_id,
     sellerId: row.seller_id,
+    sellerOrganizationId: row.seller_organization_id,
     plan: row.plan,
     compensation: fromCompensationColumns(row),
     status: row.status,
@@ -54,7 +59,13 @@ export function toBid(row: BidRow): Bid {
  */
 export async function insertBid(
   sql: SQL,
-  input: { requestId: string; sellerId: string; plan: string; compensation: Compensation },
+  input: {
+    requestId: string;
+    sellerId: string;
+    sellerOrganizationId: string;
+    plan: string;
+    compensation: Compensation;
+  },
 ): Promise<Bid | null> {
   const columns = toCompensationColumns(input.compensation);
 
@@ -64,15 +75,16 @@ export async function insertBid(
    * som raden skrivs. Saknas publicerad kravspec blir det null.
    */
   const rows = (await sql`
-    INSERT INTO bids (request_id, seller_id, plan, compensation_type,
+    INSERT INTO bids (request_id, seller_id, seller_organization_id, plan, compensation_type,
                       fixed_amount_minor, hourly_rate_minor, estimated_hours, currency,
                       spec_version_id)
-    VALUES (${input.requestId}, ${input.sellerId}, ${input.plan}, ${columns.compensationType},
+    VALUES (${input.requestId}, ${input.sellerId}, ${input.sellerOrganizationId},
+            ${input.plan}, ${columns.compensationType},
             ${columns.fixedAmountMinor}, ${columns.hourlyRateMinor},
             ${columns.estimatedHours}, ${columns.currency},
             (SELECT v.id FROM request_spec_versions v
              WHERE v.request_id = ${input.requestId} AND v.status = 'published'))
-    ON CONFLICT (request_id, seller_id) WHERE status <> 'withdrawn' DO NOTHING
+    ON CONFLICT (request_id, seller_organization_id) WHERE status <> 'withdrawn' DO NOTHING
     RETURNING ${sql.unsafe(BID_COLUMNS)}
   `) as BidRow[];
 

@@ -13,6 +13,8 @@ export interface ContractTerms {
   requestId: string;
   buyerId: string;
   sellerId: string;
+  buyerOrganizationId: string;
+  sellerOrganizationId: string;
   requestTitle: string;
   plan: string;
   compensation: Compensation;
@@ -68,7 +70,13 @@ function toContract(row: ContractRow): Contract {
 
 export interface SigningContext {
   bid: Bid;
-  request: { id: string; buyerId: string; title: string; status: RequestStatus };
+  request: {
+    id: string;
+    buyerId: string;
+    buyerOrganizationId: string;
+    title: string;
+    status: RequestStatus;
+  };
 }
 
 /**
@@ -83,15 +91,22 @@ export async function lockBidForSigning(
   bidId: string,
 ): Promise<SigningContext | null> {
   const rows = (await sql`
-    SELECT b.id, b.request_id, b.seller_id, b.plan, b.compensation_type,
+    SELECT b.id, b.request_id, b.seller_id, b.seller_organization_id, b.plan,
+           b.compensation_type,
            b.fixed_amount_minor, b.hourly_rate_minor, b.estimated_hours, b.currency,
            b.status, b.spec_version_id, b.created_at,
-           r.buyer_id AS r_buyer_id, r.title AS r_title, r.status AS r_status
+           r.buyer_id AS r_buyer_id, r.buyer_organization_id AS r_buyer_org_id,
+           r.title AS r_title, r.status AS r_status
     FROM bids b
     JOIN requests r ON r.id = b.request_id
     WHERE b.id = ${bidId}
     FOR UPDATE OF r
-  `) as (BidRow & { r_buyer_id: string; r_title: string; r_status: RequestStatus })[];
+  `) as (BidRow & {
+    r_buyer_id: string;
+    r_buyer_org_id: string;
+    r_title: string;
+    r_status: RequestStatus;
+  })[];
 
   const row = rows[0];
   if (!row) return null;
@@ -101,6 +116,7 @@ export async function lockBidForSigning(
     request: {
       id: row.request_id,
       buyerId: row.r_buyer_id,
+      buyerOrganizationId: row.r_buyer_org_id,
       title: row.r_title,
       status: row.r_status,
     },

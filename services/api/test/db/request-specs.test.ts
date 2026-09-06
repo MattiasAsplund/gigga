@@ -1,4 +1,5 @@
 import { test, expect, beforeAll, afterAll } from 'bun:test';
+import { insertUser, type InsertedUser } from '../helpers/rows.ts';
 import { freshDatabase, type TestDatabase } from '../helpers/postgres.ts';
 import { insertBid } from '../../src/db/bids.ts';
 import { loadInterview } from '../../src/db/gig-catalog.ts';
@@ -32,19 +33,14 @@ afterAll(async () => {
   await db.close();
 });
 
-async function buyer(): Promise<string> {
-  const [row] = (await db.sql`
-    INSERT INTO users (email, password_hash, display_name)
-    VALUES (${`spec-${crypto.randomUUID()}@example.test`}, 'h', 'Köpare')
-    RETURNING id
-  `) as { id: string }[];
-  return row!.id;
+async function buyer(): Promise<InsertedUser> {
+  return await insertUser(db.sql, { displayName: 'Köpare' });
 }
 
-async function request(buyerId: string): Promise<string> {
+async function request(buyer: InsertedUser): Promise<string> {
   const [row] = (await db.sql`
-    INSERT INTO requests (buyer_id, title, description, compensation_pref)
-    VALUES (${buyerId}, 'Nattlig import', 'Beskrivning', 'fixed')
+    INSERT INTO requests (buyer_id, buyer_organization_id, title, description, compensation_pref)
+    VALUES (${buyer.id}, ${buyer.organizationId}, 'Nattlig import', 'Beskrivning', 'fixed')
     RETURNING id
   `) as { id: string }[];
   return row!.id;
@@ -94,8 +90,9 @@ async function approveAll(spec: RequestSpec, userId: string): Promise<void> {
 
 /** En färdig kravspec som bara väntar på publicering. */
 async function readyToPublish(typeKeys = ['data-migration']) {
-  const userId = await buyer();
-  const requestId = await request(userId);
+  const buyerUser = await buyer();
+  const userId = buyerUser.id;
+  const requestId = await request(buyerUser);
   const spec = await createDraftSpec(db.sql, { requestId, typeKeys });
   await answerEverything(spec);
   await approveAll(spec, userId);
@@ -205,8 +202,9 @@ test('KS.4 ett svar per fråga och version — ett nytt ersätter det gamla', as
 // ---------------------------------------------------------------- KS.5
 
 test('KS.5 kundens godkännande av en rad tidsstämplas med användaren', async () => {
-  const userId = await buyer();
-  const requestId = await request(userId);
+  const buyerUser = await buyer();
+  const userId = buyerUser.id;
+  const requestId = await request(buyerUser);
   const spec = await createDraftSpec(db.sql, { requestId, typeKeys: ['bugfix'] });
 
   const first = spec.criteria.find((criterion) => criterion.kind === 'criterion');
@@ -219,8 +217,9 @@ test('KS.5 kundens godkännande av en rad tidsstämplas med användaren', async 
 // ---------------------------------------------------------------- KS.6
 
 test('KS.6 en omskriven rad tappar sitt godkännande', async () => {
-  const userId = await buyer();
-  const requestId = await request(userId);
+  const buyerUser = await buyer();
+  const userId = buyerUser.id;
+  const requestId = await request(buyerUser);
   const spec = await createDraftSpec(db.sql, { requestId, typeKeys: ['bugfix'] });
 
   const row = spec.criteria.find((criterion) => criterion.kind === 'criterion');
@@ -239,8 +238,9 @@ test('KS.6 en omskriven rad tappar sitt godkännande', async () => {
 // ---------------------------------------------------------------- KS.7
 
 test('KS.7 publicering vägras när en obligatorisk fråga saknar svar, och pekar ut den', async () => {
-  const userId = await buyer();
-  const requestId = await request(userId);
+  const buyerUser = await buyer();
+  const userId = buyerUser.id;
+  const requestId = await request(buyerUser);
   const spec = await createDraftSpec(db.sql, { requestId, typeKeys: ['bugfix'] });
   await approveAll(spec, userId);
 
@@ -260,8 +260,9 @@ test('KS.7 publicering vägras när en obligatorisk fråga saknar svar, och peka
 // ---------------------------------------------------------------- KS.8
 
 test('KS.8 publicering vägras när kriterierna är för få eller inte godkända', async () => {
-  const userId = await buyer();
-  const requestId = await request(userId);
+  const buyerUser = await buyer();
+  const userId = buyerUser.id;
+  const requestId = await request(buyerUser);
   const spec = await createDraftSpec(db.sql, { requestId, typeKeys: ['other'] });
   await answerEverything(spec);
 
@@ -395,7 +396,8 @@ test('KS.13 ett anbud binds till den lydelse som gällde när det lämnades', as
   const seller = await buyer();
   const before = await insertBid(db.sql, {
     requestId,
-    sellerId: seller,
+    sellerId: seller.id,
+    sellerOrganizationId: seller.organizationId,
     plan: 'Innan kravspecen publicerats.',
     compensation: { type: 'fixed', amountMinor: 100000, currency: 'SEK' },
   });
@@ -403,9 +405,11 @@ test('KS.13 ett anbud binds till den lydelse som gällde när det lämnades', as
 
   await publishSpec(db.sql, spec.version.id);
 
+  const secondSeller = await buyer();
   const after = await insertBid(db.sql, {
     requestId,
-    sellerId: await buyer(),
+    sellerId: secondSeller.id,
+    sellerOrganizationId: secondSeller.organizationId,
     plan: 'Efter publiceringen.',
     compensation: { type: 'fixed', amountMinor: 100000, currency: 'SEK' },
   });
@@ -444,15 +448,21 @@ test('KS.14 kriterieraderna är kopior — mallen får ändras utan att kravspec
 // ---------------------------------------------------------------- KS.15
 
 test('KS.15 ett raderat konto tar inte med sig godkännandets tidsstämpel', async () => {
-  const userId = await buyer();
-  const requestId = await request(userId);
+  const buyerUser = await buyer();
+  const userId = buyerUser.id;
+  const requestId = await request(buyerUser);
   const spec = await createDraftSpec(db.sql, { requestId, typeKeys: ['bugfix'] });
 
   const row = spec.criteria.find((criterion) => criterion.kind === 'criterion');
   const approved = await approveCriterion(db.sql, { criterionId: row!.id, userId });
 
   // Kontot försvinner — förfrågan ägs av någon annan, så kravspecen står kvar.
-  await db.sql`UPDATE requests SET buyer_id = ${await buyer()} WHERE id = ${requestId}`;
+  const successor = await buyer();
+  await db.sql`
+    UPDATE requests
+    SET buyer_id = ${successor.id}, buyer_organization_id = ${successor.organizationId}
+    WHERE id = ${requestId}
+  `;
   await db.sql`DELETE FROM users WHERE id = ${userId}`;
 
   const after = await getSpec(db.sql, spec.version.id);

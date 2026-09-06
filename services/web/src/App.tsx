@@ -1,10 +1,7 @@
 import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './auth.tsx';
-import { Login } from './pages/Login.tsx';
-import { Register } from './pages/Register.tsx';
-import { Verify } from './pages/Verify.tsx';
-import { ForgotPassword } from './pages/ForgotPassword.tsx';
-import { ResetPassword } from './pages/ResetPassword.tsx';
+import { Callback } from './pages/Callback.tsx';
+import { Landing } from './pages/Landing.tsx';
 import { Catalog } from './pages/Catalog.tsx';
 import { NewRequest } from './pages/NewRequest.tsx';
 import { RequestDetail } from './pages/RequestDetail.tsx';
@@ -12,7 +9,7 @@ import { RequestSpec } from './pages/RequestSpec.tsx';
 import { MyRequests } from './pages/MyRequests.tsx';
 import { MyBids } from './pages/MyBids.tsx';
 import { BidDetail } from './pages/BidDetail.tsx';
-import type { ReactElement } from 'react';
+import { useEffect, useRef, useState, type ReactElement } from 'react';
 
 function Masthead() {
   const { account, signOut } = useAuth();
@@ -37,15 +34,15 @@ function Masthead() {
           {account ? (
             <>
               <span data-testid="current-user">{account.email}</span>
+              <span data-testid="current-organization" className="quiet">
+                {account.organization.name}
+              </span>
               <button className="quiet" onClick={() => void signOut()} data-testid="logout">
                 Logga ut
               </button>
             </>
           ) : (
-            <nav className="primary" aria-label="Konto">
-              <NavLink to="/login">Logga in</NavLink>
-              <NavLink to="/register">Skapa konto</NavLink>
-            </nav>
+            <NavLink to="/">Logga in</NavLink>
           )}
         </div>
       </div>
@@ -53,32 +50,75 @@ function Masthead() {
   );
 }
 
-/** Skyddad route: utan inloggning skickas man till inloggningen, inte till ett tomt skal. */
+/**
+ * Skyddad route: utan inloggning skickas man till Keycloak, inte till ett tomt skal.
+ *
+ * `loading` är inte kosmetik. Sessionen läses ur sessionStorage asynkront, och utan
+ * väntan hade en omladdning av en skyddad sida hunnit se `account === null` och skickat
+ * iväg en redan inloggad användare på en ny inloggningsrunda.
+ */
 function RequireAuth({ children }: { children: ReactElement }) {
-  const { account } = useAuth();
+  const { account, loading, signedIn, blocked, signIn, signOut } = useAuth();
   const location = useLocation();
+  const [failed, setFailed] = useState<string | null>(null);
+  // En gång per montering. Utan spärren startar varje omrendering en ny omdirigering,
+  // och två samtidiga avbryter varandra — sidan blir stående på "skickar dig vidare".
+  const sent = useRef(false);
 
-  if (!account) return <Navigate to="/login" state={{ from: location.pathname }} replace />;
+  useEffect(() => {
+    // Bara den som *inte* är inloggad ska skickas till Keycloak. Den som är inloggad men
+    // avvisad av API:et har redan en giltig session — en ny inloggning hade gett samma
+    // token tillbaka och studsat användaren fram och tillbaka utan att säga varför.
+    if (loading || account || signedIn || sent.current) return;
+    sent.current = true;
+    signIn().catch((cause: unknown) =>
+      setFailed(cause instanceof Error ? cause.message : String(cause)),
+    );
+  }, [loading, account, signedIn, signIn, location.pathname]);
+
+  if (loading) return <p className="panel">Läser in sessionen…</p>;
+  if (failed) {
+    // Hellre ett besked än en sida som ser ut att ladda för alltid: går Keycloak inte att
+    // nå är det inget väntan löser.
+    return (
+      <section className="panel">
+        <h1>Inloggningen kunde inte startas</h1>
+        <p className="error" data-testid="signin-error">{failed}</p>
+      </section>
+    );
+  }
+  if (blocked) {
+    return (
+      <section className="panel stack" data-testid="blocked">
+        <h1>{blocked.title}</h1>
+        <p>{blocked.detail}</p>
+        <button className="quiet" onClick={() => void signOut()} data-testid="logout">
+          Logga ut
+        </button>
+      </section>
+    );
+  }
+  if (!account) return <p className="panel">Skickar dig till inloggningen…</p>;
   return children;
 }
 
 function Shell() {
-  const { account } = useAuth();
+  // `signedIn` och inte `account`: den som är inloggad men avvisad av API:et ska föras
+  // vidare till RequireAuth, som visar skälet — inte mötas av inloggningsknappen igen.
+  const { signedIn } = useAuth();
 
   return (
     <>
       <Masthead />
       <main className="page">
         <Routes>
+          {/* Öppen landningssida. Den inloggade skickas vidare till katalogen; den
+              utloggade får stanna. Se kommentaren i pages/Landing.tsx. */}
           <Route
             path="/"
-            element={<Navigate to={account ? '/requests' : '/login'} replace />}
+            element={signedIn ? <Navigate to="/requests" replace /> : <Landing />}
           />
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/verify" element={<Verify />} />
-          <Route path="/forgot-password" element={<ForgotPassword />} />
-          <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/callback" element={<Callback />} />
 
           <Route
             path="/requests"

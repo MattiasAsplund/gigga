@@ -1,12 +1,12 @@
 ---
 name: aspire-dev
-description: Starta, stoppa och felsöka fastgigs Aspire-miljö på localhost (TypeScript-AppHost körd med bun, Postgres i podman, Fastify-API, Swagger, pgweb). Använd när användaren vill köra appen, se loggar, titta i databasen, eller när AppHost/containern inte startar.
+description: Starta, stoppa och felsöka giggas Aspire-miljö på localhost (TypeScript-AppHost körd med bun, Postgres i podman, Fastify-API, Swagger, pgweb). Använd när användaren vill köra appen, se loggar, titta i databasen, eller när AppHost/containern inte startar.
 ---
 
-# Köra fastgig lokalt
+# Köra gigga lokalt
 
-Aspire TypeScript-AppHost (`apphost.mts`) orkestrerar en icke-persistent Postgres och
-Fastify-API:et. Aspire CLI: `~/.aspire/bin/aspire`, version 13.4.6.
+Aspire TypeScript-AppHost (`apphost.mts`) orkestrerar en icke-persistent Postgres, Keycloak
+och Fastify-API:et. Aspire CLI: `~/.aspire/bin/aspire`, version 13.5.3.
 
 **Runtime är bun** — aldrig `npm`, `npx` eller `node`, varken för AppHosten, tjänsten eller
 testerna.
@@ -67,11 +67,37 @@ aspire logs postgres
 aspire describe            # resursernas status och URL:er
 ```
 
-Dashboarden ligger på `https://localhost:17097` (se `aspire.config.json`). Därifrån länkas:
+Dashboarden ligger på `https://localhost:17173` (se `aspire.config.json`). Därifrån länkas:
 
 - **api** → Fastify, med Swagger UI på `/docs` och OpenAPI-dokumentet på `/docs/json`
+- **keycloak** → adminkonsolen, **`admin` / `admin`** (fast konto, satt i AppHosten)
 - **pgweb** → bläddra i tabellerna utan psql
 - **postgres** → anslutningssträngen, om du vill köra `psql` själv
+
+`aspire resource <namn> start|stop|restart` styr en enskild resurs — så startas
+e2e-sviten, som har `withExplicitStart`.
+
+## Keycloak
+
+Realmet importeras ur `keycloak/realm/gigga-realm.json` vid varje start, och containern
+är icke-persistent: konton du skapar försvinner vid `aspire stop`.
+
+**Ingen registrerar sig själv** — realmet har `registrationAllowed: false`. Nya konton
+kommer in genom en inbjudan: adminkonsolen → realmet gigga → *Organizations* → företaget
+→ *Members* → *Invite member*. Den som tar emot inbjudan blir medlem när lösenordet satts,
+och bekräftar adressen därefter.
+
+Keycloak nås under **`/auth` på webbens adress** (`http://localhost:5173/auth`), proxad dit
+av Vite. Gå den vägen och inte till Keycloak-resursens egen URL när något ska felsökas:
+Keycloak bygger sin issuer ur Host-huvudet, och API:et väntar sig webbens adress.
+
+| Symtom | Orsak | Åtgärd |
+|---|---|---|
+| `keycloak` blir `Unhealthy` fast servern svarar | `KC_HTTP_RELATIVE_PATH` flyttar även hälsokontrollen | `KC_HTTP_MANAGEMENT_RELATIVE_PATH=/` pinnar tillbaka den (satt i AppHosten) |
+| `unrecognized feature: organizations` | flaggan heter `organization`, i singular | `withEnabledFeatures(["organization"])` |
+| API:et svarar 401 på en token som ser rätt ut | issuern matchar inte | jämför `iss` i token med `PUBLIC_BASE_URL` — de ska vara samma origin |
+| 403 `organization-missing` | kontot hör inte till någon organisation | bjud in det: realmet gigga → Organizations → företaget → Members → Invite member |
+| Inbjudningslänken säger "no longer valid" | brevets adress byggs ur den begäran som skickade inbjudan; skickas den från en annan värd än den webbläsaren surfar på avvisas token | skicka inbjudan från samma origin som webbläsaren använder |
 
 ## Icke-persistent databas — förväntat beteende
 
@@ -89,7 +115,7 @@ så schemat finns alltid. Ser du tom data efter en omstart är det inte ett fel.
 | AppHosten startar med node/tsx istället för bun | `package-lock.json` finns, eller `bun.lock` saknas | `rm package-lock.json && bun install` |
 | API:et startar men kraschar direkt | migrering fallerar mot tom databas | `aspire logs api`, kör migrationsfilen manuellt mot anslutningssträngen |
 | `port already in use` | tidigare AppHost lever kvar | `aspire ps` → `aspire stop`, annars `podman ps` + `podman rm -f <id>` |
-| Testerna beter sig konstigt mot en gammal databas | testcontainern `fastgig-test-pg` återanvänds mellan körningar med flit | `podman rm -f fastgig-test-pg` för att börja om |
+| Testerna beter sig konstigt mot en gammal databas | testcontainern `gigga-test-pg` återanvänds mellan körningar med flit | `podman rm -f gigga-test-pg` för att börja om |
 | Containrar hopar sig | avbrutna körningar | `podman container prune` |
 | `aspire run` hittar ingen AppHost | fel arbetskatalog | kör från repo-roten där `aspire.config.json` ligger |
 

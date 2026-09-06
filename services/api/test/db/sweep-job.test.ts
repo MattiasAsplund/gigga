@@ -1,4 +1,5 @@
 import { test, expect, beforeAll, afterAll } from 'bun:test';
+import { insertUser } from '../helpers/rows.ts';
 import { freshDatabase, type TestDatabase } from '../helpers/postgres.ts';
 import { createMemoryObjectStore } from '../../src/storage/object-store.ts';
 import { createMemoryMailer } from '../../src/mail/mailer.ts';
@@ -14,22 +15,19 @@ afterAll(async () => {
   await db.close();
 });
 
-const ALERT_TO = 'drift@fastgig.test';
+const ALERT_TO = 'drift@gigga.test';
 
 /** Ett anbud med `count` dokumentrader vars objekt aldrig lagts upp. */
 async function brokenAttachments(count: number, prefix: string): Promise<string> {
-  const [user] = (await db.sql`
-    INSERT INTO users (email, password_hash, display_name)
-    VALUES (${`${prefix}-${crypto.randomUUID()}@example.test`}, 'h', 'S')
-    RETURNING id
-  `) as { id: string }[];
+  const user = await insertUser(db.sql);
   const [request] = (await db.sql`
-    INSERT INTO requests (buyer_id, title, description, compensation_pref)
-    VALUES (${user!.id}, 'T', 'D', 'any') RETURNING id
+    INSERT INTO requests (buyer_id, buyer_organization_id, title, description, compensation_pref)
+    VALUES (${user.id}, ${user.organizationId}, 'T', 'D', 'any') RETURNING id
   `) as { id: string }[];
   const [bid] = (await db.sql`
-    INSERT INTO bids (request_id, seller_id, plan, compensation_type, fixed_amount_minor)
-    VALUES (${request!.id}, ${user!.id}, 'P', 'fixed', 1000) RETURNING id
+    INSERT INTO bids (request_id, seller_id, seller_organization_id, plan,
+                      compensation_type, fixed_amount_minor)
+    VALUES (${request!.id}, ${user.id}, ${user.organizationId}, 'P', 'fixed', 1000) RETURNING id
   `) as { id: string }[];
 
   for (let i = 0; i < count; i++) {

@@ -43,13 +43,16 @@ function permissionToResponse(permission: RequestPermission) {
 
 export const permissionRoutes: FastifyPluginAsyncTypebox = async (app) => {
   /**
-   * Hämtar förfrågan och kräver att anroparen äger den. Används av rättighets-
-   * hanteringen, som bara ägaren får röra.
+   * Hämtar förfrågan och kräver att anroparens *organisation* äger den. Används av
+   * rättighetshanteringen, som bara köparsidan får röra.
+   *
+   * Ägarskapet ligger på företaget, inte på personen som råkade trycka på knappen: den
+   * som är sjuk ska kunna ersättas av en kollega utan att förfrågan blir oåtkomlig.
    */
-  async function requireOwnedRequest(requestId: string, userId: string) {
+  async function requireOwnedRequest(requestId: string, organizationId: string) {
     const request = await findRequestById(app.sql, requestId);
     if (!request) throw requestNotFound();
-    if (request.buyerId !== userId) throw notRequestOwner();
+    if (request.buyerOrganizationId !== organizationId) throw notRequestOwner();
     return request;
   }
 
@@ -83,21 +86,28 @@ export const permissionRoutes: FastifyPluginAsyncTypebox = async (app) => {
       // Vem som bjudit vad är en sak mellan köparen och respektive säljare (samma regel
       // som L8.7 vaktar i katalogen). Köparen och den med läsrätt ser alla anbud; för
       // alla andra begränsas listan till anroparens eget.
+      //
+      // Köparens organisation ser allt genom medlemskapet — det är vad som gör en
+      // kollega användbar utan att någon först måste dela ut något. Tilldelad läsrätt
+      // gäller därutöver en enskild person, och är därmed vägen *över* företagsgränsen.
       const seesAllBids =
-        request.buyerId === req.user.sub ||
+        request.buyerOrganizationId === req.identity.organizationId ||
         (await hasReadPermission(app.sql, {
           requestId: request.id,
-          userId: req.user.sub,
+          userId: req.identity.id,
         }));
 
       const allBids = await listBidsForRequest(app.sql, request.id);
-      const bids = seesAllBids ? allBids : allBids.filter((bid) => bid.sellerId === req.user.sub);
+      const bids = seesAllBids
+        ? allBids
+        : allBids.filter((bid) => bid.sellerOrganizationId === req.identity.organizationId);
 
       return {
         ...requestToResponse(request),
         bids: bids.map((bid) => ({
           id: bid.id,
           sellerId: bid.sellerId,
+          sellerOrganizationId: bid.sellerOrganizationId,
           sellerDisplayName: bid.sellerDisplayName,
           plan: bid.plan,
           compensation: bid.compensation,
@@ -135,22 +145,24 @@ export const permissionRoutes: FastifyPluginAsyncTypebox = async (app) => {
       },
     },
     async (req, reply) => {
-      await requireOwnedRequest(req.params.requestId, req.user.sub);
+      await requireOwnedRequest(req.params.requestId, req.identity.organizationId);
 
       const grantee = await findUserByEmail(app.sql, req.body.email);
       if (!grantee) throw userNotFound();
 
-      if (grantee.id === req.user.sub) {
+      // Kollegan har redan läsrätt genom medlemskapet, och en tilldelning som inte
+      // betyder något vore värre än ett fel: den ser ut att ha gjort någonting.
+      if (grantee.organizationId === req.identity.organizationId) {
         throw validationFailed(
-          [{ path: 'email', message: 'du äger redan förfrågan' }],
-          'Köparen behöver ingen tilldelad läsrätt till sin egen förfrågan.',
+          [{ path: 'email', message: 'tillhör redan förfrågans organisation' }],
+          'Alla i köparens organisation läser förfrågan redan genom sitt medlemskap.',
         );
       }
 
       const { permission, created } = await grantReadPermission(app.sql, {
         requestId: req.params.requestId,
         userId: grantee.id,
-        grantedBy: req.user.sub,
+        grantedBy: req.identity.id,
       });
 
       return reply.code(created ? 201 : 200).send(permissionToResponse(permission));
@@ -178,7 +190,7 @@ export const permissionRoutes: FastifyPluginAsyncTypebox = async (app) => {
       },
     },
     async (req) => {
-      await requireOwnedRequest(req.params.requestId, req.user.sub);
+      await requireOwnedRequest(req.params.requestId, req.identity.organizationId);
 
       const items = await listRequestPermissions(app.sql, req.params.requestId);
       return { items: items.map(permissionToResponse) };
@@ -206,7 +218,7 @@ export const permissionRoutes: FastifyPluginAsyncTypebox = async (app) => {
       },
     },
     async (req) => {
-      await requireOwnedRequest(req.params.requestId, req.user.sub);
+      await requireOwnedRequest(req.params.requestId, req.identity.organizationId);
 
       const revoked = await revokeReadPermission(app.sql, {
         requestId: req.params.requestId,

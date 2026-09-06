@@ -29,6 +29,7 @@ export function bidToResponse(bid: Bid) {
     id: bid.id,
     requestId: bid.requestId,
     sellerId: bid.sellerId,
+    sellerOrganizationId: bid.sellerOrganizationId,
     plan: bid.plan,
     compensation: bid.compensation,
     estimatedTotalMinor: estimatedTotalMinor(bid.compensation),
@@ -69,7 +70,10 @@ export const bidRoutes: FastifyPluginAsyncTypebox = async (app) => {
 
       // Ordningen är medveten: vem du är avgörs före förfrågans tillstånd, så en köpare
       // aldrig får veta något om sin egen förfrågan via en annan felkod.
-      if (request.buyerId === req.user.sub) throw ownRequest();
+      //
+      // Jämförelsen går på organisationen. Regeln har alltid betytt "man bjuder inte på
+      // sig själv", och med företag som part är kollegans förfrågan lika mycket ens egen.
+      if (request.buyerOrganizationId === req.identity.organizationId) throw ownRequest();
 
       if (request.status !== 'open') {
         throw validationFailed(
@@ -95,7 +99,8 @@ export const bidRoutes: FastifyPluginAsyncTypebox = async (app) => {
 
       const bid = await insertBid(app.sql, {
         requestId: request.id,
-        sellerId: req.user.sub,
+        sellerId: req.identity.id,
+        sellerOrganizationId: req.identity.organizationId,
         plan: req.body.plan,
         compensation: {
           ...req.body.compensation,
@@ -114,10 +119,11 @@ export const bidRoutes: FastifyPluginAsyncTypebox = async (app) => {
    * densamma som vid registrering: vem du är avgörs före tillstånd, så att ingen kan
    * kartlägga andras anbud på skillnaden mellan felkoderna.
    */
-  async function requireChangeableBid(bidId: string, userId: string): Promise<Bid> {
+  async function requireChangeableBid(bidId: string, organizationId: string): Promise<Bid> {
     const bid = await findBidById(app.sql, bidId);
     if (!bid) throw bidNotFound();
-    if (bid.sellerId !== userId) throw notBidOwner();
+    // Kollegan får ändra företagets anbud. Vem som skrev in det står kvar i seller_id.
+    if (bid.sellerOrganizationId !== organizationId) throw notBidOwner();
 
     // Villkoren fryses i avtalet när köparen signerar (S7.7). Att låta anbudet glida
     // isär från dem vore att ha två sanningar om samma uppgörelse.
@@ -176,7 +182,7 @@ export const bidRoutes: FastifyPluginAsyncTypebox = async (app) => {
       },
     },
     async (req) => {
-      await requireChangeableBid(req.params.bidId, req.user.sub);
+      await requireChangeableBid(req.params.bidId, req.identity.organizationId);
 
       const compensation = req.body.compensation
         ? { ...req.body.compensation, currency: currencyOr(req.body.compensation.currency) }
@@ -222,10 +228,10 @@ export const bidRoutes: FastifyPluginAsyncTypebox = async (app) => {
       // falla på statusspärren — annars vore upprepningen inte ofarlig (Ä.12).
       const existing = await findBidById(app.sql, req.params.bidId);
       if (!existing) throw bidNotFound();
-      if (existing.sellerId !== req.user.sub) throw notBidOwner();
+      if (existing.sellerOrganizationId !== req.identity.organizationId) throw notBidOwner();
       if (existing.status === 'withdrawn') return bidToResponse(existing);
 
-      await requireChangeableBid(req.params.bidId, req.user.sub);
+      await requireChangeableBid(req.params.bidId, req.identity.organizationId);
 
       const withdrawn = await withdrawBid(app.sql, req.params.bidId);
       if (!withdrawn) throw bidNotFound();

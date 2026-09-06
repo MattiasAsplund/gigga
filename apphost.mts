@@ -1,4 +1,4 @@
-// fastgig AppHost — orkestrerar Postgres och API:et för localhost-utveckling.
+// gigga AppHost — orkestrerar Postgres och API:et för localhost-utveckling.
 // Körs med bun (Aspire väljer bun så länge bun.lock finns i roten).
 import { mkdir } from "node:fs/promises";
 import {
@@ -131,11 +131,7 @@ const postgres = await builder
 	.withSessionLifetime()
 	.withPgWeb();
 
-const db = await postgres.addDatabase("fastgig");
-
-const jwtSecret = await builder.addParameterWithGeneratedValue("jwt-secret", {
-	minLength: 48,
-});
+const db = await postgres.addDatabase("gigga");
 
 // Mailpit fångar all utgående post och skickar aldrig vidare. Webbgränssnittet ligger
 // som egen URL i dashboarden — det är där verifieringsmailen läses.
@@ -145,6 +141,69 @@ const jwtSecret = await builder.addParameterWithGeneratedValue("jwt-secret", {
 const mailpit = await builder
 	.addMailPit("mailpit", { httpPort: 8025, smtpPort: 1025 })
 	.withSessionLifetime();
+
+/*
+ * Keycloak äger konton, lösenord, e-postbekräftelse och sessioner. API:et utfärdar inga
+ * egna tokens längre — det verifierar Keycloaks mot realmets JWKS.
+ *
+ * Realmet är data, inte klick i en adminkonsol: keycloak/realm/gigga-realm.json bär
+ * klienterna, organisationerna, SMTP-inställningarna och verifieringskravet. Importen
+ * körs vid varje start, vilket passar en miljö där databasen ändå är tom varje gång.
+ *
+ * `organization` — singular. Verifierat genom att gå på det: `organizations` avvisas med
+ * "unrecognized feature" och realmet startar utan organisationsstöd.
+ *
+ * KC_HTTP_RELATIVE_PATH: Keycloak ligger under /auth på *webbens* origin, proxad av Vite
+ * precis som /api. Det är vad som gör att issuern följer med av sig själv — Keycloak
+ * bygger den ur Host-huvudet, så localhost, e2e-containerns bryggadress och en
+ * cloudflare-tunnel ger var sin korrekta issuer utan konfiguration per miljö. Utan det
+ * hade tokenens `iss` pekat på en adress webbläsaren inte kunde nå.
+ *
+ * KC_PROXY_HEADERS: bakom tunneln är det X-Forwarded-Proto som bär https. Utan detta
+ * byggs issuern med http och matchar inte den adress användaren faktiskt kom in på.
+ *
+ * Lottad port, av samma skäl som API:et fick det: en fast port gör resursen ohälsosam så
+ * fort något annat redan sitter där, och hälsokontrollen frågar då en tjänst som inte är
+ * vår. Det hände på riktigt här — en typst-server på 8080 gjorde keycloak Unhealthy och
+ * höll api och web kvar i Waiting. Ingen behöver porten fast: webben proxar dit via
+ * KEYCLOAK_TARGET, en referens, och API:et går aldrig hit alls utan hämtar nycklarna
+ * från issuern, alltså genom webbens adress.
+ */
+/*
+ * Fast adminkonto, inte ett lottat.
+ *
+ * Inbjudan är enda vägen in i en organisation sedan självregistreringen stängdes, och den
+ * skickas av en admin. Med ett genererat lösenord måste det slås upp i dashboarden varje
+ * gång miljön startas om — och e2e-sviten kunde bara nå det för att AppHosten råkade
+ * skicka med det. Ett känt konto gör inbjudningarna körbara både för hand och i sviten.
+ *
+ * Att uppgifterna står i klartext i en incheckad fil är avsiktligt och gäller **bara den
+ * här utvecklingsmiljön**: Keycloak lever på localhost, är icke-persistent och rivs vid
+ * `aspire stop`. En driftsatt miljö sätter dem som hemligheter.
+ */
+const keycloakUser = await builder.addParameter("keycloak-user", {
+	value: "admin",
+});
+const keycloakPassword = await builder.addParameter("keycloak-password", {
+	value: "admin",
+	secret: true,
+});
+
+const keycloak = await builder
+	.addKeycloak("keycloak", {
+		adminUsername: keycloakUser,
+		adminPassword: keycloakPassword,
+	})
+	.withEnabledFeatures(["organization"])
+	.withEnvironment("KC_HTTP_RELATIVE_PATH", "/auth")
+	.withEnvironment("KC_PROXY_HEADERS", "xforwarded")
+	// Managementgränssnittet ärver annars den relativa sökvägen ovan, och hälsokontrollen
+	// hamnar på /auth/health/ready medan Aspire frågar /health/ready. Resursen blir
+	// Unhealthy fast servern är uppe, och allt som väntar på den står kvar i Waiting.
+	.withEnvironment("KC_HTTP_MANAGEMENT_RELATIVE_PATH", "/")
+	.withRealmImport("./keycloak/realm")
+	.withSessionLifetime()
+	.waitFor(mailpit);
 
 // Objektlagring för anbudsdokument. Ingen volym: filerna delar livscykel med databasen,
 // och bucketen skapas av API:et vid uppstart eftersom MinIO startar tom.
@@ -186,19 +245,25 @@ const api = await builder
 	// genom webben.
 	.withHttpEndpoint({ env: "PORT" })
 	.withEnvironment("DATABASE_URL", await db.uriExpression())
-	.withEnvironment("JWT_SECRET", jwtSecret)
+	// Ingen adress till Keycloak här. Både issuern och nyckeladressen räknas ut ur
+	// PUBLIC_BASE_URL i services/api/src/config.ts — nycklarna hämtas från den issuer som
+	// skrev token, vilket är vad OIDC-discovery ändå hade svarat. Det gör att
+	// tunnelvägen längre ned rättar allt på en gång, och att API:et aldrig behöver tala
+	// med Aspires https-endpoint, vars utvecklingscertifikat bun inte har någon kedja till.
+	.withEnvironment("OIDC_AUDIENCE", "gigga-api")
 	.withEnvironment("SMTP_HOST", await mailpit.host())
 	.withEnvironment("SMTP_PORT", await mailpit.port())
 	.withEnvironment("S3_ENDPOINT", await minio.uriExpression())
-	.withEnvironment("S3_BUCKET", "fastgig-attachments")
+	.withEnvironment("S3_BUCKET", "gigga-attachments")
 	.withEnvironment("S3_ACCESS_KEY_ID", minioUser)
 	.withEnvironment("S3_SECRET_ACCESS_KEY", minioPassword)
 	// Larmen landar i mailpit tillsammans med all annan post — synliga i dashboarden.
-	.withEnvironment("STORAGE_ALERT_EMAIL", "drift@fastgig.dev")
+	.withEnvironment("STORAGE_ALERT_EMAIL", "drift@gigga.dev")
 	.withHttpHealthCheck({ path: "/health" })
 	.waitFor(db)
 	.waitFor(mailpit)
-	.waitFor(minio);
+	.waitFor(minio)
+	.waitFor(keycloak);
 
 /*
  * Gränssnittet. Vite proxar /api vidare till API:et, så webben och API:et delar origin
@@ -214,7 +279,11 @@ const web = await builder
 	// sin, alltså efter att grafen byggts. Vite läser variabeln när servern startar, och
 	// waitFor(api) nedan gör att det aldrig sker innan adressen finns.
 	.withEnvironment("API_TARGET", await api.getEndpoint("http"))
-	.waitFor(api);
+	// Keycloak under /auth på samma origin som webben. Det är hela knuten till att
+	// issuern stämmer överallt — se resursen längre upp.
+	.withEnvironment("KEYCLOAK_TARGET", await keycloak.getEndpoint("http"))
+	.waitFor(api)
+	.waitFor(keycloak);
 
 // Bekräftelselänkarna pekar på webbens /verify, inte in i API:et — därför webbens
 // adress här och inte API:ets. Sätts efter att `web` finns, men bara som ett värde:
@@ -429,6 +498,13 @@ const e2e = await builder
 	.withReference(web)
 	.withEnvironment("BASE_URL", await web.getEndpoint("http"))
 	.withEnvironment("MAILPIT_URL", "http://mailpit:8025")
+	// Keycloak nås samma väg som webbläsaren gör det, alltså genom webbens /auth-proxy —
+	// sviten behöver ingen egen adress dit. Adminuppgifterna behövs för att koppla
+	// nyregistrerade konton till en organisation: självregistrering ger inget medlemskap,
+	// och utan ett sådant svarar API:et 403 organization-missing. Det är inbjudningsvägen,
+	// gången med API:et istället för genom ett mail.
+	.withEnvironment("KEYCLOAK_ADMIN_USER", keycloakUser)
+	.withEnvironment("KEYCLOAK_ADMIN_PASSWORD", keycloakPassword)
 	.withEnvironment("CI", "true")
 	.withEntrypoint("/bin/sh")
 	.withArgs([

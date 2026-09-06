@@ -48,7 +48,9 @@ export const CatalogQuerySchema = Type.Object(
 
 export const RequestResponseSchema = Type.Object({
   id: UuidSchema,
+  /** Vem som skapade förfrågan. Ägarskapet ligger på buyerOrganizationId. */
   buyerId: UuidSchema,
+  buyerOrganizationId: UuidSchema,
   title: Type.String(),
   description: Type.String(),
   compensationPref: CompensationPrefSchema,

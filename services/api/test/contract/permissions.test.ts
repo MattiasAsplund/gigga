@@ -91,7 +91,7 @@ test('P.3 okänd e-postadress ger 404', async () => {
   const res = await grant(buyer, requestId, 'finns-inte@example.test');
 
   expect(res.statusCode).toBe(404);
-  expect(res.json<Problem>().type).toBe('https://fastgig.dev/problems/user-not-found');
+  expect(res.json<Problem>().type).toBe('https://gigga.dev/problems/user-not-found');
 });
 
 test('P.4 köparen kan inte tilldela sig själv', async () => {
@@ -108,7 +108,7 @@ test('P.5 bara ägaren får tilldela', async () => {
   const res = await grant(outsider, requestId, colleague.email);
 
   expect(res.statusCode).toBe(403);
-  expect(res.json<Problem>().type).toBe('https://fastgig.dev/problems/not-request-owner');
+  expect(res.json<Problem>().type).toBe('https://gigga.dev/problems/not-request-owner');
 });
 
 test('P.5 en behörig får inte dela vidare', async () => {
@@ -124,7 +124,7 @@ test('P.6 okänd förfrågan ger 404', async () => {
   const res = await grant(buyer, '00000000-0000-4000-8000-000000000000', colleague.email);
 
   expect(res.statusCode).toBe(404);
-  expect(res.json<Problem>().type).toBe('https://fastgig.dev/problems/request-not-found');
+  expect(res.json<Problem>().type).toBe('https://gigga.dev/problems/request-not-found');
 });
 
 test('P.7 ägaren ser sina tilldelade rättigheter', async () => {
