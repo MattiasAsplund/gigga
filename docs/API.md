@@ -1,4 +1,4 @@
-# fastgig API
+# gigga API
 
 Kort översikt. **Swagger är sanningen** — kör `aspire run` och öppna `/docs` för det
 fullständiga, alltid aktuella kontraktet. Det här dokumentet finns för att komma igång och
@@ -25,13 +25,16 @@ mottagare — ger samma `401`. Skillnaden mellan dem säger bara något till den
 ### Keycloak nås under `/auth`
 
 Realmet ligger på webbens egen origin, proxat dit av Vite:
-`http://localhost:5173/auth/realms/fastgig`. Det är inte bara bekvämt — Keycloak bygger
+`http://localhost:5173/auth/realms/gigga`. Det är inte bara bekvämt — Keycloak bygger
 sin issuer ur adressen du kom in på, så tokenens `iss` blir densamma vare sig du surfar på
 localhost, kör e2e-sviten i en container eller går genom en cloudflare-tunnel.
 
 Adminkonsolen ligger på Keycloak-resursens egen URL i Aspire-dashboarden. Användarnamn och
 lösenord genereras vid start och står som parametrar i dashboarden (`keycloak-user`,
 `keycloak-password`).
+
+Inloggningen sker med lösenord. Passkeys stöds av Keycloak men är inte påslagna i
+realmet — se §10 i [genomförandeplanen](GENOMFORANDE.md).
 
 ### E-postadressen måste bekräftas
 
@@ -98,7 +101,7 @@ kr. Aldrig decimaltal. `currency` är valfri och betyder `SEK` om den utelämnas
 
 ```json
 {
-  "type": "https://fastgig.dev/problems/validation-failed",
+  "type": "https://gigga.dev/problems/validation-failed",
   "title": "Ogiltig indata",
   "status": 422,
   "detail": "Begäran validerade inte mot schemat.",

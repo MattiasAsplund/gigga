@@ -1,4 +1,4 @@
-# fastgig — genomförandeplan
+# gigga — genomförandeplan
 
 Marknadsplats för distansuppdrag: **köpare** publicerar uppdragsförfrågningar, **säljare**
 lämnar anbud med en genomförandeplan och ersättningsmodell (fast pris eller timbaserat),
@@ -105,7 +105,7 @@ Följande kördes skarpt innan planen skrevs, i en kastbar bun-katalog:
 - Aspire startar en TypeScript-AppHost **med Bun** när `bun.lock` finns (§4.1).
 
 Och i etapp 0, mot den riktiga uppsättningen: `aspire start` gav `postgres`, `pgweb`,
-`fastgig` (databasen) och `api` alla `Running/Healthy`; `/health` svarade
+`gigga` (databasen) och `api` alla `Running/Healthy`; `/health` svarade
 `{"status":"ok","database":"up"}` — alltså `Bun.SQL` mot Aspires Postgres — `/docs/json`
 gav `openapi: 3.1.0`, och `aspire stop` rev båda containrarna.
 
@@ -127,7 +127,7 @@ Tre fallgropar i `Bun.SQL`, alla upptäckta genom att gå på dem:
 ## 3. Repostruktur
 
 ```
-fastgig/
+gigga/
 ├── apphost.mts                 # Aspire AppHost (TypeScript, körs med bun)
 ├── aspire.config.json          # genererad av `aspire new`
 ├── package.json                # bun-workspace-rot + AppHost-beroenden
@@ -135,7 +135,7 @@ fastgig/
 ├── .aspire/modules/*.mts       # genererad SDK — gitignorerad, regenereras med `aspire restore`
 ├── keycloak/
 │   └── realm/
-│       └── fastgig-realm.json  # klienter, organisationer, SMTP och verifieringskravet
+│       └── gigga-realm.json  # klienter, organisationer, SMTP och verifieringskravet
 ├── docs/
 │   ├── GENOMFORANDE.md         # detta dokument
 │   └── API.md                  # kort, handskriven översikt; Swagger är sanningen
@@ -287,7 +287,7 @@ const postgres = await builder
   .withSessionLifetime()
   .withPgWeb();                       // pgweb på egen URL i dashboarden
 
-const db = await postgres.addDatabase('fastgig');
+const db = await postgres.addDatabase('gigga');
 
 const jwtSecret = await builder.addParameterWithGeneratedValue('jwt-secret', { minLength: 48 });
 
@@ -756,7 +756,7 @@ alternativet vore ett HEAD-anrop per rad.
 
 **Larm när något markeras.** En markering betyder att lagringen tappat data, vilket är mer
 än en loggrad värt. `STORAGE_ALERT_EMAIL` får ett mail som namnger dokumenten; i
-utvecklingsmiljön är det `drift@fastgig.dev` och landar i mailpit bland all annan post.
+utvecklingsmiljön är det `drift@gigga.dev` och landar i mailpit bland all annan post.
 
 **Ett mail per körning, aldrig ett per dokument.** Ett lagringsfel kan slå ut tusen
 dokument på en gång, och tusen mail är inte ett larm utan ett haveri i sig. Listan kortas
@@ -894,14 +894,14 @@ den, och varje etapp i §9 är klar först när dess testfall är gröna.
 
 **Databas.** `test/helpers/postgres.ts` styr podman direkt med `Bun.$` — ingen
 Testcontainers-dependency, ingen Ryuk. Containern har ett **fast namn**
-(`fastgig-test-pg`) och **återanvänds mellan körningar**: finns den redan igång används
+(`gigga-test-pg`) och **återanvänds mellan körningar**: finns den redan igång används
 den som den är, annars startas den.
 
-Migrationerna körs en gång per körning mot `fastgig_template`, och varje testfil får en
+Migrationerna körs en gång per körning mot `gigga_template`, och varje testfil får en
 färsk databas:
 
 ```sql
-CREATE DATABASE test_<pid>_<n> TEMPLATE fastgig_template;
+CREATE DATABASE test_<pid>_<n> TEMPLATE gigga_template;
 ```
 
 Det ger full isolering mellan filer utan att betala migrationskostnaden per fil.
@@ -917,7 +917,7 @@ uppstart — men den avgör om dialogloopen är användbar. Mätt i etapp 1:
 | Varm (containern återanvänds) | **1,4 s** | **0,95 s** |
 
 Containern lämnas alltså kvar när körningen är slut. Riv den för hand med
-`podman rm -f fastgig-test-pg` när du vill börja om från noll.
+`podman rm -f gigga-test-pg` när du vill börja om från noll.
 
 `TEST_DATABASE_URL` i miljön kringgår podman helt och kör mot en redan uppe
 Aspire-Postgres — praktiskt när man vill inspektera data i pgweb efter ett fallerande test.
@@ -1310,7 +1310,7 @@ Varje etapp är en pull-liknande enhet med en tydlig grön-tröskel.
 | **5** ✅ | Listnings-API:er (API 3–4) | Joins utan N+1, markörsidbrytning, filter, `004_contracts.sql` (tidigarelagd), dubbla valideringsregimer | **Klar.** L3.\*, L4.\* gröna; 68/68 i hela sviten |
 | **6** ✅ | Avtalssignering (API 7) | `domain/contract-rules.ts`, transaktionell tillståndsmaskin med `sql.begin` + `FOR UPDATE OF r`, frysta villkor, tom-kropp-parser | **Klar.** S7.\*, D.3 gröna; 92/92 i hela sviten; hela flödet kört mot levande Aspire |
 | **7** ✅ | Dokumentation & finish | OpenAPI-tvärsnittstester, `docs/API.md` | **Klar.** X.\* gröna; hela sviten 103/103; Swagger UI och hela flödet körda mot levande Aspire |
-| **25** ✅ | Keycloak, OIDC och organisationer | `Aspire.Hosting.Keycloak` i AppHosten, `keycloak/realm/fastgig-realm.json`, `auth/keys.ts` (`jose`), omskriven `plugins/auth.ts`, `018_keycloak_identities.sql`, `db/identities.ts`, organisationsskopning på åtta ställen, `GET /me`, `oidc-client-ts` i webben,  `test/helpers/keys.ts`, `signedIn`/`blocked` i webbens auth | **Klar.** O.\* och FTG.\* gröna; 286/286; e2e 3/3 mot levande miljö, hela vägen från Keycloaks registreringssida via bekräftelsemailet i mailpit till signerat avtal. Åtta API:er, sju migrationers kolumner och sex kontraktsviter försvann. Fyra fel funna genom att gå på dem: featureflaggan heter `organization` i singular, `KC_HTTP_RELATIVE_PATH` flyttar även hälsokontrollen (`KC_HTTP_MANAGEMENT_RELATIVE_PATH` pinnar tillbaka den), en fast port 8080 krockade med en typst-server på maskinen, och webbläsaren i e2e-containern saknade `crypto.subtle` utanför en säker kontext |
+| **25** ✅ | Keycloak, OIDC och organisationer | `Aspire.Hosting.Keycloak` i AppHosten, `keycloak/realm/gigga-realm.json`, `auth/keys.ts` (`jose`), omskriven `plugins/auth.ts`, `018_keycloak_identities.sql`, `db/identities.ts`, organisationsskopning på åtta ställen, `GET /me`, `oidc-client-ts` i webben,  `test/helpers/keys.ts`, `signedIn`/`blocked` i webbens auth | **Klar.** O.\* och FTG.\* gröna; 286/286; e2e 3/3 mot levande miljö, hela vägen från Keycloaks registreringssida via bekräftelsemailet i mailpit till signerat avtal. Åtta API:er, sju migrationers kolumner och sex kontraktsviter försvann. Fyra fel funna genom att gå på dem: featureflaggan heter `organization` i singular, `KC_HTTP_RELATIVE_PATH` flyttar även hälsokontrollen (`KC_HTTP_MANAGEMENT_RELATIVE_PATH` pinnar tillbaka den), en fast port 8080 krockade med en typst-server på maskinen, och webbläsaren i e2e-containern saknade `crypto.subtle` utanför en säker kontext |
 | **24** ✅ | Intervjun i webben | `pages/RequestSpec.tsx`, kravspecpanel på förfrågningssidan, katalogens skäl, sju fälttyper i `styles.css` | **Klar.** E2E går klickvägen genom intervjun i stället för API-genvägen: 3/3 gröna mot levande miljö. Två fel funna på vägen: bildspelsfixturens helsidesfoto lämnade skruvade layoutmått så att nästa klick inte skickade formuläret, och indikatorns blockerarlista var en kopia av hela intervjun |
 | **23** ✅ | Anbud kräver publicerad kravspec | Spärr i `POST /requests/{id}/bids`, `hasPublishedSpec` i katalogen, `test/helpers/spec.ts`, `publishSpec` i e2e-sviten | **Klar.** F6.9 och L8.10 gröna; 354/354. Spärren fällde 87 befintliga testfall — samtliga sviter som lämnar anbud fick en publicerad kravspec via `publishSpecFor`. E2E-sviten körd mot levande miljö: 3/3 gröna, med kravspecen publicerad via API:et (klickvägen kom i etapp 24) |
 | **22** ✅ | Intervjun över HTTP (API 26–36) | `routes/gig-types.ts`, `routes/request-specs.ts`, `schemas/gig.ts`, `domain/spec-completeness.ts`, sex nya Problem Details | **Klar.** I.\* gröna; 351/351. X.1c utökad med de elva nya operationerna. Två fel funna på vägen: parallella frågor på en transaktionsanslutning låste sig (readSpec kördes med `Promise.all`), och revisionsvägen svarade 409 där 404 var det upplysande |
@@ -1349,6 +1349,20 @@ gör resten testdriven. Från etapp 2 gäller §8.1 utan undantag.
   inbjuden kollega som ännu bara satt sitt lösenord i Keycloak finns inte där, och
   tilldelningen ger `404 user-not-found`. Rimligt — man delar inte med en identitet gigga
   aldrig sett — men det gör den första inloggningen till ett steg i onboardingen.
+- **Inloggningen är lösenordsbaserad — inga passkeys.** Keycloak-bilden stödjer dem
+  (funktionerna `passkeys`, `passkeys-conditional-ui-authenticator` och `web-authn` finns i
+  26.6), men realmet slår inte på något av det: det saknar `webAuthnPolicy*`, egen
+  `browserFlow` och required action för registrering. Att lägga till det är
+  realmkonfiguration plus ett inloggningsflöde, inte ny kod i gigga.
+
+  **En sak att tänka igenom först.** En passkey är bunden till den origin den skapades på,
+  och hela poängen med /auth-proxyn är att originen får flyta — localhost till vardags,
+  containerbryggan under e2e, en cloudflare-tunnel när miljön visas upp. En passkey
+  registrerad på localhost erbjuds alltså inte bakom tunneln. Det är inte ett fel utan hur
+  WebAuthn avgränsar sig, men det är den enda punkt där passwordless och den flytande
+  issuern drar åt olika håll, och valet mellan dem bör göras medvetet. E2E skulle dessutom
+  behöva Chromes virtuella autentiserare över CDP.
+
 - **Inbjudningarna skickas i Keycloaks adminkonsol, inte i gigga.** Den som ska bjuda in
   en kollega behöver alltså ett adminkonto i realmet. En egen yta för det — "bjud in till
   min organisation", med behörighet knuten till medlemskapet — är nästa steg.
@@ -1364,7 +1378,7 @@ gör resten testdriven. Från etapp 2 gäller §8.1 utan undantag.
 - **Fler rättighetsnivåer** — `permission_level` har bara `read`. Kolumnen finns för att
   slippa en migrering den dag det behövs fler.
 - **Realmet släpper in vilken redirect-adress som helst** — `redirectUris` och
-  `webOrigins` står på `*` i `keycloak/realm/fastgig-realm.json`. Det är med flit i en
+  `webOrigins` står på `*` i `keycloak/realm/gigga-realm.json`. Det är med flit i en
   miljö där adressen lottas fram (tunnlar, containerbryggor, lottade portar), men ett
   skarpt realm måste peka ut dem.
 - **Kvotgränsen per anropare är borta** — den satt på `/auth/resend-verification` och

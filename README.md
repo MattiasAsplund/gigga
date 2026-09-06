@@ -1,4 +1,4 @@
-# fastgig
+# gigga
 
 Marknadsplats för distansuppdrag. **Köpare** publicerar uppdragsförfrågningar, **säljare**
 lämnar anbud med en genomförandeplan och ett pris — fast eller per timme — och parterna
@@ -33,7 +33,7 @@ vidare till:
 
 Postgres, MinIO och Keycloak är **icke-persistenta**: allt försvinner vid `aspire stop`.
 Schemat byggs upp vid varje start, och realmet importeras om ur
-`keycloak/realm/fastgig-realm.json`.
+`keycloak/realm/gigga-realm.json`.
 
 Keycloak nås under `/auth` på webbens egen adress (`http://localhost:5173/auth`), proxad
 dit av Vite. Det är vad som gör att tokenens issuer blir densamma vare sig du surfar på
@@ -113,7 +113,7 @@ satt i AppHosten, så att inbjudningar går att skicka utan att slå upp ett lot
 vid varje omstart. Det gäller bara den här utvecklingsmiljön; Keycloak här är
 icke-persistent och lever på localhost.
 
-Välj realmet **fastgig** → *Organizations* → företaget → *Members* → *Invite member*, och
+Välj realmet **gigga** → *Organizations* → företaget → *Members* → *Invite member*, och
 bjud in:
 
 | Person | Företag | Roll i flödet |
@@ -296,6 +296,11 @@ Utöver det:
 - **Onboarding saknar sista steget.** Ett konto som registrerats i Keycloak hör inte till
   någon organisation, och måste kopplas för hand innan det kan användas. Keycloak har
   inbjudningar; gigga använder dem inte än.
+- **Inloggningen sker med lösenord — inga passkeys.** Keycloak-bilden stödjer dem, men
+  realmet slår inte på dem. Värt att veta innan någon gör det: en passkey är bunden till
+  den origin den skapades på, och gigga låter originen flyta (localhost, containerbryggan,
+  en cloudflare-tunnel) för att tokenens issuer ska följa med. En passkey från localhost
+  erbjuds inte bakom tunneln.
 - **Ett konto kan bara höra till ett företag.** Flera organisationer i token ger
   `403 organization-ambiguous` — en konsult som arbetar för två bolag behöver ett val i
   gränssnittet, och det valet måste följa med i varje begäran.
