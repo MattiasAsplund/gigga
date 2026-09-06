@@ -1,9 +1,9 @@
 ---
 name: tdd-api
-description: Röd-grön-cykeln för fastgigs REST-API:er, körd med bun test. Använd när användaren ber om ett nytt API, ändrat API-beteende, ett nytt eller ändrat testfall, eller säger något i stil med "lägg till F6.9", "ta bort L3.4", "det ska ge 422 istället". Håller testfallsmatrisen i docs/GENOMFORANDE.md §7.2 synkad med test/.
+description: Röd-grön-cykeln för giggas REST-API:er, körd med bun test. Använd när användaren ber om ett nytt API, ändrat API-beteende, ett nytt eller ändrat testfall, eller säger något i stil med "lägg till F6.9", "ta bort L3.4", "det ska ge 422 istället". Håller testfallsmatrisen i docs/GENOMFORANDE.md §7.2 synkad med test/.
 ---
 
-# TDD-cykeln för fastgig-API:er
+# TDD-cykeln för gigga-API:er
 
 Testerna är specifikationen. Matrisen i `docs/GENOMFORANDE.md` §7.2 är det gemensamma
 språket mellan dig och användaren — varje testfall har ett stabilt ID (`A1.2`, `F6.4`, `S7.8`).

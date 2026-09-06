@@ -9,7 +9,7 @@ const ConfigSchema = Type.Object({
   SMTP_PORT: Type.Integer({ minimum: 1, maximum: 65535, default: 1025 }),
   // Avsändarnamnet syns i mailklienten; adressens domän är en driftsfråga och byts när
   // en domän för gigga faktiskt finns på plats.
-  MAIL_FROM: Type.String({ default: 'gigga <no-reply@fastgig.dev>' }),
+  MAIL_FROM: Type.String({ default: 'gigga <no-reply@gigga.dev>' }),
   /**
    * Webbens basadress — den användaren ser, inte API:ets. Bekräftelselänkarna pekar
    * på `/verify` där. Sätts av AppHosten.
@@ -17,7 +17,7 @@ const ConfigSchema = Type.Object({
   PUBLIC_BASE_URL: Type.String({ default: '' }),
   /** Objektlagring för anbudsdokument. Sätts av AppHosten från MinIO-resursen. */
   S3_ENDPOINT: Type.String({ default: 'http://127.0.0.1:9000' }),
-  S3_BUCKET: Type.String({ default: 'fastgig-attachments' }),
+  S3_BUCKET: Type.String({ default: 'gigga-attachments' }),
   S3_ACCESS_KEY_ID: Type.String({ default: 'minioadmin' }),
   S3_SECRET_ACCESS_KEY: Type.String({ default: 'minioadmin' }),
   S3_REGION: Type.String({ default: 'us-east-1' }),
@@ -28,7 +28,7 @@ const ConfigSchema = Type.Object({
   /**
    * Realmet i Keycloak. Ingår i issuern och i JWKS-adressen.
    */
-  OIDC_REALM: Type.String({ default: 'fastgig', minLength: 1 }),
+  OIDC_REALM: Type.String({ default: 'gigga', minLength: 1 }),
   /**
    * Issuern att kräva i token. Tom betyder "räkna ut den ur PUBLIC_BASE_URL" — se
    * loadConfig nedan. Anledningen till att den följer webbens adress och inte Keycloaks
@@ -44,7 +44,7 @@ const ConfigSchema = Type.Object({
    */
   OIDC_JWKS_URI: Type.String({ default: '' }),
   /** Mottagaren token ska vara utställd för. Sätts av audience-mapparen i realmet. */
-  OIDC_AUDIENCE: Type.String({ default: 'fastgig-api' }),
+  OIDC_AUDIENCE: Type.String({ default: 'gigga-api' }),
   LOG_LEVEL: Type.Union(
     [
       Type.Literal('fatal'),

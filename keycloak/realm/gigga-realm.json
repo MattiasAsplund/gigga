@@ -1,5 +1,5 @@
 {
-  "realm": "fastgig",
+  "realm": "gigga",
   "displayName": "gigga",
   "enabled": true,
   "organizationsEnabled": true,
@@ -13,7 +13,7 @@
   "smtpServer": {
     "host": "mailpit",
     "port": "1025",
-    "from": "no-reply@fastgig.dev",
+    "from": "no-reply@gigga.dev",
     "fromDisplayName": "gigga",
     "auth": "",
     "ssl": "",
@@ -21,7 +21,7 @@
   },
   "clients": [
     {
-      "clientId": "fastgig-web",
+      "clientId": "gigga-web",
       "name": "gigga webb",
       "enabled": true,
       "protocol": "openid-connect",
@@ -50,12 +50,12 @@
       ],
       "protocolMappers": [
         {
-          "name": "fastgig-api-audience",
+          "name": "gigga-api-audience",
           "protocol": "openid-connect",
           "protocolMapper": "oidc-audience-mapper",
           "consentRequired": false,
           "config": {
-            "included.client.audience": "fastgig-api",
+            "included.client.audience": "gigga-api",
             "access.token.claim": "true",
             "id.token.claim": "false"
           }
@@ -63,7 +63,7 @@
       ]
     },
     {
-      "clientId": "fastgig-api",
+      "clientId": "gigga-api",
       "name": "gigga API",
       "enabled": true,
       "protocol": "openid-connect",

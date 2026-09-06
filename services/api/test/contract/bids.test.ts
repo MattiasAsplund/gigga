@@ -125,7 +125,7 @@ test('F6.3 fastpris med rateMinor i kroppen ger 422', async () => {
   });
 
   expect(res.statusCode).toBe(422);
-  expect(res.json<Problem>().type).toBe('https://fastgig.dev/problems/validation-failed');
+  expect(res.json<Problem>().type).toBe('https://gigga.dev/problems/validation-failed');
 });
 
 test('F6.3 timpris utan estimatedHours ger 422', async () => {
@@ -145,7 +145,7 @@ test('F6.4 anbud på egen förfrågan ger 403', async () => {
   const res = await buyer.post(bidsUrl(requestId), fixedBid);
 
   expect(res.statusCode).toBe(403);
-  expect(res.json<Problem>().type).toBe('https://fastgig.dev/problems/own-request');
+  expect(res.json<Problem>().type).toBe('https://gigga.dev/problems/own-request');
 });
 
 test('F6.5 andra anbudet från samma säljare ger 409', async () => {
@@ -157,7 +157,7 @@ test('F6.5 andra anbudet från samma säljare ger 409', async () => {
   const second = await seller.post(bidsUrl(requestId), hourlyBid);
 
   expect(second.statusCode).toBe(409);
-  expect(second.json<Problem>().type).toBe('https://fastgig.dev/problems/bid-exists');
+  expect(second.json<Problem>().type).toBe('https://gigga.dev/problems/bid-exists');
 });
 
 test('F6.5 en annan säljare får lämna anbud på samma förfrågan', async () => {
@@ -188,7 +188,7 @@ test('F6.7 anbud på okänd förfrågan ger 404', async () => {
   );
 
   expect(res.statusCode).toBe(404);
-  expect(res.json<Problem>().type).toBe('https://fastgig.dev/problems/request-not-found');
+  expect(res.json<Problem>().type).toBe('https://gigga.dev/problems/request-not-found');
 });
 
 test('F6.7 ett requestId som inte är en uuid ger 422', async () => {

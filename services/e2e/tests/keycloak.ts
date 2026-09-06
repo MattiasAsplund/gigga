@@ -18,7 +18,7 @@ import type { Page } from '@playwright/test';
  * Kontot är fast (`admin`/`admin`), satt av AppHosten. Se kommentaren vid
  * keycloak-resursen i apphost.mts.
  */
-const REALM = 'fastgig';
+const REALM = 'gigga';
 const user = process.env.KEYCLOAK_ADMIN_USER ?? 'admin';
 const password = process.env.KEYCLOAK_ADMIN_PASSWORD ?? 'admin';
 

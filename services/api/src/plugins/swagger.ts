@@ -28,7 +28,7 @@ export async function registerSwagger(app: FastifyInstance): Promise<void> {
             scheme: 'bearer',
             bearerFormat: 'JWT',
             description:
-              'Access-token från Keycloak-realmet fastgig. Hämtas genom att logga in i ' +
+              'Access-token från Keycloak-realmet gigga. Hämtas genom att logga in i ' +
               'webbgränssnittet; API:et utfärdar inga egna tokens.',
           },
         },

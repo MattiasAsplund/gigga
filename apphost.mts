@@ -1,4 +1,4 @@
-// fastgig AppHost — orkestrerar Postgres och API:et för localhost-utveckling.
+// gigga AppHost — orkestrerar Postgres och API:et för localhost-utveckling.
 // Körs med bun (Aspire väljer bun så länge bun.lock finns i roten).
 import { mkdir } from "node:fs/promises";
 import {
@@ -131,7 +131,7 @@ const postgres = await builder
 	.withSessionLifetime()
 	.withPgWeb();
 
-const db = await postgres.addDatabase("fastgig");
+const db = await postgres.addDatabase("gigga");
 
 // Mailpit fångar all utgående post och skickar aldrig vidare. Webbgränssnittet ligger
 // som egen URL i dashboarden — det är där verifieringsmailen läses.
@@ -146,7 +146,7 @@ const mailpit = await builder
  * Keycloak äger konton, lösenord, e-postbekräftelse och sessioner. API:et utfärdar inga
  * egna tokens längre — det verifierar Keycloaks mot realmets JWKS.
  *
- * Realmet är data, inte klick i en adminkonsol: keycloak/realm/fastgig-realm.json bär
+ * Realmet är data, inte klick i en adminkonsol: keycloak/realm/gigga-realm.json bär
  * klienterna, organisationerna, SMTP-inställningarna och verifieringskravet. Importen
  * körs vid varje start, vilket passar en miljö där databasen ändå är tom varje gång.
  *
@@ -181,7 +181,9 @@ const mailpit = await builder
  * här utvecklingsmiljön**: Keycloak lever på localhost, är icke-persistent och rivs vid
  * `aspire stop`. En driftsatt miljö sätter dem som hemligheter.
  */
-const keycloakUser = await builder.addParameter("keycloak-user", { value: "admin" });
+const keycloakUser = await builder.addParameter("keycloak-user", {
+	value: "admin",
+});
 const keycloakPassword = await builder.addParameter("keycloak-password", {
 	value: "admin",
 	secret: true,
@@ -248,15 +250,15 @@ const api = await builder
 	// skrev token, vilket är vad OIDC-discovery ändå hade svarat. Det gör att
 	// tunnelvägen längre ned rättar allt på en gång, och att API:et aldrig behöver tala
 	// med Aspires https-endpoint, vars utvecklingscertifikat bun inte har någon kedja till.
-	.withEnvironment("OIDC_AUDIENCE", "fastgig-api")
+	.withEnvironment("OIDC_AUDIENCE", "gigga-api")
 	.withEnvironment("SMTP_HOST", await mailpit.host())
 	.withEnvironment("SMTP_PORT", await mailpit.port())
 	.withEnvironment("S3_ENDPOINT", await minio.uriExpression())
-	.withEnvironment("S3_BUCKET", "fastgig-attachments")
+	.withEnvironment("S3_BUCKET", "gigga-attachments")
 	.withEnvironment("S3_ACCESS_KEY_ID", minioUser)
 	.withEnvironment("S3_SECRET_ACCESS_KEY", minioPassword)
 	// Larmen landar i mailpit tillsammans med all annan post — synliga i dashboarden.
-	.withEnvironment("STORAGE_ALERT_EMAIL", "drift@fastgig.dev")
+	.withEnvironment("STORAGE_ALERT_EMAIL", "drift@gigga.dev")
 	.withHttpHealthCheck({ path: "/health" })
 	.waitFor(db)
 	.waitFor(mailpit)

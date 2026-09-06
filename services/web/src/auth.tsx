@@ -42,11 +42,11 @@ const AuthContext = createContext<AuthValue | null>(null);
  * bygge fungerar på localhost, från e2e-containern och bakom en cloudflare-tunnel —
  * issuern i token blir den adress webbläsaren faktiskt använde.
  */
-const authority = `${window.location.origin}/auth/realms/fastgig`;
+const authority = `${window.location.origin}/auth/realms/gigga`;
 
 export const userManager = new UserManager({
   authority,
-  client_id: 'fastgig-web',
+  client_id: 'gigga-web',
   redirect_uri: `${window.location.origin}/callback`,
   post_logout_redirect_uri: window.location.origin,
   response_type: 'code',

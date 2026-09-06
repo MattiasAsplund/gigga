@@ -88,7 +88,7 @@ test('F5.2 utan token ger 401', async () => {
   });
 
   expect(res.statusCode).toBe(401);
-  expect(res.json<Problem>().type).toBe('https://fastgig.dev/problems/unauthorized');
+  expect(res.json<Problem>().type).toBe('https://gigga.dev/problems/unauthorized');
 });
 
 test('F5.3 deadline i dåtid ger 422', async () => {
@@ -99,7 +99,7 @@ test('F5.3 deadline i dåtid ger 422', async () => {
 
   expect(res.statusCode).toBe(422);
   const problem = res.json<Problem>();
-  expect(problem.type).toBe('https://fastgig.dev/problems/validation-failed');
+  expect(problem.type).toBe('https://gigga.dev/problems/validation-failed');
   expect(problem.errors?.map((e) => e.path)).toContain('deadlineAt');
 });
 

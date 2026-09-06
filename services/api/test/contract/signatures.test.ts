@@ -152,7 +152,7 @@ test('S7.4 säljaren kan inte signera först — det finns inget avtal än', asy
   const res = await seller.post(signUrl(bidId));
 
   expect(res.statusCode).toBe(409);
-  expect(res.json<Problem>().type).toBe('https://fastgig.dev/problems/no-contract-yet');
+  expect(res.json<Problem>().type).toBe('https://gigga.dev/problems/no-contract-yet');
 });
 
 test('S7.5 en utomstående får 403', async () => {
@@ -162,7 +162,7 @@ test('S7.5 en utomstående får 403', async () => {
   const res = await stranger.post(signUrl(bidId));
 
   expect(res.statusCode).toBe(403);
-  expect(res.json<Problem>().type).toBe('https://fastgig.dev/problems/not-a-party');
+  expect(res.json<Problem>().type).toBe('https://gigga.dev/problems/not-a-party');
 });
 
 test('S7.5 en utomstående får 403 även innan avtalet finns', async () => {
@@ -294,7 +294,7 @@ test('S7.4 okänt anbud ger 404', async () => {
   const res = await buyer.post(signUrl('00000000-0000-4000-8000-000000000000'));
 
   expect(res.statusCode).toBe(404);
-  expect(res.json<Problem>().type).toBe('https://fastgig.dev/problems/bid-not-found');
+  expect(res.json<Problem>().type).toBe('https://gigga.dev/problems/bid-not-found');
 });
 
 test('S7.4 utan token ger 401', async () => {

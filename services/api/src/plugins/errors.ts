@@ -1,6 +1,6 @@
 import type { FastifyError, FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
-export const PROBLEM_BASE = 'https://fastgig.dev/problems';
+export const PROBLEM_BASE = 'https://gigga.dev/problems';
 const PROBLEM_CONTENT_TYPE = 'application/problem+json';
 
 export interface FieldError {

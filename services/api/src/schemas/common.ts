@@ -6,7 +6,7 @@ export const ProblemSchema = Type.Object(
     type: Type.String({
       format: 'uri',
       description: 'Stabil identifierare för feltypen.',
-      examples: ['https://fastgig.dev/problems/validation-failed'],
+      examples: ['https://gigga.dev/problems/validation-failed'],
     }),
     title: Type.String({ description: 'Kort, läsbar sammanfattning.' }),
     status: Type.Integer({ description: 'HTTP-statuskoden.' }),

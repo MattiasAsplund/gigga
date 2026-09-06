@@ -15,7 +15,7 @@ afterAll(async () => {
   await db.close();
 });
 
-const ALERT_TO = 'drift@fastgig.test';
+const ALERT_TO = 'drift@gigga.test';
 
 /** Ett anbud med `count` dokumentrader vars objekt aldrig lagts upp. */
 async function brokenAttachments(count: number, prefix: string): Promise<string> {

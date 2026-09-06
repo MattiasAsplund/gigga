@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "fastgig",
+      "name": "gigga",
       "dependencies": {
         "lcoview": "^1.1.1",
       },
@@ -16,7 +16,7 @@
       },
     },
     "services/api": {
-      "name": "@fastgig/api",
+      "name": "@gigga/api",
       "version": "0.0.1",
       "dependencies": {
         "@fastify/ajv-compiler": "^4.0.6",
@@ -40,14 +40,14 @@
       },
     },
     "services/e2e": {
-      "name": "@fastgig/e2e",
+      "name": "@gigga/e2e",
       "version": "0.0.1",
       "devDependencies": {
         "@playwright/test": "1.62.1",
       },
     },
     "services/web": {
-      "name": "@fastgig/web",
+      "name": "@gigga/web",
       "version": "0.0.1",
       "dependencies": {
         "@fontsource-variable/ibm-plex-sans": "^5.3.0",
@@ -86,11 +86,11 @@
 
     "@biomejs/cli-win32-x64": ["@biomejs/cli-win32-x64@2.5.12", "", { "os": "win32", "cpu": "x64" }, "sha512-B1R/l+CwEpKFSuqiwePzPNRk1EiJN8kc0UhdafNz6MZN9v5OFP9HYP1irptvWzHrwVI4blVNGMbxc5zt70m3IA=="],
 
-    "@fastgig/api": ["@fastgig/api@workspace:services/api"],
+    "@gigga/api": ["@gigga/api@workspace:services/api"],
 
-    "@fastgig/e2e": ["@fastgig/e2e@workspace:services/e2e"],
+    "@gigga/e2e": ["@gigga/e2e@workspace:services/e2e"],
 
-    "@fastgig/web": ["@fastgig/web@workspace:services/web"],
+    "@gigga/web": ["@gigga/web@workspace:services/web"],
 
     "@fastify/accept-negotiator": ["@fastify/accept-negotiator@2.1.0", "", {}, "sha512-F3EVbzWt+xcnVaOHmWyIlpuFtbxOln7HDZQsh09MtMmMm/CipMayNt8hnIL8VQi54u2ZociDbf+iluGYkf7B1A=="],
 
