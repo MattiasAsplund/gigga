@@ -309,9 +309,12 @@ const valkey = await builder
  * åt Keycloak (identityProviders i keycloak/realm/gigga-realm.json), och realmet bär
  * adresserna som strängar: webbläsaren skickas till localhost:3005/oidc/authorize, och
  * Keycloak hämtar token och nycklar på folkid:3005 över containernätet. En lottad port
- * hade gjort den första adressen fel varje gång. isProxied: false gör dessutom att
- * podman publicerar porten på alla gränssnitt i stället för DCP:s proxy på 127.0.0.1,
- * så att en telefon på samma nät kan nå backenden efter QR-skanningen.
+ * hade gjort den första adressen fel varje gång. isProxied: false tar bort DCP:s proxy
+ * så att podman publicerar porten direkt — men bara på 127.0.0.1, det är DCP:s
+ * standardvärd för containerportar. Callbacken nedan sätter targetHost till 0.0.0.0, och
+ * först då binder podman 3005 på alla gränssnitt så att en telefon på samma nät kan nå
+ * backenden efter QR-skanningen. Utan den svarar bara localhost:3005, och raden
+ * "folkid på nätet" i dashboarden pekar på en port som inte lyssnar.
  *
  * ISSUER_URL låser issuern till den adress webbläsaren ser. Utan den härleds den ur
  * varje anrops Host-huvud, och tokenanropet från Keycloak hade gett iss=folkid:3005.
@@ -366,6 +369,9 @@ const folkid = await builder
 	.withEnvironment("REDIS_URL", refExpr`redis://${valkeyHostAndPort}`)
 	.withEnvironment("SMTP_SERVER_URL", refExpr`smtp://${mailpitHostAndPort}`)
 	.withHttpEndpoint({ port: 3005, targetPort: 3005, isProxied: false })
+	.withEndpointCallback("http", async (endpoint) => {
+		await endpoint.targetHost.set("0.0.0.0");
+	})
 	.withHttpHealthCheck({ path: "/health" })
 	.withSessionLifetime()
 	.waitFor(pkc)
