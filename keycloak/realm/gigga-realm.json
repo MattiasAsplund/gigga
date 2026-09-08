@@ -2,6 +2,7 @@
   "realm": "gigga",
   "displayName": "gigga",
   "enabled": true,
+  "sslRequired": "none",
   "organizationsEnabled": true,
   "registrationAllowed": false,
   "registrationEmailAsUsername": true,
@@ -71,6 +72,37 @@
       "bearerOnly": true,
       "standardFlowEnabled": false,
       "directAccessGrantsEnabled": false
+    }
+  ],
+  "identityProviders": [
+    {
+      "alias": "folkid",
+      "displayName": "FolkID",
+      "providerId": "oidc",
+      "enabled": true,
+      "updateProfileFirstLoginMode": "on",
+      "trustEmail": false,
+      "storeToken": false,
+      "addReadTokenRoleOnCreate": false,
+      "authenticateByDefault": false,
+      "linkOnly": false,
+      "hideOnLogin": false,
+      "firstBrokerLoginFlowAlias": "first broker login",
+      "config": {
+        "clientId": "gigga",
+        "clientSecret": "gigga-folkid-dev-secret",
+        "authorizationUrl": "http://localhost:3005/oidc/authorize",
+        "tokenUrl": "http://folkid:3005/oidc/token",
+        "jwksUrl": "http://folkid:3005/oidc/jwks",
+        "userInfoUrl": "http://folkid:3005/oidc/userinfo",
+        "validateSignature": "true",
+        "useJwksUrl": "true",
+        "defaultScope": "openid profile",
+        "pkceEnabled": "true",
+        "pkceMethod": "S256",
+        "clientAuthMethod": "client_secret_basic",
+        "syncMode": "IMPORT"
+      }
     }
   ],
   "organizations": [
