@@ -1,24 +1,35 @@
 // gigga AppHost — orkestrerar Postgres och API:et för localhost-utveckling.
 // Körs med bun (Aspire väljer bun så länge bun.lock finns i roten).
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import {
 	createBuilder,
 	type ResourceUrlsCallbackContext,
 } from "./.aspire/modules/aspire.mjs";
 
+// Två flaggor styr vad miljön innehåller.
+//
 // --enable-cloudflare, satt av `bun run dev-cloudflare`, avgör om tunnelresurserna längre
 // ned finns med.
 //
-// Flaggan läses ur två källor, och den andra är inte överflödig: Aspire CLI 13.4.6 skickar
+// --folkid-url={baseUrl}, satt av `bun run dev-folkid`, kopplar in folkid som
+// identitetsleverantör i Keycloak. folkid körs utanför det här projektet, med sina egna
+// beroenden (nyckeltjänst, valkey, databas) — AppHosten startar inget av det. Adressen är
+// allt som behövs: den skrivs in i realmet längre ned, och identitetsleverantören slås på.
+// Utan flaggan står den avstängd, och miljön är densamma som utan folkid.
+//
+// Flaggorna läses ur två källor, och den andra är inte överflödig: Aspire CLI 13.4.6 skickar
 // *inte* vidare argumenten efter `--` till en TypeScript-AppHost. CLI-loggen visar vad som
 // verkligen startas — `bun run apphost.mts`, utan argument. (Vidarebefordran gäller
 // .NET-AppHosts, som får dem via `dotnet run --`.) Det som däremot når hit är
 // npm_lifecycle_script: bun sätter den till hela raden ur package.json innan aspire
 // startas, och den ärvs ned till AppHost-processen.
 //
-// process.argv läses ändå först. Den bär flaggan om AppHosten körs för hand
+// process.argv läses ändå först. Den bär flaggorna om AppHosten körs för hand
 // (`bun apphost.mts --enable-cloudflare`), och den dagen CLI:t börjar skicka vidare
 // argumenten är det den vägen som gäller.
+//
+// En annan adress än den i package.json når alltså bara hit via ett skript där, eller en
+// körning för hand — `bun run dev -- --folkid-url=...` stannar i Aspire CLI.
 const hostArgs = process.argv.slice(2);
 const invocation = [
 	...hostArgs,
@@ -26,11 +37,22 @@ const invocation = [
 ];
 const cloudflareEnabled = invocation.includes("--enable-cloudflare");
 
-// Flaggan plockas bort innan argumenten går vidare till Aspire: värdens
+// Formen är `--folkid-url=adress`, ett enda argument. Ett avslutande snedstreck tas bort
+// så att mallens `{baseUrl}/oidc/...` inte får dubbla.
+const FOLKID_URL_FLAG = "--folkid-url=";
+const folkidUrl =
+	invocation
+		.find((arg) => arg.startsWith(FOLKID_URL_FLAG))
+		?.slice(FOLKID_URL_FLAG.length)
+		.replace(/\/+$/, "") || null;
+
+// Flaggorna plockas bort innan argumenten går vidare till Aspire: värdens
 // konfigurationsläsare läser `--nyckel värde` och skulle annars sluka nästa argument som
-// flaggans värde.
+// flaggans värde, eller ta med en okänd nyckel i sin konfiguration.
 const builder = await createBuilder({
-	args: hostArgs.filter((arg) => arg !== "--enable-cloudflare"),
+	args: hostArgs.filter(
+		(arg) => arg !== "--enable-cloudflare" && !arg.startsWith(FOLKID_URL_FLAG),
+	),
 });
 
 // Bindmonteringarna nedan pekar hit. Podman skapar inte en monteringskälla som saknas
@@ -136,18 +158,21 @@ const db = await postgres.addDatabase("gigga");
 // Mailpit fångar all utgående post och skickar aldrig vidare. Webbgränssnittet ligger
 // som egen URL i dashboarden — det är där verifieringsmailen läses.
 //
-// Fast port: e2e-sviten läser bekräftelsemailen ur mailpits API från en container, och
-// en slumpad port går inte att peka ut därifrån.
+// Fast http-port: e2e-sviten läser bekräftelsemailen ur mailpits API från en container,
+// och en slumpad port går inte att peka ut därifrån. Smtp-porten lottas — alla som
+// skickar post (api och keycloak) får den som referens och behöver inget fast tal.
 const mailpit = await builder
-	.addMailPit("mailpit", { httpPort: 8025, smtpPort: 1025 })
+	.addMailPit("mailpit", { httpPort: 8025 })
 	.withSessionLifetime();
 
 /*
  * Keycloak äger konton, lösenord, e-postbekräftelse och sessioner. API:et utfärdar inga
  * egna tokens längre — det verifierar Keycloaks mot realmets JWKS.
  *
- * Realmet är data, inte klick i en adminkonsol: keycloak/realm/gigga-realm.json bär
- * klienterna, organisationerna, SMTP-inställningarna och verifieringskravet. Importen
+ * Realmet är data, inte klick i en adminkonsol: gigga-realm.json i roten bär klienterna,
+ * organisationerna, SMTP-inställningarna, verifieringskravet och folkid som
+ * identitetsleverantör. Filen är en mall — se skrivningen nedan — och det Keycloak läser
+ * är keycloak/realm/gigga-realm.json, som skrivs ut ur den vid varje start. Importen
  * körs vid varje start, vilket passar en miljö där databasen ändå är tom varje gång.
  *
  * `organization` — singular. Verifierat genom att gå på det: `organizations` avvisas med
@@ -188,6 +213,34 @@ const keycloakPassword = await builder.addParameter("keycloak-password", {
 	value: "admin",
 	secret: true,
 });
+
+/*
+ * Realmet skrivs ut ur mallen innan Keycloak startar.
+ *
+ * Mallen bär `{baseUrl}` där folkids adress ska stå — authorization-, token-, jwks- och
+ * userinfo-adresserna under identityProviders — och identitetsleverantören avstängd
+ * (`"enabled": false`; det är mallens enda förekomst). Med --folkid-url ersätts
+ * `{baseUrl}` med adressen och leverantören slås på. Utan flaggan står den kvar avstängd,
+ * och `{baseUrl}` ersätts med folkids standardadress bara för att realmet ska bära giltiga
+ * adresser — de används aldrig.
+ *
+ * Adressen gäller både webbläsaren (authorizationUrl) och Keycloak i sin container
+ * (token, jwks, userinfo). localhost är alltså inte folkid sett från containern: ska
+ * folkid stå på samma maskin behöver adressen vara en som containern når, till exempel
+ * värdens adress på nätet.
+ *
+ * Det som skrivs ut är genererat och ligger utanför versionshanteringen; mallen i roten
+ * är källan. Katalogen skapas här av samma skäl som outputs/ ovan.
+ */
+const realmDir = `${import.meta.dirname}/keycloak/realm`;
+await mkdir(realmDir, { recursive: true });
+
+let realm = await readFile(`${import.meta.dirname}/gigga-realm.json`, "utf8");
+if (folkidUrl) {
+	realm = realm.replaceAll("http://folkid", folkidUrl);
+	realm = realm.replaceAll('"enabled": false', '"enabled": true');
+}
+await writeFile(`${realmDir}/gigga-realm.json`, realm);
 
 const keycloak = await builder
 	.addKeycloak("keycloak", {

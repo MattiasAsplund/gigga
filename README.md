@@ -1,14 +1,24 @@
 # gigga
 
-Marknadsplats för distansuppdrag. **Köpare** publicerar uppdragsförfrågningar, **säljare**
-lämnar anbud med en genomförandeplan och ett pris — fast eller per timme — och parterna
-signerar ett avtal.
+Marknadsplats för distansuppdrag. **Köpare** publicerar uppdragsförfrågningar och
+fastställer en kravspec, **säljare** lämnar anbud med en genomförandeplan och ett pris —
+fast eller per timme — och parterna signerar ett avtal.
 
-Repot innehåller ett REST-API med 25 endpoints, ett webbgränssnitt ovanpå det, och en
-Playwright-svit som går hela flödet genom gränssnittet.
+Repot innehåller tre tjänster under `services/`:
+
+| Tjänst | Vad det är |
+|---|---|
+| **api** | Fastify-API med 29 endpoints under `/api/v1` och `/health`. Bun, PostgreSQL, TypeBox |
+| **web** | React-gränssnitt ovanpå API:et. Vite, react-router, oidc-client-ts |
+| **e2e** | Playwright-svit som går hela flödet genom gränssnittet och fotar det till ett bildspel |
 
 **Roller är inte knutna till konton.** Samma användare är köpare i en förfrågan och säljare
-i en annan. Behörighet avgörs alltid av ägarskap i just den raden.
+i en annan. Behörighet avgörs av ägarskap i raden — och ägaren är **organisationen**, inte
+personen: kollegor på samma företag delar förfrågningar, anbud och avtal.
+
+Identiteten ligger i **Keycloak**. API:et har inga egna konton, lösenord eller sessioner
+utan verifierar Keycloaks tokens mot realmets JWKS. Varje konto hör till exakt en
+organisation i Keycloak, och det är den som blir part i affären.
 
 ## Kom igång
 
@@ -18,26 +28,52 @@ bun install
 aspire run
 ```
 
-Dashboarden startar på `https://localhost:17173` (se `aspire.config.json`) och länkar
-vidare till:
+Aspire orkestrerar allt ur `apphost.mts` (en TypeScript-AppHost körd med bun) och kör
+containrarna med podman. Dashboarden startar på `https://localhost:17173` (se
+`aspire.config.json`) och länkar vidare till:
 
 | Resurs | Vad du gör där |
 |---|---|
-| **web** | Gränssnittet — registrera, publicera, lämna anbud, signera |
-| **api** | Swagger UI på `/docs`, OpenAPI 3.1 på `/docs/json` |
-| **keycloak** | Konton, lösenord och organisationer. Adminkonsolen; uppgifterna står som parametrar i dashboarden |
-| **mailpit** | Läser bekräftelse- och återställningsmail — inget skickas på riktigt |
+| **web** | Gränssnittet, på `http://localhost:5173` |
+| **api** | Swagger UI på `/docs`, OpenAPI 3.1 på `/docs/json`. Porten lottas; webben proxar dit |
+| **keycloak** | Adminkonsolen, **`admin` / `admin`**. Konton, organisationer, inbjudningar |
+| **mailpit** | All utgående post — bekräftelser, inbjudningar, larm. Inget skickas på riktigt |
 | **pgweb** | Bläddrar i tabellerna |
-| **minio** | Ser anbudsdokumenten som objekt |
-| **e2e** | Playwright-sviten. Startas på begäran, inte vid `aspire run` |
+| **minio** | Anbudsdokumenten som objekt |
+| **e2e** | Playwright-sviten. Startas på begäran från dashboarden, inte vid `aspire run` |
+| **pandoc** | Väntar på e2e och skriver bildspelet till `outputs/` när sviten gått igenom |
 
 Postgres, MinIO och Keycloak är **icke-persistenta**: allt försvinner vid `aspire stop`.
-Schemat byggs upp vid varje start, och realmet importeras om ur
-`keycloak/realm/gigga-realm.json`.
+Schemat migreras fram när API:et startar, och realmet importeras om vid varje start.
 
-Keycloak nås under `/auth` på webbens egen adress (`http://localhost:5173/auth`), proxad
-dit av Vite. Det är vad som gör att tokenens issuer blir densamma vare sig du surfar på
-localhost, kör e2e-sviten i en container eller går genom en cloudflare-tunnel.
+### Konton att börja med
+
+Realmet seedas med två bekräftade konton, ett per sida av affären:
+
+| Konto | Lösenord | Organisation | Roll |
+|---|---|---|---|
+| `buyer1` | `buyer1` | Nordvind Bygg (`nordvind`) | köpare |
+| `seller1` | `seller1` | Sydlig Teknik (`sydlig`) | säljare |
+
+Två organisationer till finns utan medlemmar: `gigga` (marknadsplatsen själv) och
+`granskaren` (en utomstående som kan få läsrätt). Fler konton kommer in genom
+**inbjudan** — ingen registrerar sig själv, realmet har `registrationAllowed: false`.
+Adminkonsolen → realmet **gigga** → *Organizations* → företaget → *Members* → *Invite
+member*. Brevet landar i mailpit; länken leder till ett registreringsformulär där
+lösenordet sätts, och kontot är medlem i företaget från det ögonblicket. Adressen måste
+bekräftas (nästa brev) innan inloggningen släpper in.
+
+### Realmet är en mall
+
+Keycloaks realm ligger som `gigga-realm.json` i roten — klienter, organisationer,
+seedade konton, SMTP mot mailpit och folkid som identitetsleverantör. AppHosten skriver
+ut den till `keycloak/realm/` (gitignorerad) innan Keycloak startar. Ändra mallen, inte
+utskriften.
+
+Keycloak nås under **`/auth` på webbens egen adress** (`http://localhost:5173/auth`),
+proxad dit av Vite. Keycloak bygger sin issuer ur Host-huvudet, så tokenens `iss` blir
+webbens adress vare sig du surfar på localhost, kör e2e-sviten i en container eller går
+genom en cloudflare-tunnel — utan konfiguration per miljö.
 
 ### Visa upp miljön utanför maskinen
 
@@ -45,109 +81,92 @@ localhost, kör e2e-sviten i en container eller går genom en cloudflare-tunnel.
 bun run dev-cloudflare
 ```
 
-Samma miljö, plus två cloudflared-snabbtunnlar: en framför **web** och en framför
-**mailpit**. Adresserna på `trycloudflare.com` hängs på respektive resurs i dashboarden,
-bredvid localhost-länken. `PUBLIC_BASE_URL` följer med webbens tunnel, så bekräftelse- och
-återställningslänkarna i breven pekar utåt och fungerar för den som öppnar gränssnittet
-utifrån.
+Samma miljö plus två cloudflared-snabbtunnlar, en framför **web** och en framför
+**mailpit**. Adresserna på `trycloudflare.com` hängs på respektive resurs i dashboarden.
+`PUBLIC_BASE_URL` följer med webbens tunnel, så länkarna i breven pekar utåt.
 
-API:et får ingen egen tunnel och behöver ingen: Vites `/api`-proxy körs på värden, så det
-sista hoppet till API:et sker aldrig över internet och webbläsaren ser bara ett
-origin.
-
-Tunnelprocesserna är långlivade — de överlever `aspire stop` och återanvänds vid nästa
-start, så en utdelad länk fortsätter fungera över en omstart. Stäng dem från dashboarden
-eller med `pkill cloudflared`.
-
-Första körningen efter att tunnlarna dödats är dashboardens två länkar inte med: adressen
-finns inte när resurserna byggs, och de länkarna räknas ut en gång. Breven pekar rätt ändå
-— api startas om när tunneln svarar — och nästa `bun run dev-cloudflare` har allt på plats.
+API:et behöver ingen tunnel: Vites `/api`-proxy körs på värden, och webbläsaren ser bara
+ett origin. Tunnelprocesserna överlever `aspire stop` och återanvänds vid nästa start, så
+en utdelad länk fortsätter fungera över en omstart; stäng dem från dashboarden eller med
+`pkill cloudflared`. Första körningen efter att de dödats saknar dashboarden tunnellänkarna
+— adressen finns inte när resurserna byggs — men breven pekar rätt ändå, och nästa körning
+har allt på plats.
 
 Kräver `cloudflared` i PATH. Länkarna är öppna för var och en som har dem, och mailpit
-visar all post i miljön — dela dem därefter.
+visar all post i miljön.
+
+### Logga in med folkid
 
 ```bash
-bun test                  # 297 tester, ~45 s
-bun run test:coverage     # samma, plus täckningsrapport
+bun run dev-folkid
 ```
 
-Rapporten hamnar i `services/api/coverage/` (gitignorerad): `index.html` med annoterad
-källkod, `lcov.info` för CI och `summary.txt` som textabell. Täckningen ligger på 92,9 %
-av funktionerna och 94,9 % av raderna; det som saknas är främst SMTP- och S3-koden, som
-testerna med flit ersätter med minnesvarianter.
+Slår på **folkid** som identitetsleverantör i realmet. folkid körs utanför det här
+projektet med sina egna beroenden; AppHosten startar inget av det utan får bara adressen
+som `--folkid-url={baseUrl}` (skriptet sätter `http://localhost:3005`). Med flaggan
+ersätts `{baseUrl}` i mallen och leverantören slås på; utan den står den avstängd och
+syns inte på inloggningssidan. Den incheckade mallen bär i dag adressen `http://folkid`
+utan platshållare, så flaggan gör just nu bara det senare.
 
----
+Adressen används både av webbläsaren och av Keycloak inne i sin container. `localhost`
+räcker alltså bara om folkid svarar där även från containern; står folkid på samma maskin
+är värdens adress på nätet det som fungerar. `bun run dev -- --folkid-url=...` når inte
+fram — Aspire CLI skickar inte vidare argument till en TypeScript-AppHost — utan flaggan
+ges i ett skript i `package.json` eller för hand med `bun apphost.mts --folkid-url=...`.
 
-## Arbetsflödet, från förfrågan till signerat avtal
+På folkid-sidan ska klienten `gigga` vara registrerad med hemligheten
+`gigga-folkid-dev-secret` och återanropsadressen
+`http://localhost:5173/auth/realms/gigga/broker/folkid/endpoint`.
 
-Nio steg. Sätt `API` till API:ets adress från dashboarden.
+## Tester
 
 ```bash
-API=http://localhost:PORT/api/v1
+bun test                  # API:ets svit: 286 tester, ~22 s
+bun run test:coverage     # samma, plus täckningsrapport i services/api/coverage/
+bun run typecheck         # AppHosten; tjänsterna har egna typecheck-skript
+bun run lint              # biome
 ```
 
-### 1. Ingen registrerar sig själv
+API-testerna kör mot en riktig Postgres i podman (`gigga-test-pg`, återanvänd mellan
+körningar) och ersätter SMTP och S3 med minnesvarianter. Tokens signeras med en
+testnyckel i stället för att gå mot Keycloak. Testerna är specifikationen: fallen bär
+stabila ID:n och API:erna har byggts fram genom dem, matrisen står i §7.2 i
+[genomförandeplanen](docs/GENOMFORANDE.md).
 
-Realmet har `registrationAllowed: false`. **Inbjudan är enda vägen in**, och den skickas av
-någon som redan är medlem i organisationen — det är svaret på vem som godkänner att ett
-konto hör hemma i ett företag.
+**E2E-sviten** startas från dashboarden (`aspire resource e2e start`) och kör i
+Playwrights egen image mot den levande miljön. Fyra serialiserade test: hela flödet från
+inbjudan till signerat avtal, ändra och dra tillbaka anbud, ett bekräftat konto utan
+organisation, och en ogiltig bekräftelselänk. Varje navigering fotas till
+`services/e2e/slides/`; när sviten gått igenom skriver **pandoc**-resursen
+`outputs/flow-dokument.pdf` och `outputs/flow.marp`, det senare att presentera med
+`bun run marp`. Video och spår hamnar i `services/e2e/recordings/`, rapporten i
+`services/e2e/report/`.
 
-Domänerna på organisationerna (`nordvind.test` och de andra) avgör *ingenting* om
-medlemskap. Keycloak använder dem för att styra identitetsförd inloggning vidare till ett
-företags egen inloggningstjänst, inget mer. Att en adress ser ut att höra till ett företag
-är alltså inget bevis för att den gör det.
+## Flödet, från förfrågan till signerat avtal
 
-Fyra organisationer finns i realmet:
+Gränssnittet är den avsedda vägen. Sidorna:
 
-| Alias | Namn | Domän | Roll i genomgången |
-|---|---|---|---|
-| `gigga` | Gigga AB | `provider.test` | marknadsplatsen själv — härifrån bjuds kundföretagen in |
-| `nordvind` | Nordvind Bygg | `nordvind.test` | köpare |
-| `sydlig` | Sydlig Teknik | `sydlig.test` | säljare |
-| `granskaren` | Granskaren AB | `granskaren.test` | utomstående med tilldelad läsrätt |
+| Sida | Vad som händer där |
+|---|---|
+| `/` | Landningssida med inloggningsknappen — den enda öppna sidan |
+| `/requests` | Katalogen: öppna uppdrag som går att bjuda på, med filter på ersättningsform |
+| `/requests/new` | Ny förfrågan |
+| `/requests/:id/spec` | Kravspecen: uppdragstyp, intervju, acceptanskriterier, publicering |
+| `/requests/:id` | Förfrågan med sina anbud; läsrätt ges och tas bort här |
+| `/me/requests`, `/me/bids` | Organisationens egna förfrågningar respektive anbud |
+| `/bids/:id` | Anbudet: dokument, ändra, dra tillbaka, signera |
 
-### 2. Bjud in fyra personer
-
-Öppna **keycloak** i dashboarden och logga in som **`admin` / `admin`** — ett fast konto,
-satt i AppHosten, så att inbjudningar går att skicka utan att slå upp ett lottat lösenord
-vid varje omstart. Det gäller bara den här utvecklingsmiljön; Keycloak här är
-icke-persistent och lever på localhost.
-
-Välj realmet **gigga** → *Organizations* → företaget → *Members* → *Invite member*, och
-bjud in:
-
-| Person | Företag | Roll i flödet |
-|---|---|---|
-| Kim | `nordvind` | köpare |
-| Lo | `nordvind` | Kims kollega |
-| Robin | `sydlig` | säljare |
-| Mio | `granskaren` | utomstående som får läsrätt |
-
-### 3. Ta emot inbjudan och bekräfta adressen
-
-Öppna **mailpit** och klicka länken i inbjudan. Den leder till ett registreringsformulär —
-trots att självregistreringen är avstängd. Det är token i länken som öppnar dörren, och
-bara för den adressen. Namnet är ifyllt; lösenordet är det som saknas.
-
-När lösenordet satts är kontot **medlem i företaget direkt**, med bekräftelsen kvar som
-krav. Ordningen är värd att lägga märke till: medlemskapet finns *före* bekräftelsen, så
-bekräftelselänken kan landa i katalogen i stället för på ett `403 organization-missing`.
-
-Logga sedan in i **web**. Keycloak kräver bekräftad adress, skickar brevet, och när länken
-klickats är man inne.
-
-### 3b. Token för curl
-
-Resten av det här dokumentet anropar API:et direkt. Token hämtas ur webbläsaren efter
-inloggning — `sessionStorage`, nyckeln som börjar på `oidc.user:`:
+Samma sak går att göra mot API:et direkt. Token hämtas ur webbläsarens `sessionStorage`
+efter inloggning (nyckeln som börjar på `oidc.user:`), och anropen går genom webbens
+proxy så att issuern stämmer:
 
 ```bash
-API=http://localhost:5173/api/v1   # genom webbens proxy, samma origin som gränssnittet
-KT=<Kims access-token>             # köparen
-ST=<Robins access-token>           # säljaren
+API=http://localhost:5173/api/v1
+KT=<köparens access-token>
+ST=<säljarens access-token>
 ```
 
-### 4. Kim publicerar en förfrågan
+### 1. Köparen publicerar en förfrågan
 
 ```bash
 REQ=$(curl -s -X POST $API/requests -H "authorization: Bearer $KT" \
@@ -161,50 +180,50 @@ REQ=$(curl -s -X POST $API/requests -H "authorization: Bearer $KT" \
 ```
 
 Belopp anges alltid i **minorenhet** — `5000000` är 50 000,00 kr. Aldrig decimaltal.
+`compensationPref` är `fixed`, `hourly` eller `any`.
 
-### 4b. Kim fastställer kravspecen
+### 2. Köparen fastställer kravspecen
 
-En förfrågan går inte att bjuda på förrän kunden sagt vilken sorts uppdrag det är, svarat
-på frågorna som hör till den sorten och godkänt acceptanskriterierna. I gränssnittet är
-det en sida — `/requests/<id>/spec` — och den vägen är den avsedda. Samma sak genom API:et:
+En förfrågan går inte att bjuda på förrän köparen valt uppdragstyp, svarat på frågorna
+som hör till den och godkänt acceptanskriterierna. Elva typer finns — integration,
+datamigrering, API-endpoint, skärm, rapport, automatisering, buggfix, prestanda, miljö,
+förstudie och övrigt — och de är **data**, inte kod: `services/api/catalog/` bär mallarna
+och frågorna, och en ny typ är en fil där. Bakgrunden står i
+[docs/gigga-acceptansmallar.md](docs/gigga-acceptansmallar.md).
 
 ```bash
-curl -s "$API/gig-types" -H "authorization: Bearer $KT"          # typerna att välja mellan
+curl -s "$API/gig-types" -H "authorization: Bearer $KT"
 
 curl -s -X POST $API/requests/$REQ/spec -H "authorization: Bearer $KT" \
   -H 'content-type: application/json' -d '{"gigTypes":["integration"]}'
 
-# Svaret bär frågorna. Ett steg i taget, i den form frågetypen anger:
 curl -s -X PUT $API/requests/$REQ/spec/answers -H "authorization: Bearer $KT" \
   -H 'content-type: application/json' \
   -d '{"answers":[{"questionKey":"integration.systems","value":"Fortnox och vårt ordersystem"}]}'
 
-# Varje acceptanskriterium godkänns aktivt, och sedan publiceras lydelsen:
 curl -s -X POST $API/requests/$REQ/spec/criteria/$RAD/approval -H "authorization: Bearer $KT"
 curl -s -X POST $API/requests/$REQ/spec/publication -H "authorization: Bearer $KT"
 ```
 
-Frågorna är **data**, inte kod: de kommer ur `services/api/catalog/` och en ny uppdragstyp
-är en fil där. En klient ska rendera det den får i `questions` — `kind`, `options` och
-`config` säger hur fältet ser ut — och aldrig hårdkoda en frågenyckel. Villkorade frågor
-dyker upp när svaret på frågan de hänger på är sparat.
+Svaret på `GET /requests/{id}/spec` bär frågorna med `kind`, `options` och `config` —
+en klient renderar det den får och hårdkodar aldrig en frågenyckel. Villkorade frågor
+dyker upp när svaret de hänger på är sparat. `completeness` säger vad som återstår, och
+det är samma räkning som publiceringen gör. Kriterier går att lägga till, ändra och ta
+bort (`/spec/criteria`), och en publicerad lydelse går att öppna på nytt som en ny
+revision (`/spec/revisions`).
 
-`completeness` i svaret säger vad som återstår, och det är samma räkning som publiceringen
-gör: inga överraskningar i sista steget.
-
-### 5. Robin hittar uppdraget
+### 3. Säljaren hittar uppdraget
 
 ```bash
 curl -s "$API/requests" -H "authorization: Bearer $ST"
 ```
 
-Katalogen visar bara uppdrag som faktiskt går att bjuda på: öppna, med deadline kvar. Varje
-post säger hur många anbud som redan finns (`bidCount`), om du själv bjudit (`hasMyBid`),
-om kravspecen är publicerad (`hasPublishedSpec`) och om du får bjuda (`canBid`) — det
-sista är falskt för dina egna förfrågningar, när du redan bjudit, och när kravspecen inte
-är fastställd.
+Katalogen visar öppna förfrågningar med sista anbudsdag kvar. Varje post säger hur många
+anbud som finns (`bidCount`), om din organisation redan bjudit (`hasMyBid`), om kravspecen
+är publicerad (`hasPublishedSpec`) och om du får bjuda (`canBid`) — falskt för egna
+förfrågningar, när ni redan bjudit och när kravspecen inte är fastställd.
 
-### 6. Robin lämnar anbud
+### 4. Säljaren lämnar anbud
 
 ```bash
 BID=$(curl -s -X POST $API/requests/$REQ/bids -H "authorization: Bearer $ST" \
@@ -215,116 +234,97 @@ BID=$(curl -s -X POST $API/requests/$REQ/bids -H "authorization: Bearer $ST" \
 ```
 
 Antingen `{"type":"fixed","amountMinor":…}` eller
-`{"type":"hourly","rateMinor":…,"estimatedHours":…}` — aldrig fält från båda. Svaret räknar
-ut `estimatedTotalMinor` så anbud går att jämföra utan huvudräkning.
+`{"type":"hourly","rateMinor":…,"estimatedHours":…}`, aldrig fält från båda. Svaret räknar
+ut `estimatedTotalMinor`. Ett aktivt anbud per organisation och förfrågan; det går att
+ändra (`PATCH /bids/{id}`) och dra tillbaka (`POST /bids/{id}/withdrawal`) fram till att
+köparen signerat, och efter en tillbakadragning går det att lämna ett nytt.
 
-### 7. Robin bifogar dokument
-
-```bash
-curl -X POST $API/bids/$BID/attachments -H "authorization: Bearer $ST" \
-  -F "file=@offert.pdf"
-```
-
-Markdown och PDF, högst 10 MB per fil och 20 per anbud, **när som helst** — även efter att
-avtalet signerats. Filtypen avgörs av innehållet, inte av filändelsen. Dokument går att
-byta namn på och radera så länge anbudet är ditt.
-
-### 8. Kim läser anbuden
+### 5. Säljaren bifogar dokument
 
 ```bash
-curl -s "$API/me/requests" -H "authorization: Bearer $KT"          # med alla anbud
-curl -OJ "$API/bids/$BID/attachments/archive" -H "authorization: Bearer $KT"
+curl -X POST $API/bids/$BID/attachments -H "authorization: Bearer $ST" -F "file=@offert.pdf"
 ```
 
-Ska en kollega vara med och bedöma? Ge läsrätt med
-`POST /requests/$REQ/permissions` och adressen — då når hen förfrågan, anbuden och
-dokumenten, men kan varken bjuda, signera eller dela vidare. `DELETE` på samma väg stänger
-åtkomsten omedelbart.
+Markdown och PDF, högst 10 MB per fil och 20 per anbud, när som helst — även efter att
+avtalet signerats. Filtypen avgörs av innehållet, inte av ändelsen. Dokument går att byta
+namn på och radera så länge anbudet är ert, och alla går att hämta som ZIP på
+`/bids/{id}/attachments/archive`.
 
-### 9. Båda signerar
+### 6. Köparen läser anbuden och delar med en granskare
+
+```bash
+curl -s "$API/me/requests" -H "authorization: Bearer $KT"
+curl -s -X POST $API/requests/$REQ/permissions -H "authorization: Bearer $KT" \
+  -H 'content-type: application/json' -d '{"email":"mio@granskaren.test"}'
+```
+
+Kollegor i samma organisation ser förfrågan och anbuden utan vidare. Någon utanför —
+en granskare — får **läsrätt** per förfrågan: hen når förfrågan, anbuden och dokumenten
+men kan varken bjuda, signera eller dela vidare. `DELETE` på samma väg stänger åtkomsten.
+Läsrätt går bara att ge den som redan loggat in en gång: raden i `users` skapas vid
+personens första anrop, dessförinnan svarar API:et `404 user-not-found`.
+
+### 7. Båda signerar
 
 ```bash
 curl -X POST $API/bids/$BID/contract/signatures -H "authorization: Bearer $KT"  # köparen
 curl -X POST $API/bids/$BID/contract/signatures -H "authorization: Bearer $ST"  # säljaren
 ```
 
-Det finns inget separat "acceptera anbud" — **köparens signatur är accepterandet.** Den
-skapar avtalet med anbudets villkor frysta i `terms`; ändras anbudet därefter rör det inte
-avtalet. Säljarens signatur aktiverar det, och i samma transaktion blir förfrågan `awarded`,
-det vinnande anbudet `accepted` och övriga `rejected`.
+Det finns inget separat "acceptera anbud": **köparens signatur är accepterandet.** Den
+skapar avtalet med anbudets villkor frysta i `terms`. Säljarens signatur aktiverar det,
+och i samma transaktion blir förfrågan `awarded`, det vinnande anbudet `accepted` och
+övriga `rejected`. Anropet är idempotent.
 
-Anropet är idempotent: samma part kan signera igen utan att något ändras.
-
----
-
-## Vad backenden gör
-
-| Område | Stöd |
-|---|---|
-| **Konton** | Registrering, inloggning, e-postbekräftelse med utgångstid, nytt bekräftelsemail, lösenordsåterställning, kvotgräns per anropare på de två som skickar mail |
-| **Sessioner** | Access-token (1 h) + refresh-token (30 d) med rotation och läckagedetektering, utloggning per session, lösenordsbyte som stänger alla |
-| **Förfrågningar** | Publicera, läsa egna med anbud, katalog över öppna med filter och sidbrytning |
-| **Anbud** | Fast pris eller timpris, beräknat totalbelopp, ett aktivt anbud per säljare och förfrågan, ändra och dra tillbaka |
-| **Dokument** | Markdown och PDF i objektlagring, namnbyte, radering, nedladdning av alla som ZIP |
-| **Företag** | Organisationen är part i affären: kollegor delar förfrågningar, anbud och avtal genom sitt medlemskap |
-| **Delning** | Läsrätt över företagsgränsen till namngivna användare, återkallningsbar |
-| **Avtal** | Tvåpartssignering med frysta villkor, tilldelning och avslag i en transaktion |
-| **Drift** | `/health`, OpenAPI som genereras ur koden, städning av lagringen med larm |
-
-Alla felsvar följer RFC 9457 (`application/problem+json`) med ett stabilt `type` att grena
-på. Se [docs/API.md](docs/API.md) för konventioner och
-[docs/GENOMFORANDE.md](docs/GENOMFORANDE.md) för besluten bakom dem.
-
----
+Alla felsvar följer RFC 9457 (`application/problem+json`) med ett stabilt `type` att
+grena på. Konventionerna och hela endpointlistan står i [docs/API.md](docs/API.md).
 
 ## Vad som saknas
 
-**Flödet slutar vid ett signerat avtal.** Allt som händer efter det saknas helt: ingen
-leveransrapportering, ingen tidrapportering, ingen fakturering och ingen betalning. Ett
-"genomfört anbud" är i dagsläget ett anbud vars avtal är `active` — systemet vet inte om
-arbetet faktiskt blev gjort.
+**Flödet slutar vid ett signerat avtal.** Leveransrapportering, tidrapportering,
+fakturering och betalning finns inte. Kriteriernas utfall vid acceptans (`met`, `failed`,
+`waived`) finns i modellen men har ingen väg dit.
 
 Utöver det:
 
 - **Förfrågningar går inte att ändra eller avbryta.** `cancelled` finns i schemat men
-  inget API sätter den. Säljaren kan ändra och dra tillbaka sitt anbud, köparen har ingen
-  motsvarande väg ut ur sin förfrågan.
-- **Katalogen har varken fritextsökning eller sortering.** Bara filter på ersättningsform.
-- **Ett dokument vars innehåll tappats går inte att ersätta.** Raden markeras
-  `available: false`; säljaren får radera och ladda upp på nytt, vilket ger ett nytt id.
+  inget API sätter den.
+- **Katalogen har varken fritextsökning eller sortering**, bara filter på ersättningsform.
+  En förfrågan utan publicerad kravspec syns ändå, märkt `canBid: false`.
+- **Intervjun sparar när man trycker Spara**, inte per fält. Lämnar man sidan mitt i ett
+  steg är fälten tomma igen.
+- **Inbjudningar skickas i Keycloaks adminkonsol**, inte i gigga. Den som ska bjuda in en
+  kollega behöver ett adminkonto i realmet.
+- **Ett konto kan bara höra till en organisation.** Flera i token ger
+  `403 organization-ambiguous`.
+- **Organisationens visningsnamn når inte fram.** `organization`-claimen bär bara
+  aliaset, och speglingen sätter namnet till aliaset — "Nordvind Bygg" visas som
+  `nordvind`.
+- **Inloggningen sker med lösenord, inga passkeys.** Keycloak-bilden stödjer dem, men
+  realmet slår inte på dem. En passkey är bunden till sin origin, och gigga låter originen
+  flyta för issuerns skull — en passkey från localhost erbjuds inte bakom tunneln.
+- **Ett dokument vars innehåll tappats går inte att ersätta.** Raden märks
+  `available: false`; säljaren får radera och ladda upp på nytt.
 - **Bara läsrätt finns som rättighetsnivå.** Kolumnen är förberedd för fler.
-- **Onboarding saknar sista steget.** Ett konto som registrerats i Keycloak hör inte till
-  någon organisation, och måste kopplas för hand innan det kan användas. Keycloak har
-  inbjudningar; gigga använder dem inte än.
-- **Inloggningen sker med lösenord — inga passkeys.** Keycloak-bilden stödjer dem, men
-  realmet slår inte på dem. Värt att veta innan någon gör det: en passkey är bunden till
-  den origin den skapades på, och gigga låter originen flyta (localhost, containerbryggan,
-  en cloudflare-tunnel) för att tokenens issuer ska följa med. En passkey från localhost
-  erbjuds inte bakom tunneln.
-- **Ett konto kan bara höra till ett företag.** Flera organisationer i token ger
-  `403 organization-ambiguous` — en konsult som arbetar för två bolag behöver ett val i
-  gränssnittet, och det valet måste följa med i varje begäran.
-- **Organisationens visningsnamn når aldrig fram.** `organization`-claimen bär bara
-  aliaset, så "Nordvind Bygg" visas som `nordvind`.
+- **Realmet släpper in vilken redirect-adress som helst** (`*`), med flit i en miljö där
+  adresserna lottas. Ett skarpt realm måste peka ut dem.
 - **Migrationer kan inte rullas tillbaka.** Ofarligt mot en icke-persistent databas, men
   måste lösas innan någon miljö blir persistent.
 
-Tre frågor väntar dessutom på beställarens svar: valuta vid anbud i annan valuta än
-budgeten, momshantering, och om en signatur ska spara en hash av villkoren som bevis. De
-står i §11 i [genomförandeplanen](docs/GENOMFORANDE.md).
-
----
+Hela listan, med skälen, står i §10 i [genomförandeplanen](docs/GENOMFORANDE.md), och tre
+frågor väntar på beställarens svar i §11: valuta vid anbud i annan valuta än budgeten,
+moms, och om en signatur ska spara en hash av villkoren som bevis.
 
 ## Teknik
 
-Bun, Fastify och PostgreSQL, orkestrerat av Aspire med en TypeScript-AppHost. Podman kör
-containrarna. Scheman skrivs en gång i TypeBox och driver både validering, TS-typer och
-OpenAPI-dokumentationen — inget skrivs för hand två gånger.
+Bun, Fastify och PostgreSQL. Scheman skrivs en gång i TypeBox och driver validering,
+TS-typer och OpenAPI-dokumentationen. Anbudsdokumenten ligger i MinIO över S3-API:et; ett
+städjobb rensar föräldralösa objekt och larmar via mail när lagringen tappat innehåll.
 
-Identiteten ligger i **Keycloak** över OIDC: API:et utfärdar inga tokens utan verifierar
-Keycloaks mot realmets JWKS. Webben loggar in med authorization code + PKCE mot Keycloaks
-egna sidor. Realmet — klienter, organisationer, SMTP och verifieringskravet — är en
-incheckad JSON-fil, inte klick i en adminkonsol.
+Keycloak över OIDC: webben loggar in med authorization code + PKCE mot Keycloaks egna
+sidor, API:et verifierar token mot realmets JWKS och speglar identiteten och
+organisationen i egna tabeller vid första anropet. Bakgrunden till bytet från egna konton
+står i [docs/SWITCH_TO_KEYCLOAK.md](docs/SWITCH_TO_KEYCLOAK.md).
 
-Testerna är specifikationen: 263 fall med stabila ID:n som API:erna byggts fram genom.
-Matrisen finns i §7.2 i [genomförandeplanen](docs/GENOMFORANDE.md).
+Aspire med en TypeScript-AppHost orkestrerar miljön, podman kör containrarna.
+`.claude/skills/aspire-dev/` bär vardagskommandon och de fel som brukar dyka upp.

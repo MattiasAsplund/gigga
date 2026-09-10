@@ -58,7 +58,7 @@ function Masthead() {
  * iväg en redan inloggad användare på en ny inloggningsrunda.
  */
 function RequireAuth({ children }: { children: ReactElement }) {
-  const { account, loading, signedIn, blocked, signIn, signOut } = useAuth();
+  const { account, loading, signedIn, blocked, signingOut, signIn, signOut } = useAuth();
   const location = useLocation();
   const [failed, setFailed] = useState<string | null>(null);
   // En gång per montering. Utan spärren startar varje omrendering en ny omdirigering,
@@ -69,13 +69,17 @@ function RequireAuth({ children }: { children: ReactElement }) {
     // Bara den som *inte* är inloggad ska skickas till Keycloak. Den som är inloggad men
     // avvisad av API:et har redan en giltig session — en ny inloggning hade gett samma
     // token tillbaka och studsat användaren fram och tillbaka utan att säga varför.
-    if (loading || account || signedIn || sent.current) return;
+    //
+    // Inte heller den som är på väg ut: sessionen töms lokalt innan Keycloak hunnit
+    // nås, och en inloggning startad här hade tagit över — se `signingOut` i auth.tsx.
+    if (loading || signingOut || account || signedIn || sent.current) return;
     sent.current = true;
     signIn().catch((cause: unknown) =>
       setFailed(cause instanceof Error ? cause.message : String(cause)),
     );
-  }, [loading, account, signedIn, signIn, location.pathname]);
+  }, [loading, signingOut, account, signedIn, signIn, location.pathname]);
 
+  if (signingOut) return <p className="panel">Loggar ut…</p>;
   if (loading) return <p className="panel">Läser in sessionen…</p>;
   if (failed) {
     // Hellre ett besked än en sida som ser ut att ladda för alltid: går Keycloak inte att

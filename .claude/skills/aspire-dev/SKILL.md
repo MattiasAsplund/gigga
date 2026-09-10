@@ -79,8 +79,12 @@ e2e-sviten, som har `withExplicitStart`.
 
 ## Keycloak
 
-Realmet importeras ur `keycloak/realm/gigga-realm.json` vid varje start, och containern
-är icke-persistent: konton du skapar försvinner vid `aspire stop`.
+Realmet importeras ur `keycloak/realm/gigga-realm.json` vid varje start — en genererad,
+gitignorerad fil som AppHosten skriver ut ur mallen `gigga-realm.json` i roten. Ändra
+mallen, inte utskriften. Med `bun run dev-folkid` (`--folkid-url={baseUrl}`) ersätts
+mallens `{baseUrl}` med adressen och folkid slås på som identitetsleverantör; folkid körs
+utanför projektet. Containern är icke-persistent: konton du skapar försvinner vid
+`aspire stop`.
 
 **Ingen registrerar sig själv** — realmet har `registrationAllowed: false`. Nya konton
 kommer in genom en inbjudan: adminkonsolen → realmet gigga → *Organizations* → företaget
