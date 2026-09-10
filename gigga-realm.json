@@ -79,7 +79,7 @@
       "alias": "folkid",
       "displayName": "FolkID",
       "providerId": "oidc",
-      "enabled": true,
+      "enabled": false,
       "updateProfileFirstLoginMode": "on",
       "trustEmail": false,
       "storeToken": false,
@@ -91,10 +91,10 @@
       "config": {
         "clientId": "gigga",
         "clientSecret": "gigga-folkid-dev-secret",
-        "authorizationUrl": "http://localhost:3005/oidc/authorize",
-        "tokenUrl": "http://folkid:3005/oidc/token",
-        "jwksUrl": "http://folkid:3005/oidc/jwks",
-        "userInfoUrl": "http://folkid:3005/oidc/userinfo",
+        "authorizationUrl": "http://folkid/oidc/authorize",
+        "tokenUrl": "http://folkid/oidc/token",
+        "jwksUrl": "http://folkid/oidc/jwks",
+        "userInfoUrl": "http://folkid/oidc/userinfo",
         "validateSignature": "true",
         "useJwksUrl": "true",
         "defaultScope": "openid profile",
@@ -103,6 +103,40 @@
         "clientAuthMethod": "client_secret_basic",
         "syncMode": "IMPORT"
       }
+    }
+  ],
+  "users": [
+    {
+      "id": "f54e78d2-f1ab-5c2e-a4e5-94fc1e6fa650",
+      "username": "buyer1",
+      "enabled": true,
+      "email": "buyer1@nordvind.test",
+      "emailVerified": true,
+      "firstName": "Buyer1",
+      "lastName": "Test",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "buyer1",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "id": "9c21880c-534d-54cc-a309-3f340ef6f0cd",
+      "username": "seller1",
+      "enabled": true,
+      "email": "seller1@sydlig.test",
+      "emailVerified": true,
+      "firstName": "Seller1",
+      "lastName": "Test",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "seller1",
+          "temporary": false
+        }
+      ]
     }
   ],
   "organizations": [
@@ -128,6 +162,12 @@
           "name": "nordvind.test",
           "verified": false
         }
+      ],
+      "members": [
+        {
+          "id": "f54e78d2-f1ab-5c2e-a4e5-94fc1e6fa650",
+          "username": "buyer1"
+        }
       ]
     },
     {
@@ -139,6 +179,12 @@
         {
           "name": "sydlig.test",
           "verified": false
+        }
+      ],
+      "members": [
+        {
+          "id": "9c21880c-534d-54cc-a309-3f340ef6f0cd",
+          "username": "seller1"
         }
       ]
     },

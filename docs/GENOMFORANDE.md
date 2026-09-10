@@ -24,7 +24,7 @@ paketinstallation och testkörning.
 | Objektlagring | MinIO i container, `Bun.S3Client` | Anbudsdokument hör inte hemma i en anslutningspool. S3-klienten är inbyggd i Bun. |
 | DB-klient | **`Bun.SQL`** (inbyggd) | Ingen `pg`-dependency. Taggade template-literals är parametriserade som standard, `sql.begin()` ger transaktioner. Verifierat mot Postgres 17 (§2.2). |
 | Migrationer | Numrerade `.sql`-filer som körs idempotent vid boot | Eftersom databasen ändå är tom vid start är boot-migrering både enklast och alltid korrekt. |
-| Identitet | **Keycloak 26 via OIDC**, orkestrerad av Aspire | Konton, lösenord, e-postbekräftelse och sessioner är löst problem. Realmet checkas in som data (`keycloak/realm/`), inte som klick i en adminkonsol. |
+| Identitet | **Keycloak 26 via OIDC**, orkestrerad av Aspire | Konton, lösenord, e-postbekräftelse och sessioner är löst problem. Realmet checkas in som data (mallen `gigga-realm.json` i roten, utskriven till `keycloak/realm/` vid start), inte som klick i en adminkonsol. |
 | Flerföretagsstöd | **Keycloak Organizations** | GA sedan Keycloak 26, byggd för B2B. Organisationen är part i affären; `organization`-claimen bär aliaset. |
 | Token | **RS256, verifierad mot realmets JWKS** med `jose` | API:et utfärdar ingenting — det är resursserver. `jose` stöder Bun, cachar JWKS och roterar nycklar av sig själv. |
 | Orkestrering | Aspire 13.4.6, **TypeScript-AppHost körd med Bun** | Krav. `aspire run` startar Postgres + API + dashboard med en kommandorad. |
@@ -1378,7 +1378,7 @@ gör resten testdriven. Från etapp 2 gäller §8.1 utan undantag.
 - **Fler rättighetsnivåer** — `permission_level` har bara `read`. Kolumnen finns för att
   slippa en migrering den dag det behövs fler.
 - **Realmet släpper in vilken redirect-adress som helst** — `redirectUris` och
-  `webOrigins` står på `*` i `keycloak/realm/gigga-realm.json`. Det är med flit i en
+  `webOrigins` står på `*` i realmmallen `gigga-realm.json`. Det är med flit i en
   miljö där adressen lottas fram (tunnlar, containerbryggor, lottade portar), men ett
   skarpt realm måste peka ut dem.
 - **Kvotgränsen per anropare är borta** — den satt på `/auth/resend-verification` och

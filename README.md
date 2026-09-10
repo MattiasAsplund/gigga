@@ -32,8 +32,9 @@ vidare till:
 | **e2e** | Playwright-sviten. Startas på begäran, inte vid `aspire run` |
 
 Postgres, MinIO och Keycloak är **icke-persistenta**: allt försvinner vid `aspire stop`.
-Schemat byggs upp vid varje start, och realmet importeras om ur
-`keycloak/realm/gigga-realm.json`.
+Schemat byggs upp vid varje start, och realmet importeras om ur `gigga-realm.json` i
+roten — en mall som AppHosten skriver ut till `keycloak/realm/` (gitignorerad) innan
+Keycloak startar.
 
 Keycloak nås under `/auth` på webbens egen adress (`http://localhost:5173/auth`), proxad
 dit av Vite. Det är vad som gör att tokenens issuer blir densamma vare sig du surfar på
@@ -65,6 +66,30 @@ finns inte när resurserna byggs, och de länkarna räknas ut en gång. Breven p
 
 Kräver `cloudflared` i PATH. Länkarna är öppna för var och en som har dem, och mailpit
 visar all post i miljön — dela dem därefter.
+
+### Logga in med folkid
+
+```bash
+bun run dev-folkid
+```
+
+Samma miljö, med **folkid** påslagen som identitetsleverantör i Keycloak. folkid körs
+utanför det här projektet, med sina egna beroenden; AppHosten startar inget av det utan
+behöver bara adressen. Den ges som `--folkid-url={baseUrl}` — skriptet ovan sätter
+`http://localhost:3005` — och skrivs in i realmet i stället för mallens `{baseUrl}`,
+samtidigt som identitetsleverantören slås på. Utan flaggan står den avstängd och syns
+inte på inloggningssidan.
+
+Adressen används både av webbläsaren och av Keycloak inne i sin container, så `localhost`
+räcker bara om folkid faktiskt svarar där även från containern. Står folkid på samma
+maskin: ge värdens adress på nätet i stället, i ett eget skript i `package.json` eller
+för hand med `bun apphost.mts --folkid-url=...`. `bun run dev -- --folkid-url=...`
+fungerar inte — Aspire CLI skickar inte vidare argumenten till en TypeScript-AppHost.
+
+På folkid-sidan ska klienten `gigga` finnas registrerad med hemligheten
+`gigga-folkid-dev-secret` och återanropsadressen
+`http://localhost:5173/auth/realms/gigga/broker/folkid/endpoint`, som i realmets
+`identityProviders`.
 
 ```bash
 bun test                  # 297 tester, ~45 s

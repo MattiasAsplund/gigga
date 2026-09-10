@@ -1,28 +1,35 @@
 // gigga AppHost — orkestrerar Postgres och API:et för localhost-utveckling.
 // Körs med bun (Aspire väljer bun så länge bun.lock finns i roten).
-import { mkdir } from "node:fs/promises";
-import { networkInterfaces } from "node:os";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import {
 	createBuilder,
-	EndpointProperty,
-	ImagePullPolicy,
-	refExpr,
 	type ResourceUrlsCallbackContext,
 } from "./.aspire/modules/aspire.mjs";
 
+// Två flaggor styr vad miljön innehåller.
+//
 // --enable-cloudflare, satt av `bun run dev-cloudflare`, avgör om tunnelresurserna längre
 // ned finns med.
 //
-// Flaggan läses ur två källor, och den andra är inte överflödig: Aspire CLI 13.4.6 skickar
+// --folkid-url={baseUrl}, satt av `bun run dev-folkid`, kopplar in folkid som
+// identitetsleverantör i Keycloak. folkid körs utanför det här projektet, med sina egna
+// beroenden (nyckeltjänst, valkey, databas) — AppHosten startar inget av det. Adressen är
+// allt som behövs: den skrivs in i realmet längre ned, och identitetsleverantören slås på.
+// Utan flaggan står den avstängd, och miljön är densamma som utan folkid.
+//
+// Flaggorna läses ur två källor, och den andra är inte överflödig: Aspire CLI 13.4.6 skickar
 // *inte* vidare argumenten efter `--` till en TypeScript-AppHost. CLI-loggen visar vad som
 // verkligen startas — `bun run apphost.mts`, utan argument. (Vidarebefordran gäller
 // .NET-AppHosts, som får dem via `dotnet run --`.) Det som däremot når hit är
 // npm_lifecycle_script: bun sätter den till hela raden ur package.json innan aspire
 // startas, och den ärvs ned till AppHost-processen.
 //
-// process.argv läses ändå först. Den bär flaggan om AppHosten körs för hand
+// process.argv läses ändå först. Den bär flaggorna om AppHosten körs för hand
 // (`bun apphost.mts --enable-cloudflare`), och den dagen CLI:t börjar skicka vidare
 // argumenten är det den vägen som gäller.
+//
+// En annan adress än den i package.json når alltså bara hit via ett skript där, eller en
+// körning för hand — `bun run dev -- --folkid-url=...` stannar i Aspire CLI.
 const hostArgs = process.argv.slice(2);
 const invocation = [
 	...hostArgs,
@@ -30,11 +37,22 @@ const invocation = [
 ];
 const cloudflareEnabled = invocation.includes("--enable-cloudflare");
 
-// Flaggan plockas bort innan argumenten går vidare till Aspire: värdens
+// Formen är `--folkid-url=adress`, ett enda argument. Ett avslutande snedstreck tas bort
+// så att mallens `{baseUrl}/oidc/...` inte får dubbla.
+const FOLKID_URL_FLAG = "--folkid-url=";
+const folkidUrl =
+	invocation
+		.find((arg) => arg.startsWith(FOLKID_URL_FLAG))
+		?.slice(FOLKID_URL_FLAG.length)
+		.replace(/\/+$/, "") || null;
+
+// Flaggorna plockas bort innan argumenten går vidare till Aspire: värdens
 // konfigurationsläsare läser `--nyckel värde` och skulle annars sluka nästa argument som
-// flaggans värde.
+// flaggans värde, eller ta med en okänd nyckel i sin konfiguration.
 const builder = await createBuilder({
-	args: hostArgs.filter((arg) => arg !== "--enable-cloudflare"),
+	args: hostArgs.filter(
+		(arg) => arg !== "--enable-cloudflare" && !arg.startsWith(FOLKID_URL_FLAG),
+	),
 });
 
 // Bindmonteringarna nedan pekar hit. Podman skapar inte en monteringskälla som saknas
@@ -137,32 +155,12 @@ const postgres = await builder
 
 const db = await postgres.addDatabase("gigga");
 
-/*
- * Databaser åt folkid och pkc, de två systertjänsterna längre ned. Samma server, samma
- * sessionslivstid — tomma vid varje start, och tjänsterna migrerar dem själva.
- *
- * Resursnamnen har suffixet -db för att inte krocka med tjänsteresurserna pkc och
- * folkid — Aspire kräver unika namn över alla resurstyper.
- *
- * pkc: resursen heter pkc-db, men databasen heter pks. Det är inte ett val utan en
- * anpassning: pkc:s scripts/migrate.ts kör `ALTER DATABASE pks SET search_path ...` med
- * namnet hårdkodat vid varje serverstart. Mot en databas med annat namn faller
- * migreringen på "database pks does not exist" och servern går ned med den. Den dag
- * skriptet läser namnet ur DATABASE_URL kan databaseName strykas.
- *
- * folkid-db har ännu ingen som fyller den: folkid-containern längre ned skriver sin logg
- * i sqlite inne i containern och talar med pkc över HTTP. Databasen finns för det steg
- * som kommer.
- */
-const pkcDb = await postgres.addDatabase("pkc-db", { databaseName: "pks" });
-await postgres.addDatabase("folkid-db");
-
 // Mailpit fångar all utgående post och skickar aldrig vidare. Webbgränssnittet ligger
 // som egen URL i dashboarden — det är där verifieringsmailen läses.
 //
 // Fast http-port: e2e-sviten läser bekräftelsemailen ur mailpits API från en container,
 // och en slumpad port går inte att peka ut därifrån. Smtp-porten lottas — alla som
-// skickar post (api, keycloak, folkid) får den som referens och behöver inget fast tal.
+// skickar post (api och keycloak) får den som referens och behöver inget fast tal.
 const mailpit = await builder
 	.addMailPit("mailpit", { httpPort: 8025 })
 	.withSessionLifetime();
@@ -171,8 +169,10 @@ const mailpit = await builder
  * Keycloak äger konton, lösenord, e-postbekräftelse och sessioner. API:et utfärdar inga
  * egna tokens längre — det verifierar Keycloaks mot realmets JWKS.
  *
- * Realmet är data, inte klick i en adminkonsol: keycloak/realm/gigga-realm.json bär
- * klienterna, organisationerna, SMTP-inställningarna och verifieringskravet. Importen
+ * Realmet är data, inte klick i en adminkonsol: gigga-realm.json i roten bär klienterna,
+ * organisationerna, SMTP-inställningarna, verifieringskravet och folkid som
+ * identitetsleverantör. Filen är en mall — se skrivningen nedan — och det Keycloak läser
+ * är keycloak/realm/gigga-realm.json, som skrivs ut ur den vid varje start. Importen
  * körs vid varje start, vilket passar en miljö där databasen ändå är tom varje gång.
  *
  * `organization` — singular. Verifierat genom att gå på det: `organizations` avvisas med
@@ -214,6 +214,34 @@ const keycloakPassword = await builder.addParameter("keycloak-password", {
 	secret: true,
 });
 
+/*
+ * Realmet skrivs ut ur mallen innan Keycloak startar.
+ *
+ * Mallen bär `{baseUrl}` där folkids adress ska stå — authorization-, token-, jwks- och
+ * userinfo-adresserna under identityProviders — och identitetsleverantören avstängd
+ * (`"enabled": false`; det är mallens enda förekomst). Med --folkid-url ersätts
+ * `{baseUrl}` med adressen och leverantören slås på. Utan flaggan står den kvar avstängd,
+ * och `{baseUrl}` ersätts med folkids standardadress bara för att realmet ska bära giltiga
+ * adresser — de används aldrig.
+ *
+ * Adressen gäller både webbläsaren (authorizationUrl) och Keycloak i sin container
+ * (token, jwks, userinfo). localhost är alltså inte folkid sett från containern: ska
+ * folkid stå på samma maskin behöver adressen vara en som containern når, till exempel
+ * värdens adress på nätet.
+ *
+ * Det som skrivs ut är genererat och ligger utanför versionshanteringen; mallen i roten
+ * är källan. Katalogen skapas här av samma skäl som outputs/ ovan.
+ */
+const realmDir = `${import.meta.dirname}/keycloak/realm`;
+await mkdir(realmDir, { recursive: true });
+
+let realm = await readFile(`${import.meta.dirname}/gigga-realm.json`, "utf8");
+if (folkidUrl) {
+	realm = realm.replaceAll("http://folkid", folkidUrl);
+	realm = realm.replaceAll('"enabled": false', '"enabled": true');
+}
+await writeFile(`${realmDir}/gigga-realm.json`, realm);
+
 const keycloak = await builder
 	.addKeycloak("keycloak", {
 		adminUsername: keycloakUser,
@@ -254,135 +282,6 @@ const minio = await builder
 		rootPassword: minioPassword,
 	})
 	.withSessionLifetime();
-
-/*
- * pkc — nyckeltjänsten ur systerkatalogen bredvid det här klonet. Imagen byggs ur dess
- * egen Dockerfile; sökvägen är relativ AppHost-katalogen, så klonen ska ligga i
- * ../asplund-software/. Migreringarna kör servern själv vid start (scripts/migrate.ts),
- * så inget separat installationssteg behövs — tjänsten väntar bara in databasen.
- *
- * HOST 0.0.0.0: pkc:s standard binder loopback, och då når varken hälsokontrollen eller
- * folkid fram. Porten är Dockerfilens EXPOSE 3001; DCP lottar värdsidan.
- */
-const pkc = await builder
-	.addDockerfile("pkc", "../asplund-software/public_key_catalogue")
-	.withEnvironment("HOST", "0.0.0.0")
-	.withEnvironment("PORT", "3001")
-	.withEnvironment("DATABASE_URL", await pkcDb.uriExpression())
-	.withHttpEndpoint({ targetPort: 3001 })
-	.withHttpHealthCheck({ path: "/health" })
-	.waitFor(pkcDb);
-
-/*
- * Valkey åt folkid. Backenden kopplar upp sig vid start (connectValkey i server.ts) och
- * går ned utan den, så containern är inte valfri. En vanlig addContainer: Aspire har
- * ingen Valkey-integration i den här modulen, och en plain container har ingen
- * anslutningssträng — adressen sätts ihop för hand i REDIS_URL nedan.
- *
- * Endpointen är tcp, inte http: hälsokontrollen nedan gäller folkid, inte Valkey.
- */
-const valkey = await builder
-	.addContainer("valkey", "docker.io/valkey/valkey:latest")
-	.withEndpoint({ targetPort: 6379, name: "tcp" })
-	.withSessionLifetime();
-
-/*
- * folkid — identitetstjänsten ur systerkatalogen, som färdig image. Den byggs inte här:
- * localhost/folkid:latest är taggen som asplund-software/build-folkid.mjs sätter, och
- * den finns bara lokalt. ImagePullPolicy.Never gör att podman aldrig går mot ett
- * register efter den — utan bygget står resursen still med "image not known", vilket
- * är rätt felmeddelande.
- *
- * PORT sätts uttryckligen. Backenden faller annars tillbaka på 3000 medan Dockerfilen
- * exponerar 3005, och endpointen nedan pekar på 3005.
- *
- * Adresserna är referenser, inte strängar: containern når pkc, valkey och mailpit över
- * containernätet, och Aspire räknar ut värdnamn och port per mottagare.
- * HostAndPort och inte Url för valkey — endpointen har ingen http-scheme, och
- * ioredis vill ha redis://.
- *
- * SMTP_SERVER_URL byggs på samma sätt ur mailpits smtp-endpoint: HostAndPort löses ut
- * till mailpit:{lottad port} sett från folkids container, och folkid parsar
- * smtp://host:port själv (parseSmtpUrl i verification.ts).
- *
- * Fast port 3005, till skillnad från pkc — och oproxad. folkid är identitetsleverantör
- * åt Keycloak (identityProviders i keycloak/realm/gigga-realm.json), och realmet bär
- * adresserna som strängar: webbläsaren skickas till localhost:3005/oidc/authorize, och
- * Keycloak hämtar token och nycklar på folkid:3005 över containernätet. En lottad port
- * hade gjort den första adressen fel varje gång. isProxied: false tar bort DCP:s proxy
- * så att podman publicerar porten direkt — men bara på 127.0.0.1, det är DCP:s
- * standardvärd för containerportar. Callbacken nedan sätter targetHost till 0.0.0.0, och
- * först då binder podman 3005 på alla gränssnitt så att en telefon på samma nät kan nå
- * backenden efter QR-skanningen. Utan den svarar bara localhost:3005, och raden
- * "folkid på nätet" i dashboarden pekar på en port som inte lyssnar.
- *
- * ISSUER_URL låser issuern till den adress webbläsaren ser. Utan den härleds den ur
- * varje anrops Host-huvud, och tokenanropet från Keycloak hade gett iss=folkid:3005.
- *
- * OIDC_CLIENTS registrerar gigga-realmet som förlitande part — klient-id och hemlighet
- * ska stämma med identityProviders.config i realmfilen. Hemligheten står i klartext
- * av samma skäl som Keycloaks adminkonto: miljön lever på localhost och rivs vid stopp.
- * Redirect-adressen är Keycloaks broker-endpoint sett från webbläsaren, alltså genom
- * webbens /auth-proxy. En sträng och inte en referens till webbens endpoint: en
- * container som refererar en värdprocess får en containerbryggeadress, och folkid
- * jämför redirect_uri byte för byte mot det Keycloak faktiskt skickar, som byggs ur
- * Host-huvudet — localhost:5173. Genom cloudflare-tunneln fungerar inloggningen via
- * folkid inte: webbläsaren når inte localhost:3005 därifrån, och det kräver en egen
- * tunnel åt folkid innan en tunneladress här vore till någon nytta.
- *
- * Den andra adressen i dashboarden är värdens första externa IPv4-adress, den som
- * telefonen på samma nät faktiskt ska använda. Podman publicerar redan porten där
- * (isProxied: false ovan), men dashboarden visar bara localhost av sig själv, och
- * adressen är den man behöver skriva in i appen. Saknas ett externt gränssnitt — ingen
- * nätverksanslutning alls — utelämnas raden.
- */
-const externalIPv4 = Object.values(networkInterfaces())
-	.flat()
-	.find(
-		(iface) => iface && iface.family === "IPv4" && !iface.internal,
-	)?.address;
-const valkeyHostAndPort = await (await valkey.getEndpoint("tcp")).property(
-	EndpointProperty.HostAndPort,
-);
-const mailpitHostAndPort = await (await mailpit.primaryEndpoint()).property(
-	EndpointProperty.HostAndPort,
-);
-
-const folkidOidcClients = JSON.stringify([
-	{
-		client_id: "gigga",
-		client_secret: "gigga-folkid-dev-secret",
-		name: "gigga (Keycloak)",
-		redirect_uris: [
-			"http://localhost:5173/auth/realms/gigga/broker/folkid/endpoint",
-		],
-	},
-]);
-
-const folkid = await builder
-	.addContainer("folkid", "localhost/folkid:latest")
-	.withImagePullPolicy(ImagePullPolicy.Never)
-	.withEnvironment("PORT", "3005")
-	.withEnvironment("ISSUER_URL", "http://localhost:3005")
-	.withEnvironment("OIDC_CLIENTS", folkidOidcClients)
-	.withEnvironment("KEYSERVER_URL", await pkc.getEndpoint("http"))
-	.withEnvironment("REDIS_URL", refExpr`redis://${valkeyHostAndPort}`)
-	.withEnvironment("SMTP_SERVER_URL", refExpr`smtp://${mailpitHostAndPort}`)
-	.withHttpEndpoint({ port: 3005, targetPort: 3005, isProxied: false })
-	.withEndpointCallback("http", async (endpoint) => {
-		await endpoint.targetHost.set("0.0.0.0");
-	})
-	.withHttpHealthCheck({ path: "/health" })
-	.withSessionLifetime()
-	.waitFor(pkc)
-	.waitFor(valkey)
-	.waitFor(mailpit);
-
-if (externalIPv4) {
-	await folkid.withUrl(`http://${externalIPv4}:3005`, {
-		displayText: `folkid på nätet (${externalIPv4})`,
-	});
-}
 
 // addBunApp kör källfilen direkt — inget bygg- eller transpileringssteg.
 const api = await builder
