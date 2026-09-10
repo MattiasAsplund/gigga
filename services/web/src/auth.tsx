@@ -30,6 +30,16 @@ interface AuthValue {
    * fel svar på fel fråga: sessionen är i sin ordning, det är kontot som saknar något.
    */
   blocked: Problem | null;
+  /**
+   * Sant från klicket på "Logga ut" tills webbläsaren lämnat sidan för Keycloak.
+   *
+   * Utan det går utloggningen inte att genomföra: oidc-client-ts tömmer sessionen ur
+   * sessionStorage *innan* den navigerar, och `userUnloaded` gör att RequireAuth ser en
+   * utloggad användare på en skyddad sida — och startar en inloggning. Den navigeringen
+   * vinner över utloggningens, Keycloak känner igen SSO-sessionen och släpper in
+   * användaren igen utan lösenord. Utloggningen ser då ut att inte göra något alls.
+   */
+  signingOut: boolean;
   signIn(): Promise<void>;
   signOut(): Promise<void>;
 }
@@ -71,6 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [signedIn, setSignedIn] = useState(false);
   const [blocked, setBlocked] = useState<Problem | null>(null);
   const [loading, setLoading] = useState(true);
+  const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -139,14 +150,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       signedIn,
       blocked,
+      signingOut,
       // Ett enda sätt in. Keycloaks inloggningssida bär registreringslänken själv
       // (`registrationAllowed` i realmet), så gigga behöver ingen egen väg till ett
       // formulär Keycloak redan äger — och kan därmed inte råka gå förbi kravet på
       // bekräftad adress.
       signIn: () => userManager.signinRedirect({ state: { from: window.location.pathname } }),
-      signOut: () => userManager.signoutRedirect(),
+      // Flaggan sätts före anropet och tas bara tillbaka om omdirigeringen inte blev av:
+      // lyckas den lämnar webbläsaren sidan, och då finns inget att återställa.
+      signOut: async () => {
+        setSigningOut(true);
+        try {
+          await userManager.signoutRedirect();
+        } catch (cause) {
+          setSigningOut(false);
+          throw cause;
+        }
+      },
     }),
-    [account, loading, signedIn, blocked],
+    [account, loading, signedIn, blocked, signingOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
