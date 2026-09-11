@@ -8,6 +8,10 @@ import {
 	createMemoryObjectStore,
 	type MemoryObjectStore,
 } from "../../src/storage/object-store.ts";
+import {
+	createMemoryTypstCompiler,
+	type MemoryTypstCompiler,
+} from "../../src/typst/compiler.ts";
 import { freshDatabase, type TestDatabase } from "./postgres.ts";
 import { createLocalKeys } from "../../src/auth/keys.ts";
 import { testKeys, TEST_AUDIENCE, TEST_ISSUER } from "./keys.ts";
@@ -19,6 +23,8 @@ export interface TestApp {
 	mail: MemoryMailer;
 	/** Lagrade objekt. Testernas motsvarighet till att titta i MinIO-bucketen. */
 	objects: MemoryObjectStore;
+	/** Typsättningsmotorn. Bär varje kompilerad källa, och går att få att fallera. */
+	typst: MemoryTypstCompiler;
 	/** Direktåtkomst till databasen för assertions som ska förbi API:et. */
 	db: TestDatabase;
 	close(): Promise<void>;
@@ -42,6 +48,7 @@ export async function buildTestApp(
 	const db = await freshDatabase();
 	const mail = createMemoryMailer();
 	const objects = createMemoryObjectStore();
+	const typst = createMemoryTypstCompiler();
 
 	const app = await buildServer({
 		config: {
@@ -65,10 +72,12 @@ export async function buildTestApp(
 			S3_REGION: "us-east-1",
 			ORPHAN_SWEEP_INTERVAL_MINUTES: 0,
 			STORAGE_ALERT_EMAIL: "",
+			TYPST_URL: "http://minne",
 		},
 		sql: db.sql,
 		mailer: mail,
 		objects,
+		typst,
 		keys: createLocalKeys((await testKeys()).jwks),
 	});
 
@@ -80,6 +89,7 @@ export async function buildTestApp(
 		sql: db.sql,
 		mail,
 		objects,
+		typst,
 		db,
 		close: async () => {
 			await app.close();
@@ -98,6 +108,7 @@ export async function buildTestAppWithBrokenDatabase(
 	const sql = new SQL(url);
 	const mail = createMemoryMailer();
 	const objects = createMemoryObjectStore();
+	const typst = createMemoryTypstCompiler();
 	const app = await buildServer({
 		config: {
 			PORT: 0,
@@ -120,10 +131,12 @@ export async function buildTestAppWithBrokenDatabase(
 			S3_REGION: "us-east-1",
 			ORPHAN_SWEEP_INTERVAL_MINUTES: 0,
 			STORAGE_ALERT_EMAIL: "",
+			TYPST_URL: "http://minne",
 		},
 		sql,
 		mailer: mail,
 		objects,
+		typst,
 		keys: createLocalKeys((await testKeys()).jwks),
 	});
 	await app.ready();
@@ -133,6 +146,7 @@ export async function buildTestAppWithBrokenDatabase(
 		sql,
 		mail,
 		objects,
+		typst,
 		db: { url, sql, close: () => sql.end() },
 		close: async () => {
 			await app.close();

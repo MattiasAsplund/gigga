@@ -118,3 +118,17 @@ export async function upsertIdentity(sql: SQL, claims: IdentityClaims): Promise<
     };
   });
 }
+
+/**
+ * Identiteten bakom ett id. Används av avtalsdokumentet, som ska skriva ut vem som
+ * signerade och för vilket företag — inte bara vilket företag som är part.
+ */
+export async function findIdentityById(sql: SQL, id: string): Promise<Identity | null> {
+  const rows = (await sql`
+    ${sql.unsafe(SELECT_IDENTITY)}
+    WHERE u.id = ${id}
+  `) as IdentityRow[];
+
+  const row = rows[0];
+  return row ? toIdentity(row) : null;
+}

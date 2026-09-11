@@ -331,6 +331,34 @@ export const contractExists = () =>
       'är frysta i avtalet. Vill du inte ha uppdraget räcker det att låta bli att signera.',
   });
 
+export const contractNotFound = () =>
+  new ProblemError({
+    status: 404,
+    slug: 'contract-not-found',
+    title: 'Avtalet finns inte',
+    detail: 'Det finns inget avtal med det id:t.',
+  });
+
+export const contractNotActive = () =>
+  new ProblemError({
+    status: 409,
+    slug: 'contract-not-active',
+    title: 'Avtalet är inte signerat av båda',
+    detail:
+      'Dokumentet skrivs när den andra signaturen faller. Ett avtal som bara en part ' +
+      'signerat finns som utkast, inte som handling.',
+  });
+
+export const documentUnavailable = () =>
+  new ProblemError({
+    status: 503,
+    slug: 'document-unavailable',
+    title: 'Avtalsdokumentet går inte att hämta just nu',
+    detail:
+      'Typsättningen svarade inte. Avtalet gäller ändå — signaturerna står i gigga — ' +
+      'och nedladdningen fungerar så snart motorn är uppe igen.',
+  });
+
 export const specNotFound = () =>
   new ProblemError({
     status: 404,

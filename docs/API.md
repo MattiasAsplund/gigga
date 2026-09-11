@@ -141,6 +141,7 @@ bläddringen.
 | `GET /me/requests` | ✔ | Organisationens förfrågningar, var och en med sina anbud |
 | `GET /me/bids` | ✔ | Egna anbud med status och avtalsläge |
 | `POST /bids/{bidId}/contract/signatures` | ✔ | Signerar avtalet |
+| `GET /contracts/{contractId}/document` | ✔ | Hämtar det signerade avtalet som PDF |
 | `GET /requests/{requestId}` | ✔ | Läser en förfrågan med dess anbud |
 | `POST /requests/{requestId}/permissions` | ✔ | Ger någon läsrätt till förfrågan |
 | `GET /requests/{requestId}/permissions` | ✔ | Listar tilldelade rättigheter |
@@ -270,6 +271,31 @@ tidsstämpeln. Ändras anbudet efter att avtalet skapats rör det inte `terms`.
 
 Endast förfrågans köpare och anbudets säljare är parter; alla andra får `403`.
 
+### Avtalet som dokument
+
+När den andra signaturen faller skrivs avtalet som en **PDF** och läggs i objektlagringen,
+och båda parter får ett brev med en länk till `/contracts/{contractId}/document` i webben.
+Länken kräver inloggning: ett klick ur inkorgen går via Keycloak och tillbaka, varpå
+nedladdningen startar av sig själv. Dokumentet ligger aldrig som bilaga i brevet — då hade
+det gått att vidarebefordra förbi behörighetskontrollen.
+
+Dokumentet bär uppdraget, den frysta ersättningen, säljarens plan, kravspecens frågor och
+svar, acceptanskriterierna och två signaturblock med namn, företag och tidsstämpel. Det är
+en **framställning** av signaturen, inte ett kryptografiskt sigill, och säger det rakt ut:
+beviset är tidsstämpeln och identiteten i gigga tills elektronisk signering finns på plats.
+
+Filen heter uppdrag, datum och parterna — `Nattlig export - 2026-09-11 - Nordvind Bygg and
+Sydlig Teknik.pdf`. **Dokumentet är alltid på engelska**, oavsett vilket språk
+gränssnittet står på.
+
+Under huven renderas en typst-källa som POSTas till typsättningsmotorn `rust-server`
+(`TYPST_URL` i AppHosten). Motorn är inte i vägen för affären: går den inte att nå när
+avtalet sluts är avtalet ändå aktivt, och dokumentet sätts vid första nedladdningen.
+Svarar den inte då heller blir svaret `503 document-unavailable`.
+
+Parten är organisationen, så en kollega till den som signerade kan hämta avtalet.
+Utomstående får `403`, ett halvsignerat avtal `409 contract-not-active`.
+
 ### Uppdragstyp och kravspec
 
 **Anbud kräver en publicerad kravspec.** Utan den svarar `POST /requests/{id}/bids` med
@@ -340,6 +366,9 @@ curl -s -X POST $API/bids/$BID/contract/signatures -H "authorization: Bearer $ST
 
 curl -s "$API/me/requests" -H "authorization: Bearer $KT"   # awarded, med anbudens status
 curl -s "$API/me/bids"     -H "authorization: Bearer $ST"   # accepted, med avtalets läge
+
+# Avtalet som fil. Id:t står i svaret från signeringen, och brevet i mailpit bär länken.
+curl -sOJ "$API/contracts/$CONTRACT/document" -H "authorization: Bearer $KT"
 ```
 
 Signeringsanropen har ingen kropp. `content-type: application/json` utan kropp är tillåtet.

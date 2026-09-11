@@ -69,19 +69,42 @@ export async function call<T>(
   return payload as T;
 }
 
-/** Öppnar en nedladdning i webbläsaren med rätt token i huvudet. */
-export async function download(path: string, token: string, filename: string): Promise<void> {
+/**
+ * Filnamnet servern satte, ur Content-Disposition.
+ *
+ * `filename*` läses före `filename`: den förra bär originalet med å, ä och ö, den senare
+ * en nedskalad ASCII-variant för klienter som inte förstår den förra (RFC 6266).
+ */
+function filenameFrom(disposition: string | null): string | null {
+  if (!disposition) return null;
+
+  const extended = /filename\*=UTF-8''([^;]+)/i.exec(disposition);
+  if (extended?.[1]) return decodeURIComponent(extended[1]);
+
+  const plain = /filename="([^"]+)"/i.exec(disposition);
+  return plain?.[1] ?? null;
+}
+
+/**
+ * Öppnar en nedladdning i webbläsaren med rätt token i huvudet.
+ *
+ * Utan `filename` gäller det servern satte. Avtalet namnges där — uppdrag, datum och
+ * parterna — och det namnet ska webben inte hitta på ett eget.
+ */
+export async function download(path: string, token: string, filename?: string): Promise<string> {
   const res = await fetch(BASE + path, { headers: { authorization: `Bearer ${token}` } });
   if (!res.ok) throw new ApiError((await parse(res)) as Problem);
 
+  const name = filename ?? filenameFrom(res.headers.get('content-disposition')) ?? 'download';
   const url = URL.createObjectURL(await res.blob());
   const link = document.createElement('a');
   link.href = url;
-  link.download = filename;
+  link.download = name;
   document.body.append(link);
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+  return name;
 }
 
 // ---------------------------------------------------------------- Modeller

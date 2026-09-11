@@ -264,6 +264,23 @@ export function BidDetail() {
           </p>
         )}
 
+        {signatureState?.status === 'active' && (
+          <div className="actions" style={{ marginTop: '1rem' }}>
+            <button
+              className="secondary"
+              data-testid="download-contract"
+              onClick={() =>
+                void download(`/contracts/${signatureState.contractId}/document`, token).catch(
+                  setError,
+                )
+              }
+            >
+              {_('bidDetail.downloadContract')}
+            </button>
+            <span className="mono">{_('bidDetail.contractInEnglish')}</span>
+          </div>
+        )}
+
         {hasSigned ? (
           <p className="lede" data-testid="already-signed">
             {_('bidDetail.youSignedAs', {

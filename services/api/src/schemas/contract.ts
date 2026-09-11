@@ -3,6 +3,7 @@ import { UuidSchema } from './common.ts';
 import { CompensationSchema } from './bid.ts';
 
 export const BidIdParamsSchema = Type.Object({ bidId: UuidSchema });
+export const ContractIdParamsSchema = Type.Object({ contractId: UuidSchema });
 
 export const ContractStatusSchema = Type.Union([
   Type.Literal('pending_signatures'),

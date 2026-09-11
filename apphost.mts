@@ -6,10 +6,16 @@ import {
 	type ResourceUrlsCallbackContext,
 } from "./.aspire/modules/aspire.mjs";
 
-// Två flaggor styr vad miljön innehåller.
+// Tre flaggor styr vad miljön innehåller.
 //
 // --enable-cloudflare, satt av `bun run dev-cloudflare`, avgör om tunnelresurserna längre
 // ned finns med.
+//
+// --enable-typst-server, satt av `bun run dev-typst`, avgör om typsättningsmotorn
+// `localhost/rust-server` startas. Imagen byggs utanför det här repot, så utan flaggan
+// finns resursen inte med — då blir avtalsdokumentet osatt tills motorn nås, vilket är
+// precis vad API:et redan hanterar. Med flaggan startas containern och API:et får
+// TYPST_URL och väntar in den.
 //
 // --folkid-url={baseUrl}, satt av `bun run dev-folkid`, kopplar in folkid som
 // identitetsleverantör i Keycloak. folkid körs utanför det här projektet, med sina egna
@@ -36,6 +42,7 @@ const invocation = [
 	...(process.env.npm_lifecycle_script ?? "").split(/\s+/),
 ];
 const cloudflareEnabled = invocation.includes("--enable-cloudflare");
+const typstEnabled = invocation.includes("--enable-typst-server");
 
 // Formen är `--folkid-url=adress`, ett enda argument. Ett avslutande snedstreck tas bort
 // så att mallens `{baseUrl}/oidc/...` inte får dubbla.
@@ -51,7 +58,10 @@ const folkidUrl =
 // flaggans värde, eller ta med en okänd nyckel i sin konfiguration.
 const builder = await createBuilder({
 	args: hostArgs.filter(
-		(arg) => arg !== "--enable-cloudflare" && !arg.startsWith(FOLKID_URL_FLAG),
+		(arg) =>
+			arg !== "--enable-cloudflare" &&
+			arg !== "--enable-typst-server" &&
+			!arg.startsWith(FOLKID_URL_FLAG),
 	),
 });
 
@@ -283,6 +293,27 @@ const minio = await builder
 	})
 	.withSessionLifetime();
 
+/*
+ * Typsättningsmotorn bakom avtalsdokumentet.
+ *
+ * `rust-server` tar emot avtalets typst-källa som multipart och svarar med PDF:en. Den
+ * byggs utanför det här repot (`~/research/typst-server`, `podman compose build`) och
+ * körs här ur den lokala imagen — därför `localhost/`-prefixet: utan det letar podman
+ * efter en `rust-server` på docker.io och hittar ingen.
+ *
+ * Porten lottas som API:ets, av samma skäl: motorns standardport 8080 är den port allt
+ * annat också vill ha, och en fast port gör miljön beroende av att maskinen är tom.
+ */
+const typst = typstEnabled ? await addTypstServer() : null;
+
+async function addTypstServer() {
+	return await builder
+		.addContainer("typst", "localhost/rust-server:latest")
+		.withHttpEndpoint({ targetPort: 8080 })
+		.withHttpHealthCheck({ path: "/health" })
+		.withSessionLifetime();
+}
+
 // addBunApp kör källfilen direkt — inget bygg- eller transpileringssteg.
 const api = await builder
 	.addBunApp("api", "./services/api", "src/index.ts")
@@ -322,6 +353,13 @@ const api = await builder
 	.waitFor(mailpit)
 	.waitFor(minio)
 	.waitFor(keycloak);
+
+// TYPST_URL bara när motorn är med. Utan variabeln hoppar API:et över typsättningen och
+// avtalet blir aktivt ändå — samma väg som när motorn står men inte svarar.
+if (typst) {
+	await api.withEnvironment("TYPST_URL", await typst.getEndpoint("http"));
+	await api.waitFor(typst);
+}
 
 /*
  * Gränssnittet. Vite proxar /api vidare till API:et, så webben och API:et delar origin

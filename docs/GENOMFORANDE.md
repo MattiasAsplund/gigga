@@ -518,6 +518,7 @@ var — den refereras från testfallsmatrisen och från commit-historiken.
 | 34 | `DELETE /api/v1/requests/{requestId}/spec/criteria/{criterionId}` | ✔ | Stryk en rad |
 | 35 | `POST /api/v1/requests/{requestId}/spec/criteria/{criterionId}/approval` | ✔ | Godkänn en rad |
 | 36 | `POST /api/v1/requests/{requestId}/spec/publication` | ✔ | Publicera kravspecen |
+| 37 | `GET /api/v1/contracts/{contractId}/document` | ✔ | Hämta det signerade avtalet som PDF |
 
 ### 6.1 Detaljer per API
 
@@ -883,6 +884,35 @@ med att villkoren är data.
 Efter publicering är lydelsen låst: skrivningar mot den ger `409 spec-not-draft`, och
 anbud som lämnas därefter binds till versionen.
 
+**37. `GET /contracts/{contractId}/document`** → `200 application/pdf`
+
+Det signerade avtalet som fil, med `Content-Disposition: attachment` och ett filnamn av
+uppdragstitel, datum och parternas företag (`Nattlig export - 2026-09-11 - Nordvind Bygg
+and Sydlig Teknik.pdf`). Både `filename` och `filename*` sätts, så å, ä och ö överlever
+klienter som bara förstår den ena (RFC 6266).
+
+Behörigheten följer avtalet, inte pennan: **organisationen** är part, så en kollega till
+den som signerade kommer åt dokumentet. Utomstående får `403 not-a-party`, okänt id
+`404 contract-not-found`, och ett avtal som bara en part signerat `409
+contract-not-active` — dokumentet skrivs när den andra signaturen faller, och ett halvt
+avtal är ett utkast, inte en handling.
+
+**Så blir dokumentet till.** Andra signaturen fryser inget nytt — villkoren är redan
+frysta i `terms` — utan renderar en **typst-källa** ur dem, kravspecens frågor och svar,
+acceptanskriterierna och de två signaturerna med namn, företag och tidsstämpel. Källan
+POSTas som multipart till typsättningsmotorn (`rust-server`, `TYPST_URL`), och PDF:en som
+kommer tillbaka läggs i objektlagringen under `contracts/{contractId}`. Därefter går ett
+brev till båda parter med en länk till den här vägen.
+
+Renderingen är en ren funktion (`domain/contract-document.ts`): all fritext går in som
+**typst-strängliteraler**, så en plan som innehåller `#set page(...)` blir text i
+dokumentet och inte kod i typsättningen. Dokumentet är på **engelska** — katalogens
+nycklar slås upp i webbens `en-GB.json`, den enda ordboken som finns.
+
+Motorn får inte kunna fälla ett avtal. Går kompileringen inte igenom när signaturen
+faller loggas det, avtalet är ändå aktivt, och den här vägen sätter dokumentet när någon
+begär det. Svarar motorn inte heller då blir det `503 document-unavailable`.
+
 ---
 
 ## 7. Testdriven leverans
@@ -1044,6 +1074,24 @@ Varje rad är ett `test()`. ID:t är stabilt och används som referens i prompt-
 | S7.7 | Ändrat anbud efter avtalet påverkar inte `terms` |
 | S7.8 | Två samtidiga signaturer ger exakt ett avtal (`FOR UPDATE`-test) |
 | S7.8b | Samtidiga signaturer från båda parter aktiverar avtalet en gång |
+| **K** | **Avtalsdokumentet** (API 37) |
+| K.1 | Typst-källan bär parterna, uppdraget, priset och båda signaturerna |
+| K.2 | Intervjuns frågor och svar samt acceptanskriterierna följer med |
+| K.3 | Citattecken och bakstreck i fritext bryter inte ut ur strängliteralen |
+| K.4 | Filnamnet bär uppdragstitel, datum och parterna |
+| K.5 | Filnamnet tål snedstreck, radbrytningar och en lång titel |
+| K.6 | Löpande ersättning visar timpris, timmar och uppskattad summa |
+| K.7 | Belopp formateras ur minorenheten med två decimaler |
+| K.8 | Svaren blir läsbara meningar, inte alternativnycklar |
+| K.9 | Andra signaturen lägger dokumentet i lagringen och bokför vem som signerade |
+| K.10 | Båda parterna får ett brev med länken till dokumentet |
+| K.11 | Köparen laddar ner avtalet ⇒ 200 `application/pdf` med talande filnamn |
+| K.12 | Säljaren får samma byten — dokumentet kompileras inte om |
+| K.13 | Utomstående ⇒ 403 |
+| K.14 | Okänt avtal ⇒ 404; utan token ⇒ 401 |
+| K.15 | Halvsignerat avtal ⇒ 409 |
+| K.16 | Motorn nere vid signeringen fäller inte avtalet: breven går ut ändå, och dokumentet skrivs vid nedladdningen |
+| K.17 | Kriterierna står på engelska i dokumentet, inte som katalognycklar |
 | **M** | **Migrationsrunner** (etapp 1) |
 | M.1 | Migrationerna läses i filnamnsordning |
 | M.2 | En katalog utan migrationer är inte ett fel |
@@ -1311,6 +1359,7 @@ Varje etapp är en pull-liknande enhet med en tydlig grön-tröskel.
 | **6** ✅ | Avtalssignering (API 7) | `domain/contract-rules.ts`, transaktionell tillståndsmaskin med `sql.begin` + `FOR UPDATE OF r`, frysta villkor, tom-kropp-parser | **Klar.** S7.\*, D.3 gröna; 92/92 i hela sviten; hela flödet kört mot levande Aspire |
 | **7** ✅ | Dokumentation & finish | OpenAPI-tvärsnittstester, `docs/API.md` | **Klar.** X.\* gröna; hela sviten 103/103; Swagger UI och hela flödet körda mot levande Aspire |
 | **25** ✅ | Keycloak, OIDC och organisationer | `Aspire.Hosting.Keycloak` i AppHosten, `keycloak/realm/gigga-realm.json`, `auth/keys.ts` (`jose`), omskriven `plugins/auth.ts`, `018_keycloak_identities.sql`, `db/identities.ts`, organisationsskopning på åtta ställen, `GET /me`, `oidc-client-ts` i webben,  `test/helpers/keys.ts`, `signedIn`/`blocked` i webbens auth | **Klar.** O.\* och FTG.\* gröna; 286/286; e2e 3/3 mot levande miljö, hela vägen från Keycloaks registreringssida via bekräftelsemailet i mailpit till signerat avtal. Åtta API:er, sju migrationers kolumner och sex kontraktsviter försvann. Fyra fel funna genom att gå på dem: featureflaggan heter `organization` i singular, `KC_HTTP_RELATIVE_PATH` flyttar även hälsokontrollen (`KC_HTTP_MANAGEMENT_RELATIVE_PATH` pinnar tillbaka den), en fast port 8080 krockade med en typst-server på maskinen, och webbläsaren i e2e-containern saknade `crypto.subtle` utanför en säker kontext |
+| **26** ✅ | Avtalet som dokument (API 37) | `019_contract_documents.sql`, `domain/contract-document.ts`, `typst/compiler.ts`, `documents/contract-document.ts`, `catalog/texts.ts`, `mail/contract-signed-email.ts`, `rust-server` i AppHosten, `pages/ContractDocument.tsx` | **Klar.** K.\* gröna; 303/303; e2e 4/4 mot levande miljö, hela vägen från signaturen via brevet i mailpit till en nedladdad PDF. Källan verifierad mot både typst-binären och `rust-server`-containern: två sidor, injektionsförsöket i planen renderat som text. Två val som blev tydliga på vägen: strängliteraler genomgående (en `#`-sträng i markup skrivs ut med citattecken, och inuti `#grid(...)` är `#` ett syntaxfel), och en enda engelsk ordbok — API:et läser webbens `en-GB.json` i stället för att bära en egen kopia |
 | **24** ✅ | Intervjun i webben | `pages/RequestSpec.tsx`, kravspecpanel på förfrågningssidan, katalogens skäl, sju fälttyper i `styles.css` | **Klar.** E2E går klickvägen genom intervjun i stället för API-genvägen: 3/3 gröna mot levande miljö. Två fel funna på vägen: bildspelsfixturens helsidesfoto lämnade skruvade layoutmått så att nästa klick inte skickade formuläret, och indikatorns blockerarlista var en kopia av hela intervjun |
 | **23** ✅ | Anbud kräver publicerad kravspec | Spärr i `POST /requests/{id}/bids`, `hasPublishedSpec` i katalogen, `test/helpers/spec.ts`, `publishSpec` i e2e-sviten | **Klar.** F6.9 och L8.10 gröna; 354/354. Spärren fällde 87 befintliga testfall — samtliga sviter som lämnar anbud fick en publicerad kravspec via `publishSpecFor`. E2E-sviten körd mot levande miljö: 3/3 gröna, med kravspecen publicerad via API:et (klickvägen kom i etapp 24) |
 | **22** ✅ | Intervjun över HTTP (API 26–36) | `routes/gig-types.ts`, `routes/request-specs.ts`, `schemas/gig.ts`, `domain/spec-completeness.ts`, sex nya Problem Details | **Klar.** I.\* gröna; 351/351. X.1c utökad med de elva nya operationerna. Två fel funna på vägen: parallella frågor på en transaktionsanslutning låste sig (readSpec kördes med `Promise.all`), och revisionsvägen svarade 409 där 404 var det upplysande |
@@ -1400,6 +1449,19 @@ gör resten testdriven. Från etapp 2 gäller §8.1 utan undantag.
 - **Observerbart utfall går inte att kontrollera maskinellt** — publiceringskontrollen
   räknar kriterierader och kräver godkännande, men kan inte avgöra om en rad går att svara
   ja eller nej på. Formkravet ligger tills vidare hos den som skriver.
+- **Avtalet är alltid på engelska** — dokumentet skrivs av tjänsten när den andra
+  signaturen faller, och då finns ingen läsare att fråga om språk. Ett avtal på parternas
+  eget språk kräver ett svar på vilken lydelse som gäller vid tvist, inte bara en
+  översättning till. Samma sak gäller brevet, som är på svenska som all annan post API:et
+  skickar: språkvalet bor i webbläsaren och följer inte med till servern.
+- **Signaturen är en framställning, inte ett sigill** — dokumentet ritar namnet och
+  skriver ut vem, för vilket företag och när, och säger rakt ut att beviset ligger i
+  giggas logg. Elektronisk signering och en hash av `terms` hör ihop och bör införas
+  tillsammans (se den öppna frågan i §11.4).
+- **Kompileringen sker i signeringens begäran** — den som signerar sist väntar på att
+  dokumentet sätts och att två brev går iväg. Det är hundratals millisekunder i en miljö
+  där motorn står bredvid, men det hör hemma i en kö den dagen det inte gör det. Nedsidan
+  är redan hanterad: en motor som inte svarar loggas och dokumentet sätts vid nedladdningen.
 - **Betalning, fakturering, tidrapportering** — nästa domänområde efter avtalet.
 - **Migrationsverktyg med rollback** — meningslöst mot en icke-persistent databas, men
   krävs innan någon persistent miljö sätts upp. Detta är den skuld som förfaller först.
