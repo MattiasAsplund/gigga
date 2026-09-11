@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { call, type RequestDetail } from '../api.ts';
 import { useToken } from '../auth.tsx';
 import { Empty, Notice, Status, formatAmount, formatDate, useLoader } from '../components/ui.tsx';
+import { _ } from '../i18n.ts';
 
 export function MyRequests() {
   const token = useToken();
@@ -11,14 +12,14 @@ export function MyRequests() {
 
   return (
     <>
-      <h1>Mina förfrågningar</h1>
-      <p className="lede">Förfrågningar du har publicerat, med anbuden som kommit in.</p>
+      <h1>{_('myRequests.title')}</h1>
+      <p className="lede">{_('myRequests.lede')}</p>
 
       <Notice error={error} />
 
       {data && data.items.length === 0 && (
         <Empty>
-          Du har inte publicerat något än. <Link to="/requests/new">Skapa en förfrågan.</Link>
+          {_('myRequests.empty')} <Link to="/requests/new">{_('myRequests.emptyLink')}</Link>
         </Empty>
       )}
 
@@ -34,16 +35,16 @@ export function MyRequests() {
             <div className="record__body">
               <div className="meta">
                 <span>
-                  <span className="eyebrow">Budget</span>{' '}
+                  <span className="eyebrow">{_('myRequests.budget')}</span>{' '}
                   <span className="amount">
                     {request.budget ? formatAmount(request.budget.amountMinor) : '—'}
                   </span>
                 </span>
                 <span>
-                  <span className="eyebrow">Sista dag</span> {formatDate(request.deadlineAt)}
+                  <span className="eyebrow">{_('myRequests.deadline')}</span> {formatDate(request.deadlineAt)}
                 </span>
                 <span data-testid="request-bid-count">
-                  <span className="eyebrow">Anbud</span> {request.bids.length}
+                  <span className="eyebrow">{_('myRequests.bids')}</span> {request.bids.length}
                 </span>
               </div>
 
@@ -53,7 +54,7 @@ export function MyRequests() {
                 dem. Varje rad går vidare till anbudet med dokument och avtal.
               */}
               {request.bids.length === 0 ? (
-                <Empty>Inga anbud har kommit in än.</Empty>
+                <Empty>{_('myRequests.noBids')}</Empty>
               ) : (
                 <ul className="plain-list" data-testid="request-bids">
                   {request.bids.map((bid) => (
@@ -67,7 +68,7 @@ export function MyRequests() {
                       </span>
                       <Link to={`/bids/${bid.id}`}>
                         <button className="quiet" data-testid="inspect-bid">
-                          Granska anbudet
+                          {_('myRequests.inspectBid')}
                         </button>
                       </Link>
                     </li>

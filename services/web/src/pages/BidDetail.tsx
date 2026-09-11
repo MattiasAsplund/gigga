@@ -11,6 +11,7 @@ import {
   type RequestDetail,
 } from '../api.ts';
 import { useAuth, useToken } from '../auth.tsx';
+import { _ } from '../i18n.ts';
 import { Empty, Notice, Status, formatAmount, formatDate, useLoader } from '../components/ui.tsx';
 
 export function BidDetail() {
@@ -100,7 +101,7 @@ export function BidDetail() {
   }
 
   async function rename(attachmentId: string, current: string) {
-    const filename = window.prompt('Nytt filnamn', current);
+    const filename = window.prompt(_('bidDetail.renamePrompt'), current);
     if (!filename || filename === current) return;
     setError(null);
     try {
@@ -142,7 +143,7 @@ export function BidDetail() {
 
   return (
     <>
-      <h1>Anbud</h1>
+      <h1>{_('bidDetail.title')}</h1>
       <div className="meta" style={{ marginBottom: '1.5rem' }}>
         <span className="mono" data-testid="bid-id">
           {bidId}
@@ -157,19 +158,22 @@ export function BidDetail() {
           <h2>{summary.requestTitle}</h2>
           {summary.sellerDisplayName && (
             <p className="lede" data-testid="bid-seller">
-              Anbud från {summary.sellerDisplayName}
+              {_('bidDetail.bidFrom', { seller: summary.sellerDisplayName })}
             </p>
           )}
           <p data-testid="bid-plan">{summary.plan}</p>
           <div className="meta">
             <span>
-              <span className="eyebrow">Ersättning</span>{' '}
+              <span className="eyebrow">{_('bidDetail.compensation')}</span>{' '}
               {summary.compensation.type === 'fixed'
-                ? `Fast pris ${formatAmount(summary.compensation.amountMinor)}`
-                : `${formatAmount(summary.compensation.rateMinor)}/tim × ${summary.compensation.estimatedHours} tim`}
+                ? _('bidDetail.fixedPrice', { amount: formatAmount(summary.compensation.amountMinor) })
+                : _('bidDetail.hourlyPrice', {
+                    rate: formatAmount(summary.compensation.rateMinor),
+                    hours: summary.compensation.estimatedHours,
+                  })}
             </span>
             <span>
-              <span className="eyebrow">Beräknat totalt</span>{' '}
+              <span className="eyebrow">{_('bidDetail.estimatedTotal')}</span>{' '}
               <span className="amount" data-testid="bid-total">
                 {formatAmount(summary.estimatedTotalMinor)}
               </span>
@@ -183,22 +187,22 @@ export function BidDetail() {
       )}
 
       <section className="section">
-        <h2>Dokument</h2>
+        <h2>{_('bidDetail.documents')}</h2>
 
         {isSeller && (
           <form className="actions" onSubmit={upload} data-testid="upload-form">
             <label style={{ flex: 1, maxWidth: '24rem' }}>
-              <span>Markdown eller PDF, högst 10 MB</span>
+              <span>{_('bidDetail.uploadHint')}</span>
               <input type="file" name="file" accept=".md,.markdown,.pdf" data-testid="file" />
             </label>
             <button type="submit" data-testid="upload">
-              Ladda upp
+              {_('bidDetail.upload')}
             </button>
           </form>
         )}
 
         <ul className="plain-list" style={{ marginTop: '1rem' }} data-testid="attachments">
-          {files.data?.items.length === 0 && <Empty>Inga dokument är bifogade.</Empty>}
+          {files.data?.items.length === 0 && <Empty>{_('bidDetail.noDocuments')}</Empty>}
           {files.data?.items.map((file) => (
             <li
               className={`line-item${file.available ? '' : ' line-item--unavailable'}`}
@@ -209,8 +213,8 @@ export function BidDetail() {
               <span>
                 {file.filename}{' '}
                 <span className="mono">
-                  {(file.sizeBytes / 1024).toFixed(1)} kB
-                  {file.available ? '' : ' — innehållet saknas'}
+                  {_('bidDetail.fileSize', { kb: (file.sizeBytes / 1024).toFixed(1) })}
+                  {file.available ? '' : _('bidDetail.contentMissing')}
                 </span>
               </span>
               {isSeller && (
@@ -220,14 +224,14 @@ export function BidDetail() {
                     onClick={() => void rename(file.id, file.filename)}
                     data-testid="rename"
                   >
-                    Byt namn
+                    {_('bidDetail.rename')}
                   </button>
                   <button
                     className="quiet"
                     onClick={() => void remove(file.id)}
                     data-testid="delete-attachment"
                   >
-                    Radera
+                    {_('bidDetail.delete')}
                   </button>
                 </span>
               )}
@@ -245,36 +249,40 @@ export function BidDetail() {
               )
             }
           >
-            Ladda ner alla som ZIP
+            {_('bidDetail.downloadArchive')}
           </button>
         </div>
       </section>
 
       <section className="section">
-        <h2>Avtal</h2>
+        <h2>{_('bidDetail.contract')}</h2>
         {signatureState ? (
           <ContractBlock contract={signatureState} />
         ) : (
           <p className="lede" data-testid="no-contract">
-            Inget avtal är påbörjat. Köparens signatur skapar det och innebär samtidigt att
-            anbudet antas; säljarens signatur aktiverar det.
+            {_('bidDetail.noContract')}
           </p>
         )}
 
         {hasSigned ? (
           <p className="lede" data-testid="already-signed">
-            Du har signerat som {isSeller ? 'säljare' : 'köpare'}.{' '}
+            {_('bidDetail.youSignedAs', {
+              role: isSeller ? _('bidDetail.roleSeller') : _('bidDetail.roleBuyer'),
+            })}{' '}
             {signatureState?.status === 'active'
-              ? 'Avtalet är bindande.'
-              : 'Avtalet blir bindande när motparten signerar.'}
+              ? _('bidDetail.contractBinding')
+              : _('bidDetail.contractBindingWhenCounterpartSigns')}
           </p>
         ) : (
           <div className="actions" style={{ marginTop: '1rem' }}>
             <button onClick={() => void sign()} disabled={busy} data-testid="sign">
-              Signera avtalet
+              {_('bidDetail.sign')}
             </button>
             <span className="mono">
-              {account?.email} signerar som {isSeller ? 'säljare' : 'köpare'}
+              {_('bidDetail.signsAs', {
+                email: account?.email ?? '',
+                role: isSeller ? _('bidDetail.roleSeller') : _('bidDetail.roleBuyer'),
+              })}
             </span>
           </div>
         )}
@@ -308,10 +316,9 @@ function ChangeBid({
   if (bid.contract) {
     return (
       <section className="section">
-        <h2>Ändra anbudet</h2>
+        <h2>{_('bidDetail.changeBid')}</h2>
         <p className="lede" data-testid="bid-locked">
-          Avtalet är påbörjat, och anbudets villkor ligger frysta i det. Vill du inte ha
-          uppdraget räcker det att låta bli att signera.
+          {_('bidDetail.lockedByContract')}
         </p>
       </section>
     );
@@ -320,10 +327,10 @@ function ChangeBid({
   if (bid.status !== 'submitted') {
     return (
       <section className="section">
-        <h2>Ändra anbudet</h2>
+        <h2>{_('bidDetail.changeBid')}</h2>
         <p className="lede" data-testid="bid-locked">
-          Anbudet är {bid.status} och går inte längre att ändra.
-          {bid.status === 'withdrawn' && ' Du kan lämna ett nytt anbud på förfrågan.'}
+          {_('bidDetail.lockedByStatus', { status: bid.status })}
+          {bid.status === 'withdrawn' && _('bidDetail.canBidAgain')}
         </p>
       </section>
     );
@@ -365,7 +372,7 @@ function ChangeBid({
   }
 
   async function withdraw() {
-    if (!window.confirm('Dra tillbaka anbudet? Du kan lämna ett nytt på samma förfrågan.')) {
+    if (!window.confirm(_('bidDetail.withdrawConfirm'))) {
       return;
     }
     setBusy(true);
@@ -385,28 +392,28 @@ function ChangeBid({
 
   return (
     <section className="section">
-      <h2>Ändra anbudet</h2>
+      <h2>{_('bidDetail.changeBid')}</h2>
       <form className="stack" onSubmit={save} data-testid="change-bid-form">
         <label>
-          <span>Genomförandeplan</span>
+          <span>{_('bidDetail.plan')}</span>
           <textarea name="plan" required defaultValue={bid.plan} data-testid="change-plan" />
         </label>
 
         <label style={{ maxWidth: '16rem' }}>
-          <span>Ersättningsform</span>
+          <span>{_('bidDetail.compensationType')}</span>
           <select
             value={kind}
             onChange={(e) => setKind(e.target.value as 'fixed' | 'hourly')}
             data-testid="change-compensation-type"
           >
-            <option value="hourly">Timpris</option>
-            <option value="fixed">Fast pris</option>
+            <option value="hourly">{_('bidDetail.hourly')}</option>
+            <option value="fixed">{_('bidDetail.fixed')}</option>
           </select>
         </label>
 
         {kind === 'fixed' ? (
           <label style={{ maxWidth: '16rem' }}>
-            <span>Fast pris i kronor</span>
+            <span>{_('bidDetail.fixedAmountLabel')}</span>
             <input
               name="amount"
               type="number"
@@ -420,7 +427,7 @@ function ChangeBid({
         ) : (
           <div className="field-row">
             <label>
-              <span>Timpris i kronor</span>
+              <span>{_('bidDetail.rateLabel')}</span>
               <input
                 name="rate"
                 type="number"
@@ -432,7 +439,7 @@ function ChangeBid({
               />
             </label>
             <label>
-              <span>Uppskattade timmar</span>
+              <span>{_('bidDetail.hoursLabel')}</span>
               <input
                 name="hours"
                 type="number"
@@ -448,7 +455,7 @@ function ChangeBid({
 
         <div className="actions">
           <button type="submit" disabled={busy} data-testid="save-bid">
-            Spara ändringen
+            {_('bidDetail.saveChange')}
           </button>
           <button
             type="button"
@@ -457,7 +464,7 @@ function ChangeBid({
             disabled={busy}
             data-testid="withdraw-bid"
           >
-            Dra tillbaka anbudet
+            {_('bidDetail.withdraw')}
           </button>
         </div>
       </form>
@@ -512,17 +519,20 @@ function ContractBlock({ contract }: { contract: Contract }) {
     <div className="contract" data-testid="contract" data-status={contract.status}>
       <div className="contract__terms">
         <dl>
-          <dt>Uppdrag</dt>
+          <dt>{_('bidDetail.termsAssignment')}</dt>
           <dd>{contract.terms.requestTitle}</dd>
-          <dt>Åtagande</dt>
+          <dt>{_('bidDetail.termsCommitment')}</dt>
           <dd>{contract.terms.plan}</dd>
-          <dt>Ersättning</dt>
+          <dt>{_('bidDetail.compensation')}</dt>
           <dd>
             <span className="amount">{formatAmount(contract.terms.estimatedTotalMinor)}</span>
             {contract.terms.compensation.type === 'hourly' &&
-              ` (${formatAmount(contract.terms.compensation.rateMinor)}/tim × ${contract.terms.compensation.estimatedHours} tim)`}
+              _('bidDetail.hourlyTermsSuffix', {
+                rate: formatAmount(contract.terms.compensation.rateMinor),
+                hours: contract.terms.compensation.estimatedHours,
+              })}
           </dd>
-          <dt>Status</dt>
+          <dt>{_('bidDetail.termsStatus')}</dt>
           <dd>
             <Status value={contract.status} />
           </dd>
@@ -530,8 +540,8 @@ function ContractBlock({ contract }: { contract: Contract }) {
       </div>
 
       <div className="signatures">
-        <Signature party="Köparen" at={contract.buyerSignedAt} testid="signature-buyer" />
-        <Signature party="Säljaren" at={contract.sellerSignedAt} testid="signature-seller" />
+        <Signature party={_('bidDetail.partyBuyer')} at={contract.buyerSignedAt} testid="signature-buyer" />
+        <Signature party={_('bidDetail.partySeller')} at={contract.sellerSignedAt} testid="signature-seller" />
       </div>
     </div>
   );
@@ -554,8 +564,8 @@ function Signature({
       data-signed={signed}
     >
       <span className="signature__party">{party}</span>
-      <span className="signature__mark">{signed ? 'Signerat' : 'Väntar'}</span>
-      <span className="signature__when">{at ? formatDate(at) : 'Ingen signatur än'}</span>
+      <span className="signature__mark">{signed ? _('bidDetail.signed') : _('bidDetail.waiting')}</span>
+      <span className="signature__when">{at ? formatDate(at) : _('bidDetail.noSignatureYet')}</span>
     </div>
   );
 }

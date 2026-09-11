@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
-  CLAUSE_HEADINGS,
+  clauseHeading,
   call,
   loadSpec,
   type ClauseKind,
@@ -12,6 +12,7 @@ import {
   type SpecQuestion,
 } from '../api.ts';
 import { useToken } from '../auth.tsx';
+import { _ } from '../i18n.ts';
 import { Empty, Notice, Status, formatDate, useLoader } from '../components/ui.tsx';
 
 /**
@@ -38,12 +39,8 @@ export function RequestSpec() {
 
   return (
     <>
-      <h1>Kravspec</h1>
-      <p className="lede">
-        Uppdragstypen avgör vilka frågor som ställs, och svaren blir de acceptanskriterier
-        båda parter bockar av. En förfrågan utan fastställd kravspec går inte att lämna
-        anbud på.
-      </p>
+      <h1>{_('requestSpec.title')}</h1>
+      <p className="lede">{_('requestSpec.lede')}</p>
 
       <Notice error={error} />
       <Notice error={actionError} />
@@ -54,17 +51,19 @@ export function RequestSpec() {
         <>
           <div className="meta" style={{ marginBottom: '1.5rem' }} data-testid="spec-head">
             <span data-testid="spec-version">
-              <span className="eyebrow">Version</span> v{data.version.version}
+              <span className="eyebrow">{_('requestSpec.versionLabel')}</span>{' '}
+              {_('requestSpec.versionNumber', { version: data.version.version })}
             </span>
             <Status value={data.version.status} />
             <span>
-              <span className="eyebrow">Typ</span>{' '}
+              <span className="eyebrow">{_('requestSpec.typeLabel')}</span>{' '}
               {data.gigTypes.map((type) => type.name).join(', ') || '—'}
             </span>
             <span>
-              <span className="eyebrow">Publicerad</span> {formatDate(data.version.publishedAt)}
+              <span className="eyebrow">{_('requestSpec.publishedLabel')}</span>{' '}
+              {formatDate(data.version.publishedAt)}
             </span>
-            <Link to={`/requests/${requestId}`}>Till förfrågan</Link>
+            <Link to={`/requests/${requestId}`}>{_('requestSpec.toRequestLink')}</Link>
           </div>
 
           <Progress completeness={data.completeness} />
@@ -120,11 +119,10 @@ function ChooseTypes({
 
   return (
     <section className="section">
-      <h2>Vilken sorts uppdrag är det?</h2>
+      <h2>{_('requestSpec.chooseTypesHeading')}</h2>
       <p>
-        Välj en eller flera. Frågorna slås ihop, och en fråga som två typer ställer får du
-        bara en gång. Passar ingen mall finns <strong>Övrigt</strong>, som ställer de
-        frågor mallarna annars svarar på.
+        {_('requestSpec.chooseTypesIntro')} <strong>{_('requestSpec.chooseTypesOther')}</strong>
+        {_('requestSpec.chooseTypesOutro')}
       </p>
 
       <Notice error={error} />
@@ -142,7 +140,10 @@ function ChooseTypes({
                 <strong>{type.name}</strong>
                 {type.summary && <span className="choice__hint">{type.summary}</span>}
                 <span className="choice__count mono">
-                  {type.questionCount} frågor · {type.criterionCount} kriterierader
+                  {_('requestSpec.typeCounts', {
+                    questions: type.questionCount,
+                    criteria: type.criterionCount,
+                  })}
                 </span>
               </span>
             </label>
@@ -151,7 +152,7 @@ function ChooseTypes({
 
         <div className="actions">
           <button type="submit" disabled={busy || chosen.length === 0} data-testid="open-spec">
-            Börja intervjun
+            {_('requestSpec.startInterviewButton')}
           </button>
         </div>
       </form>
@@ -176,7 +177,7 @@ function Progress({ completeness }: { completeness: Completeness }) {
   return (
     <section className="tally" data-testid="completeness">
       <div className="tally__row">
-        <span className="eyebrow">Obligatoriska frågor</span>
+        <span className="eyebrow">{_('requestSpec.requiredQuestionsLabel')}</span>
         <span className="mono" data-testid="answered-count">
           {completeness.answeredRequired}/{completeness.requiredQuestions}
         </span>
@@ -185,7 +186,7 @@ function Progress({ completeness }: { completeness: Completeness }) {
         <div className="progress__bar" style={{ width: `${Math.round(share * 100)}%` }} />
       </div>
       <div className="tally__row">
-        <span className="eyebrow">Godkända kriterier</span>
+        <span className="eyebrow">{_('requestSpec.approvedCriteriaLabel')}</span>
         <span className="mono" data-testid="approved-count">
           {completeness.approvedCriteria}/{completeness.criteria}
         </span>
@@ -205,7 +206,9 @@ function Progress({ completeness }: { completeness: Completeness }) {
           ))}
           {completeness.blockers.length > BLOCKERS_SHOWN && (
             <li data-testid="blockers-rest">
-              … och {completeness.blockers.length - BLOCKERS_SHOWN} till.
+              {_('requestSpec.blockersRest', {
+                count: completeness.blockers.length - BLOCKERS_SHOWN,
+              })}
             </li>
           )}
         </ul>
@@ -244,7 +247,7 @@ function Questions({
   const groups = [...new Set(visible.map((question) => question.templateKey))];
   const name = (key: string) =>
     key === 'base'
-      ? 'Gäller varje gigg'
+      ? _('requestSpec.baseGroupName')
       : (spec.gigTypes.find((type) => type.key === key)?.name ?? key);
 
   const set = (key: string, value: unknown) =>
@@ -277,11 +280,8 @@ function Questions({
 
   return (
     <section className="section">
-      <h2>Frågorna</h2>
-      <p>
-        Svaren är underlaget för kriterierna. En fråga kan öppna en följdfråga — spara, så
-        dyker den upp.
-      </p>
+      <h2>{_('requestSpec.questionsHeading')}</h2>
+      <p>{_('requestSpec.questionsIntro')}</p>
 
       <form className="stack interview" onSubmit={save}>
         {groups.map((group) => (
@@ -302,7 +302,7 @@ function Questions({
 
         <div className="actions">
           <button type="submit" disabled={busy} data-testid="save-answers">
-            Spara svaren
+            {_('requestSpec.saveAnswersButton')}
           </button>
         </div>
       </form>
@@ -342,7 +342,7 @@ function Field({
     >
       <span>
         {question.prompt}
-        {!required && <span className="question__optional"> (frivillig)</span>}
+        {!required && <span className="question__optional">{_('requestSpec.optionalSuffix')}</span>}
       </span>
       {question.helpText && <span className="question__help">{question.helpText}</span>}
 
@@ -393,9 +393,9 @@ function Field({
           }
           data-testid={testId}
         >
-          <option value="">Välj</option>
-          <option value="true">Ja</option>
-          <option value="false">Nej</option>
+          <option value="">{_('requestSpec.selectPlaceholder')}</option>
+          <option value="true">{_('requestSpec.yes')}</option>
+          <option value="false">{_('requestSpec.no')}</option>
         </select>
       )}
 
@@ -405,7 +405,7 @@ function Field({
           onChange={(event) => onChange(event.target.value)}
           data-testid={testId}
         >
-          <option value="">Välj</option>
+          <option value="">{_('requestSpec.selectPlaceholder')}</option>
           {question.options.map((option) => (
             <option value={option.key} key={option.key}>
               {option.label}
@@ -459,12 +459,8 @@ function Criteria({
 }) {
   return (
     <section className="section">
-      <h2>Kriterierna</h2>
-      <p>
-        Ett kriterium duger om någon utomstående kan läsa det och svara ja eller nej. Du
-        godkänner varje rad — det är din kravspec, inte plattformens. Ändrar du en rad
-        faller godkännandet, och raden ska godkännas på nytt.
-      </p>
+      <h2>{_('requestSpec.criteriaHeading')}</h2>
+      <p>{_('requestSpec.criteriaIntro')}</p>
 
       {KINDS.map((kind) => {
         const rows = spec.criteria.filter((criterion) => criterion.kind === kind);
@@ -472,7 +468,7 @@ function Criteria({
 
         return (
           <div key={kind} data-testid="clause-group" data-kind={kind}>
-            <h3>{CLAUSE_HEADINGS[kind]}</h3>
+            <h3>{clauseHeading(kind)}</h3>
             {rows.map((criterion) => (
               <Row
                 key={criterion.id}
@@ -543,19 +539,23 @@ function Row({
 
         {criterion.verification && !editing && (
           <p className="clause__how">
-            <span className="eyebrow">Verifieras</span> {criterion.verification}
+            <span className="eyebrow">{_('requestSpec.verifiedLabel')}</span> {criterion.verification}
           </p>
         )}
 
         <div className="meta">
           <span className="mono">
             {criterion.origin === 'custom'
-              ? 'Din egen rad'
-              : `Ur mallen ${criterion.sourceTemplateKey}`}
+              ? _('requestSpec.customOrigin')
+              : _('requestSpec.templateOrigin', {
+                  template: criterion.sourceTemplateKey ?? '',
+                })}
           </span>
           {criterion.kind === 'criterion' && (
             <span data-testid="approval">
-              {criterion.approvedAt ? `Godkänd ${formatDate(criterion.approvedAt)}` : 'Ej godkänd'}
+              {criterion.approvedAt
+                ? _('requestSpec.approvedAt', { date: formatDate(criterion.approvedAt) })
+                : _('requestSpec.notApproved')}
             </span>
           )}
         </div>
@@ -569,7 +569,7 @@ function Row({
             data-testid="approve"
             onClick={() => void run(() => call(`${base}/approval`, { token, body: {} }))}
           >
-            Godkänn
+            {_('requestSpec.approveButton')}
           </button>
         )}
 
@@ -581,11 +581,11 @@ function Row({
               void run(() => call(base, { token, method: 'PATCH', body: { statement } }))
             }
           >
-            Spara raden
+            {_('requestSpec.saveCriterionButton')}
           </button>
         ) : (
           <button className="quiet" data-testid="edit-criterion" onClick={() => setEditing(true)}>
-            Skriv om
+            {_('requestSpec.editCriterionButton')}
           </button>
         )}
 
@@ -595,7 +595,7 @@ function Row({
           data-testid="strike-criterion"
           onClick={() => void run(() => call(base, { token, method: 'DELETE' }))}
         >
-          Stryk
+          {_('requestSpec.strikeCriterionButton')}
         </button>
       </div>
     </article>
@@ -641,36 +641,36 @@ function AddCriterion({
 
   return (
     <form className="stack" onSubmit={submit} style={{ marginTop: '1.5rem' }}>
-      <h3>Lägg till en egen rad</h3>
+      <h3>{_('requestSpec.addCriterionHeading')}</h3>
       <div className="field-row">
         <label style={{ maxWidth: '18rem' }}>
-          <span>Sort</span>
+          <span>{_('requestSpec.kindLabel')}</span>
           <select name="kind" defaultValue="criterion" data-testid="new-criterion-kind">
             {KINDS.map((kind) => (
               <option value={kind} key={kind}>
-                {CLAUSE_HEADINGS[kind]}
+                {clauseHeading(kind)}
               </option>
             ))}
           </select>
         </label>
       </div>
       <label>
-        <span>Påstående</span>
+        <span>{_('requestSpec.statementLabel')}</span>
         <textarea
           name="statement"
           required
           minLength={10}
-          placeholder="När …, ska …"
+          placeholder={_('requestSpec.statementPlaceholder')}
           data-testid="new-criterion-statement"
         />
       </label>
       <label>
-        <span>Hur verifieras det?</span>
+        <span>{_('requestSpec.verificationLabel')}</span>
         <input name="verification" data-testid="new-criterion-verification" />
       </label>
       <div className="actions">
         <button type="submit" disabled={busy} data-testid="add-criterion">
-          Lägg till raden
+          {_('requestSpec.addCriterionButton')}
         </button>
       </div>
     </form>
@@ -707,19 +707,15 @@ function Publish({
 
   return (
     <section className="section">
-      <h2>Publicera</h2>
-      <p>
-        Efter publiceringen är lydelsen låst, och anbuden binds till den. Behöver något
-        ändras öppnar du en revision — den gällande versionen står kvar tills den nya
-        publiceras.
-      </p>
+      <h2>{_('requestSpec.publishHeading')}</h2>
+      <p>{_('requestSpec.publishIntro')}</p>
       <div className="actions">
         <button
           disabled={busy || !spec.completeness.publishable}
           onClick={() => void publish()}
           data-testid="publish-spec"
         >
-          Publicera kravspecen
+          {_('requestSpec.publishButton')}
         </button>
       </div>
     </section>
@@ -756,12 +752,8 @@ function Published({
     <>
       <SpecReading spec={spec} />
       <section className="section">
-        <h2>Ändra något?</h2>
-        <p>
-          En revision öppnar nästa utkast som en kopia. Version {spec.version.version} gäller
-          tills du publicerat den nya, så anbud som kommer in under tiden avser en lydelse
-          som inte flyttar sig.
-        </p>
+        <h2>{_('requestSpec.reviseHeading')}</h2>
+        <p>{_('requestSpec.reviseIntro', { version: spec.version.version })}</p>
         <div className="actions">
           <button
             className="secondary"
@@ -769,7 +761,7 @@ function Published({
             onClick={() => void revise()}
             data-testid="open-revision"
           >
-            Öppna en revision
+            {_('requestSpec.reviseButton')}
           </button>
         </div>
       </section>
@@ -787,14 +779,14 @@ export function SpecReading({ spec }: { spec: Spec }) {
   return (
     <>
       <section className="section">
-        <h2>Kriterierna</h2>
+        <h2>{_('requestSpec.criteriaHeading')}</h2>
         {KINDS.map((kind) => {
           const rows = spec.criteria.filter((criterion) => criterion.kind === kind);
           if (rows.length === 0) return null;
 
           return (
             <div key={kind} data-testid="clause-group" data-kind={kind}>
-              <h3>{CLAUSE_HEADINGS[kind]}</h3>
+              <h3>{clauseHeading(kind)}</h3>
               <ul className="plain-list">
                 {rows.map((criterion) => (
                   <li key={criterion.id} data-testid="criterion" data-kind={kind}>
@@ -802,7 +794,8 @@ export function SpecReading({ spec }: { spec: Spec }) {
                     {criterion.verification && (
                       <span className="clause__how">
                         {' '}
-                        <span className="eyebrow">Verifieras</span> {criterion.verification}
+                        <span className="eyebrow">{_('requestSpec.verifiedLabel')}</span>{' '}
+                        {criterion.verification}
                       </span>
                     )}
                   </li>
@@ -814,9 +807,9 @@ export function SpecReading({ spec }: { spec: Spec }) {
       </section>
 
       <section className="section">
-        <h2>Svaren</h2>
+        <h2>{_('requestSpec.answersHeading')}</h2>
         {answered.length === 0 ? (
-          <Empty>Inga frågor besvarade än.</Empty>
+          <Empty>{_('requestSpec.emptyAnswers')}</Empty>
         ) : (
           <dl className="answers" data-testid="answers">
             {answered.map((answer) => (
@@ -834,8 +827,8 @@ export function SpecReading({ spec }: { spec: Spec }) {
 
 /** Svarets värde som text. Formen kommer ur frågetypen, så alla fem fallen finns här. */
 function readable(value: unknown): string {
-  if (value === true) return 'Ja';
-  if (value === false) return 'Nej';
+  if (value === true) return _('requestSpec.yes');
+  if (value === false) return _('requestSpec.no');
   if (Array.isArray(value)) return value.join(', ');
   return String(value ?? '—');
 }

@@ -121,6 +121,12 @@ nav.primary a.active {
   gap: 0.75rem;
 }
 
+/* Kompakt nog för mastheaden; ärver i övrigt select-stilen längre ned. */
+.identity .language {
+  padding: 0.3rem 0.5rem;
+  font-size: inherit;
+}
+
 .page {
   padding-block: 2.5rem 4rem;
 }
