@@ -154,7 +154,17 @@ export const CompletenessSchema = Type.Object(
       Type.Object({
         code: Type.String(),
         path: Type.Union([Type.String(), Type.Null()]),
-        detail: Type.String(),
+        detail: Type.String({
+          description:
+            'En nyckel i webbens språkfiler (blocker.*, question.*.prompt eller en ' +
+            'kriterierads lydelse), eller fri text för en rad kunden skrivit själv. ' +
+            'API:et översätter inte.',
+        }),
+        params: Type.Optional(
+          Type.Record(Type.String(), Type.Union([Type.String(), Type.Integer()]), {
+            description: 'Värden för nyckelns {platshållare}.',
+          }),
+        ),
       }),
     ),
   },

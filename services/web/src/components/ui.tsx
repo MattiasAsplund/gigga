@@ -1,9 +1,10 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { ApiError } from '../api.ts';
+import { getLocale } from '../i18n.ts';
 
 /** Belopp lagras i öre. Här — och bara här — blir de läsbara. */
 export function formatAmount(minor: number, currency = 'SEK'): string {
-  return new Intl.NumberFormat('sv-SE', {
+  return new Intl.NumberFormat(getLocale(), {
     style: 'currency',
     currency,
     minimumFractionDigits: 2,
@@ -12,7 +13,7 @@ export function formatAmount(minor: number, currency = 'SEK'): string {
 
 export function formatDate(iso: string | null): string {
   if (!iso) return '—';
-  return new Intl.DateTimeFormat('sv-SE', { dateStyle: 'short', timeStyle: 'short' }).format(
+  return new Intl.DateTimeFormat(getLocale(), { dateStyle: 'short', timeStyle: 'short' }).format(
     new Date(iso),
   );
 }

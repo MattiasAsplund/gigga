@@ -1,35 +1,48 @@
 {
   "key": "performance",
   "layer": "type",
-  "name": "Prestanda eller optimering",
-  "summary": "Något fungerar men är för långsamt.",
+  "name": "catalog.performance.name",
+  "summary": "catalog.performance.summary",
   "position": 80,
   "asks": [
     {
       "key": "performance.slow-today",
-      "prompt": "Vad är långsamt idag, och hur är det uppmätt?",
-      "help": "Den här typen får aldrig lämnas utan uppmätt utgångsläge. \"Snabbare\" går inte att verifiera.",
+      "prompt": "question.performance.slow-today.prompt",
+      "help": "question.performance.slow-today.help",
       "kind": "longtext"
     },
     {
       "key": "performance.baseline",
-      "prompt": "Vilket är utgångsvärdet, med enhet?",
+      "prompt": "question.performance.baseline.prompt",
       "kind": "text"
     },
-    { "key": "performance.target", "prompt": "Vilket är målvärdet, med enhet?", "kind": "text" },
+    {
+      "key": "performance.target",
+      "prompt": "question.performance.target.prompt",
+      "kind": "text"
+    },
     {
       "key": "performance.load",
-      "prompt": "Under vilken last och med vilken datavolym mäts det?",
+      "prompt": "question.performance.load.prompt",
       "kind": "longtext"
     },
     {
       "key": "performance.behaviour-change",
-      "prompt": "Får beteendet ändras för att nå målet?",
+      "prompt": "question.performance.behaviour-change.prompt",
       "kind": "choice",
       "options": [
-        { "key": "no", "label": "Nej, utfallet ska vara identiskt" },
-        { "key": "agreed", "label": "Ja, om ändringen godkänns i förväg" },
-        { "key": "yes", "label": "Ja, inom uppdragets ramar" }
+        {
+          "key": "no",
+          "label": "question.performance.behaviour-change.option.no"
+        },
+        {
+          "key": "agreed",
+          "label": "question.performance.behaviour-change.option.agreed"
+        },
+        {
+          "key": "yes",
+          "label": "question.performance.behaviour-change.option.yes"
+        }
       ]
     }
   ],
@@ -37,19 +50,19 @@
     {
       "key": "target-reached",
       "kind": "criterion",
-      "statement": "När mätningen körs under de angivna förutsättningarna, ska målvärdet nås.",
-      "verification": "Samma mätmetod som utgångsläget, körd av verifieraren."
+      "statement": "clause.performance.target-reached.statement",
+      "verification": "clause.performance.target-reached.verification"
     },
     {
       "key": "behaviour-unchanged",
       "kind": "criterion",
-      "statement": "Det funktionella utfallet är oförändrat före och efter, för de angivna fallen.",
-      "verification": "Jämförelse av utdata före och efter optimeringen."
+      "statement": "clause.performance.behaviour-unchanged.statement",
+      "verification": "clause.performance.behaviour-unchanged.verification"
     },
     {
       "key": "infrastructure-cost",
       "kind": "exclusion",
-      "statement": "Utökad infrastruktur och tillkommande licenskostnader ingår inte."
+      "statement": "clause.performance.infrastructure-cost.statement"
     }
   ]
 }

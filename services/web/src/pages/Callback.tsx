@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { userManager } from '../auth.tsx';
+import { _ } from '../i18n.ts';
 
 /**
  * Landningen tillbaka från Keycloak.
@@ -20,7 +21,7 @@ export function Callback() {
         const from = (user.state as { from?: string } | undefined)?.from;
         navigate(from && from !== '/callback' ? from : '/requests', { replace: true });
       } catch (cause) {
-        setError(cause instanceof Error ? cause.message : 'Inloggningen kunde inte slutföras.');
+        setError(cause instanceof Error ? cause.message : _('callback.failed'));
       }
     })();
   }, [navigate]);
@@ -28,7 +29,7 @@ export function Callback() {
   if (error) {
     return (
       <section className="panel">
-        <h1>Inloggningen gick inte igenom</h1>
+        <h1>{_('callback.failedTitle')}</h1>
         <p className="error" data-testid="callback-error">
           {error}
         </p>
@@ -38,7 +39,7 @@ export function Callback() {
 
   return (
     <section className="panel">
-      <p data-testid="callback-pending">Loggar in…</p>
+      <p data-testid="callback-pending">{_('callback.pending')}</p>
     </section>
   );
 }

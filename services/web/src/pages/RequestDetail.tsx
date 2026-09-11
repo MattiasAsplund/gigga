@@ -11,6 +11,7 @@ import {
 import { useAuth, useToken } from '../auth.tsx';
 import { Empty, Notice, Status, formatAmount, formatDate, useLoader } from '../components/ui.tsx';
 import { SpecReading } from './RequestSpec.tsx';
+import { _ } from '../i18n.ts';
 
 export function RequestDetail() {
   const { requestId = '' } = useParams();
@@ -48,13 +49,13 @@ export function RequestDetail() {
           <div className="meta" style={{ marginBottom: '1.5rem' }}>
             <Status value={data.status} />
             <span>
-              <span className="eyebrow">Budget</span>{' '}
+              <span className="eyebrow">{_('requestDetail.budget')}</span>{' '}
               <span className="amount">
                 {data.budget ? formatAmount(data.budget.amountMinor, data.budget.currency) : '—'}
               </span>
             </span>
             <span>
-              <span className="eyebrow">Sista dag</span> {formatDate(data.deadlineAt)}
+              <span className="eyebrow">{_('requestDetail.deadline')}</span> {formatDate(data.deadlineAt)}
             </span>
             <span className="mono">{data.id}</span>
           </div>
@@ -71,11 +72,11 @@ export function RequestDetail() {
           {canBid && <BidForm requestId={requestId} token={token} onDone={reload} />}
 
           <section className="section">
-            <h2>Anbud ({data.bids.length})</h2>
+            <h2>{_('requestDetail.bidsHeading', { count: data.bids.length })}</h2>
             {data.bids.length === 0 ? (
               // Säljaren ser bara sitt eget anbud i svaret — "inga har lämnats" vore ett
               // påstående om andras anbud som sidan inte har täckning för.
-              <Empty>{isBuyer ? 'Inga anbud har lämnats än.' : 'Inga anbud att visa.'}</Empty>
+              <Empty>{isBuyer ? _('requestDetail.noBidsBuyer') : _('requestDetail.noBidsOther')}</Empty>
             ) : (
               <div data-testid="bids">
                 {data.bids.map((bid) => (
@@ -90,13 +91,13 @@ export function RequestDetail() {
                       <p style={{ marginTop: 0 }}>{bid.plan}</p>
                       <div className="meta">
                         <span>
-                          <span className="eyebrow">Ersättning</span>{' '}
+                          <span className="eyebrow">{_('requestDetail.compensation')}</span>{' '}
                           {bid.compensation.type === 'fixed'
-                            ? `Fast pris ${formatAmount(bid.compensation.amountMinor)}`
-                            : `${formatAmount(bid.compensation.rateMinor)}/tim × ${bid.compensation.estimatedHours} tim`}
+                            ? _('requestDetail.compensationFixed', { amount: formatAmount(bid.compensation.amountMinor) })
+                            : _('requestDetail.compensationHourly', { rate: formatAmount(bid.compensation.rateMinor), hours: bid.compensation.estimatedHours })}
                         </span>
                         <span>
-                          <span className="eyebrow">Beräknat totalt</span>{' '}
+                          <span className="eyebrow">{_('requestDetail.estimatedTotal')}</span>{' '}
                           <span className="amount" data-testid="bid-total">
                             {formatAmount(bid.estimatedTotalMinor)}
                           </span>
@@ -105,7 +106,7 @@ export function RequestDetail() {
                       <div className="actions" style={{ marginTop: '1rem' }}>
                         <Link to={`/bids/${bid.id}`}>
                           <button className="secondary" data-testid="open-bid">
-                            Öppna anbudet
+                            {_('requestDetail.openBid')}
                           </button>
                         </Link>
                       </div>
@@ -148,19 +149,16 @@ function SpecPanel({
   if (isBuyer) {
     return (
       <section className="section" data-testid="spec-panel">
-        <h2>Kravspec</h2>
+        <h2>{_('requestDetail.specHeading')}</h2>
         {!spec ? (
           <>
             <div className="notice" role="status" data-testid="spec-missing">
-              <strong>Kravspecen är inte fastställd.</strong>
-              <p className="notice__detail">
-                Ingen kan lämna anbud förrän du sagt vilken sorts uppdrag det är, svarat på
-                frågorna och godkänt acceptanskriterierna.
-              </p>
+              <strong>{_('requestDetail.specMissingTitle')}</strong>
+              <p className="notice__detail">{_('requestDetail.specMissingDetail')}</p>
             </div>
             <div className="actions">
               <Link to={`/requests/${requestId}/spec`}>
-                <button data-testid="go-spec">Fastställ kravspecen</button>
+                <button data-testid="go-spec">{_('requestDetail.goSpec')}</button>
               </Link>
             </div>
           </>
@@ -168,18 +166,23 @@ function SpecPanel({
           <>
             <div className="meta">
               <span data-testid="spec-version">
-                <span className="eyebrow">Version</span> v{spec.version.version}
+                <span className="eyebrow">{_('requestDetail.version')}</span>{' '}
+                {_('requestDetail.versionValue', { version: spec.version.version })}
               </span>
               <Status value={spec.version.status} />
               <span className="mono" data-testid="spec-progress">
-                {spec.completeness.answeredRequired}/{spec.completeness.requiredQuestions} frågor ·{' '}
-                {spec.completeness.approvedCriteria}/{spec.completeness.criteria} kriterier godkända
+                {_('requestDetail.specProgress', {
+                  answered: spec.completeness.answeredRequired,
+                  required: spec.completeness.requiredQuestions,
+                  approved: spec.completeness.approvedCriteria,
+                  criteria: spec.completeness.criteria,
+                })}
               </span>
             </div>
             <div className="actions" style={{ marginTop: '1rem' }}>
               <Link to={`/requests/${requestId}/spec`}>
                 <button className="secondary" data-testid="go-spec">
-                  {spec.version.status === 'draft' ? 'Fortsätt intervjun' : 'Öppna kravspecen'}
+                  {spec.version.status === 'draft' ? _('requestDetail.continueInterview') : _('requestDetail.openSpec')}
                 </button>
               </Link>
             </div>
@@ -193,13 +196,10 @@ function SpecPanel({
   if (!published) {
     return (
       <section className="section" data-testid="spec-panel">
-        <h2>Kravspec</h2>
+        <h2>{_('requestDetail.specHeading')}</h2>
         <div className="notice" role="status" data-testid="spec-missing">
-          <strong>Köparen har inte fastställt kravspecen än.</strong>
-          <p className="notice__detail">
-            Uppdraget går inte att lämna anbud på förrän omfattningen och
-            acceptanskriterierna är publicerade.
-          </p>
+          <strong>{_('requestDetail.specUnpublishedTitle')}</strong>
+          <p className="notice__detail">{_('requestDetail.specUnpublishedDetail')}</p>
         </div>
       </section>
     );
@@ -207,9 +207,9 @@ function SpecPanel({
 
   return (
     <section className="section" data-testid="spec-panel">
-      <h2>Kravspec v{published.version.version}</h2>
+      <h2>{_('requestDetail.specVersionHeading', { version: published.version.version })}</h2>
       <p className="lede">
-        Det här är vad anbudet avser. {canBid ? 'Läs igenom raderna innan du prissätter.' : ''}
+        {_('requestDetail.specReadingLede')} {canBid ? _('requestDetail.specReadBeforePricing') : ''}
       </p>
       <SpecReading spec={published} />
     </section>
@@ -264,39 +264,39 @@ function BidForm({
 
   return (
     <section className="section">
-      <h2>Lämna anbud</h2>
+      <h2>{_('requestDetail.bidFormHeading')}</h2>
       <Notice error={error} />
       <form className="stack" onSubmit={submit} data-testid="bid-form">
         <label>
-          <span>Genomförandeplan</span>
+          <span>{_('requestDetail.plan')}</span>
           <textarea name="plan" required data-testid="plan" />
         </label>
 
         <label style={{ maxWidth: '16rem' }}>
-          <span>Ersättningsform</span>
+          <span>{_('requestDetail.compensationType')}</span>
           <select
             value={kind}
             onChange={(e) => setKind(e.target.value as 'fixed' | 'hourly')}
             data-testid="compensation-type"
           >
-            <option value="hourly">Timpris</option>
-            <option value="fixed">Fast pris</option>
+            <option value="hourly">{_('requestDetail.typeHourly')}</option>
+            <option value="fixed">{_('requestDetail.typeFixed')}</option>
           </select>
         </label>
 
         {kind === 'fixed' ? (
           <label style={{ maxWidth: '16rem' }}>
-            <span>Fast pris i kronor</span>
+            <span>{_('requestDetail.fixedAmount')}</span>
             <input name="amount" type="number" min="0.01" step="0.01" required data-testid="amount" />
           </label>
         ) : (
           <div className="field-row">
             <label>
-              <span>Timpris i kronor</span>
+              <span>{_('requestDetail.hourlyRate')}</span>
               <input name="rate" type="number" min="0.01" step="0.01" required data-testid="rate" />
             </label>
             <label>
-              <span>Uppskattade timmar</span>
+              <span>{_('requestDetail.estimatedHours')}</span>
               <input name="hours" type="number" min="0.25" step="0.25" required data-testid="hours" />
             </label>
           </div>
@@ -304,7 +304,7 @@ function BidForm({
 
         <div className="actions">
           <button type="submit" disabled={busy} data-testid="submit-bid">
-            Lämna anbud
+            {_('requestDetail.submitBid')}
           </button>
         </div>
       </form>
@@ -346,26 +346,23 @@ function Permissions({ requestId, token }: { requestId: string; token: string })
 
   return (
     <section className="section">
-      <h2>Vem mer får läsa</h2>
-      <p className="lede">
-        Den du bjuder in når förfrågan, anbuden och deras dokument — men kan varken lämna
-        anbud, signera eller bjuda in fler.
-      </p>
+      <h2>{_('requestDetail.permissionsHeading')}</h2>
+      <p className="lede">{_('requestDetail.permissionsLede')}</p>
 
       <Notice error={error instanceof ApiError ? error : undefined} />
 
       <form className="actions" onSubmit={grant} data-testid="grant-form">
         <label style={{ flex: 1, maxWidth: '22rem' }}>
-          <span>E-postadress</span>
+          <span>{_('requestDetail.email')}</span>
           <input type="email" name="email" required data-testid="grant-email" />
         </label>
         <button type="submit" data-testid="grant-submit">
-          Ge läsrätt
+          {_('requestDetail.grant')}
         </button>
       </form>
 
       <ul className="plain-list" style={{ marginTop: '1rem' }} data-testid="permissions">
-        {data?.items.length === 0 && <Empty>Ingen annan har läsrätt.</Empty>}
+        {data?.items.length === 0 && <Empty>{_('requestDetail.noPermissions')}</Empty>}
         {data?.items.map((permission) => (
           <li className="line-item" key={permission.userId} data-testid="permission">
             <span>
@@ -376,7 +373,7 @@ function Permissions({ requestId, token }: { requestId: string; token: string })
               onClick={() => void revoke(permission.userId)}
               data-testid="revoke"
             >
-              Ta tillbaka
+              {_('requestDetail.revoke')}
             </button>
           </li>
         ))}

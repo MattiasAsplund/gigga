@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { UserManager, WebStorageStateStore, type User } from 'oidc-client-ts';
 import { ApiError, call, type Problem } from './api.ts';
+import { _ } from './i18n.ts';
 
 /**
  * Den inloggades identitet, hämtad ur API:et — inte ur token.
@@ -72,7 +73,7 @@ export const userManager = new UserManager({
 let current: User | null = null;
 
 export function currentToken(): string {
-  if (!current) throw new Error('Ingen inloggad session');
+  if (!current) throw new Error(_('auth.noSession'));
   return current.access_token;
 }
 
@@ -116,7 +117,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             ? cause.problem
             : {
                 type: 'about:blank',
-                title: 'API:et gick inte att nå',
+                title: _('auth.apiUnreachable'),
                 status: 0,
                 detail: cause instanceof Error ? cause.message : String(cause),
               };

@@ -286,7 +286,12 @@ const minio = await builder
 // addBunApp kör källfilen direkt — inget bygg- eller transpileringssteg.
 const api = await builder
 	.addBunApp("api", "./services/api", "src/index.ts")
-	.withBun()
+	// install: false — ingen egen installerare. Aspire kör redan `bun install` i roten
+	// innan AppHosten startar, och det installerar hela arbetsytan. Med en installerare
+	// per app kör api-installer och web-installer `bun install` samtidigt i samma
+	// arbetsyta och kapplöper om symlänkarna i node_modules/.bin: den som förlorar dör
+	// med EEXIST, och appen bakom den startar aldrig. Det hände på riktigt.
+	.withBun({ install: false })
 	// Levande omladdning: bun startar om API:et när en källfil ändras, utan `aspire stop`.
 	// Flaggan måste stå före skriptet (`bun --watch src/index.ts`), och withArgs() lägger
 	// bara till sist — då blir den ett argument till programmet i stället. Därför via
@@ -324,7 +329,8 @@ const api = await builder
  */
 const web = await builder
 	.addViteApp("web", "./services/web")
-	.withBun()
+	// Samma skäl som för api: ingen egen installerare.
+	.withBun({ install: false })
 	// isProxied: false — Vite binder porten själv i stället för DCP:s proxy, som bara
 	// lyssnar på 127.0.0.1. Det är vad som gör webben nåbar från e2e-containern.
 	.withHttpEndpoint({ env: "PORT", port: 5173, isProxied: false })

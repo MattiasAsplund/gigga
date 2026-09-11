@@ -1,4 +1,6 @@
 /** Alla anrop går genom Vites proxy, så webben och API:et delar origin. */
+import { _ } from './i18n.ts';
+
 const BASE = '/api/v1';
 
 export interface Problem {
@@ -59,7 +61,7 @@ export async function call<T>(
     throw new ApiError(
       (payload as Problem | null) ?? {
         type: 'about:blank',
-        title: `Anropet misslyckades (${res.status})`,
+        title: _('api.callFailed', { status: res.status }),
         status: res.status,
       },
     );
@@ -271,7 +273,13 @@ export interface Completeness {
   criteria: number;
   approvedCriteria: number;
   publishable: boolean;
-  blockers: { code: string; path: string | null; detail: string }[];
+  blockers: {
+    code: string;
+    path: string | null;
+    /** En nyckel i språkfilerna, eller fri text när bristen är en rad kunden skrivit själv. */
+    detail: string;
+    params?: Record<string, string | number>;
+  }[];
 }
 
 export interface RequestSpec {
@@ -303,9 +311,14 @@ export async function loadSpec(requestId: string, token: string): Promise<Reques
   }
 }
 
-export const CLAUSE_HEADINGS: Record<ClauseKind, string> = {
-  criterion: 'Acceptanskriterier',
-  minimum: 'Alltid gällande minimikrav',
-  exclusion: 'Ingår inte',
-  term: 'Villkor',
+const CLAUSE_HEADING_KEYS: Record<ClauseKind, string> = {
+  criterion: 'api.clauseCriterion',
+  minimum: 'api.clauseMinimum',
+  exclusion: 'api.clauseExclusion',
+  term: 'api.clauseTerm',
 };
+
+/** En funktion och inte en tabell: slås upp vid varje anrop, så att språkbyte slår igenom. */
+export function clauseHeading(kind: ClauseKind): string {
+  return _(CLAUSE_HEADING_KEYS[kind]);
+}

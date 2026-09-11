@@ -10,6 +10,32 @@ import { MyRequests } from './pages/MyRequests.tsx';
 import { MyBids } from './pages/MyBids.tsx';
 import { BidDetail } from './pages/BidDetail.tsx';
 import { useEffect, useRef, useState, type ReactElement } from 'react';
+import { _, LOCALES, setLocale, useLocale, type Locale } from './i18n.ts';
+
+/**
+ * Språkväljaren står bredvid inloggningen och följer med in: den som är inloggad ska
+ * kunna byta mitt i ett formulär. Valet slår igenom direkt — App prenumererar på
+ * språket och ritar om hela trädet — och sparas i localStorage till nästa besök.
+ */
+function LanguagePicker() {
+  const locale = useLocale();
+
+  return (
+    <select
+      className="language"
+      aria-label={_('app.language')}
+      value={locale}
+      onChange={(event) => setLocale(event.target.value as Locale)}
+      data-testid="language"
+    >
+      {LOCALES.map((code) => (
+        <option key={code} value={code}>
+          {code}
+        </option>
+      ))}
+    </select>
+  );
+}
 
 function Masthead() {
   const { account, signOut } = useAuth();
@@ -22,11 +48,11 @@ function Masthead() {
         </NavLink>
 
         {account && (
-          <nav className="primary" aria-label="Huvudmeny">
-            <NavLink to="/requests">Katalog</NavLink>
-            <NavLink to="/requests/new">Ny förfrågan</NavLink>
-            <NavLink to="/me/requests">Mina förfrågningar</NavLink>
-            <NavLink to="/me/bids">Mina anbud</NavLink>
+          <nav className="primary" aria-label={_('app.mainMenu')}>
+            <NavLink to="/requests">{_('app.navCatalog')}</NavLink>
+            <NavLink to="/requests/new">{_('app.navNewRequest')}</NavLink>
+            <NavLink to="/me/requests">{_('app.navMyRequests')}</NavLink>
+            <NavLink to="/me/bids">{_('app.navMyBids')}</NavLink>
           </nav>
         )}
 
@@ -38,12 +64,13 @@ function Masthead() {
                 {account.organization.name}
               </span>
               <button className="quiet" onClick={() => void signOut()} data-testid="logout">
-                Logga ut
+                {_('app.logout')}
               </button>
             </>
           ) : (
-            <NavLink to="/">Logga in</NavLink>
+            <NavLink to="/">{_('app.login')}</NavLink>
           )}
+          <LanguagePicker />
         </div>
       </div>
     </header>
@@ -79,14 +106,14 @@ function RequireAuth({ children }: { children: ReactElement }) {
     );
   }, [loading, signingOut, account, signedIn, signIn, location.pathname]);
 
-  if (signingOut) return <p className="panel">Loggar ut…</p>;
-  if (loading) return <p className="panel">Läser in sessionen…</p>;
+  if (signingOut) return <p className="panel">{_('app.signingOut')}</p>;
+  if (loading) return <p className="panel">{_('app.loadingSession')}</p>;
   if (failed) {
     // Hellre ett besked än en sida som ser ut att ladda för alltid: går Keycloak inte att
     // nå är det inget väntan löser.
     return (
       <section className="panel">
-        <h1>Inloggningen kunde inte startas</h1>
+        <h1>{_('app.signInFailedTitle')}</h1>
         <p className="error" data-testid="signin-error">{failed}</p>
       </section>
     );
@@ -97,12 +124,12 @@ function RequireAuth({ children }: { children: ReactElement }) {
         <h1>{blocked.title}</h1>
         <p>{blocked.detail}</p>
         <button className="quiet" onClick={() => void signOut()} data-testid="logout">
-          Logga ut
+          {_('app.logout')}
         </button>
       </section>
     );
   }
-  if (!account) return <p className="panel">Skickar dig till inloggningen…</p>;
+  if (!account) return <p className="panel">{_('app.redirectingToSignIn')}</p>;
   return children;
 }
 
@@ -181,7 +208,7 @@ function Shell() {
             }
           />
 
-          <Route path="*" element={<p className="empty">Sidan finns inte.</p>} />
+          <Route path="*" element={<p className="empty">{_('app.notFound')}</p>} />
         </Routes>
       </main>
     </>
@@ -189,6 +216,10 @@ function Shell() {
 }
 
 export function App() {
+  // Prenumerationen ligger här och ingen annanstans: ett språkbyte ritar om App, och
+  // med den varje sida och varje `_()`-anrop. Sidorna behöver inte veta om det.
+  useLocale();
+
   return (
     <AuthProvider>
       <Shell />

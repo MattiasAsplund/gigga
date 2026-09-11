@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { call, type MyBid } from '../api.ts';
 import { useToken } from '../auth.tsx';
 import { Empty, Notice, Status, formatAmount, formatDate, useLoader } from '../components/ui.tsx';
+import { _ } from '../i18n.ts';
 
 export function MyBids() {
   const token = useToken();
@@ -9,14 +10,14 @@ export function MyBids() {
 
   return (
     <>
-      <h1>Mina anbud</h1>
-      <p className="lede">Anbud du har lämnat, med avtalets läge när ett är påbörjat.</p>
+      <h1>{_('myBids.title')}</h1>
+      <p className="lede">{_('myBids.lede')}</p>
 
       <Notice error={error} />
 
       {data && data.items.length === 0 && (
         <Empty>
-          Du har inte lämnat något anbud än. <Link to="/requests">Titta i katalogen.</Link>
+          {_('myBids.empty')} <Link to="/requests">{_('myBids.emptyLink')}</Link>
         </Empty>
       )}
 
@@ -33,18 +34,18 @@ export function MyBids() {
               <p style={{ marginTop: 0 }}>{bid.plan}</p>
               <div className="meta">
                 <span>
-                  <span className="eyebrow">Beräknat totalt</span>{' '}
+                  <span className="eyebrow">{_('myBids.estimatedTotal')}</span>{' '}
                   <span className="amount">{formatAmount(bid.estimatedTotalMinor)}</span>
                 </span>
                 <span>
-                  <span className="eyebrow">Lämnat</span> {formatDate(bid.createdAt)}
+                  <span className="eyebrow">{_('myBids.submitted')}</span> {formatDate(bid.createdAt)}
                 </span>
                 <span data-testid="contract-state">
-                  <span className="eyebrow">Avtal</span>{' '}
+                  <span className="eyebrow">{_('myBids.contract')}</span>{' '}
                   {bid.contract ? (
                     <Status value={bid.contract.status} />
                   ) : (
-                    <span className="mono">inget påbörjat</span>
+                    <span className="mono">{_('myBids.noContract')}</span>
                   )}
                 </span>
               </div>

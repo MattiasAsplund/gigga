@@ -1,53 +1,65 @@
 {
   "key": "automation",
   "layer": "type",
-  "name": "Automatisering eller schemalagt jobb",
-  "summary": "Något som ska köras av sig självt, återkommande.",
+  "name": "catalog.automation.name",
+  "summary": "catalog.automation.summary",
   "position": 60,
   "asks": [
     {
       "key": "automation.work",
-      "prompt": "Vad ska köras, och vad räknas som en lyckad körning?",
+      "prompt": "question.automation.work.prompt",
       "kind": "longtext"
     },
     {
       "key": "automation.schedule",
-      "prompt": "Hur ofta ska jobbet köras, och vid vilka tider?",
+      "prompt": "question.automation.schedule.prompt",
       "kind": "text"
     },
-    { "key": "automation.environment", "prompt": "I vilken miljö körs jobbet?", "kind": "text" },
-    { "ref": "shared.alert-target" },
-    { "ref": "shared.rerun-allowed" },
+    {
+      "key": "automation.environment",
+      "prompt": "question.automation.environment.prompt",
+      "kind": "text"
+    },
+    {
+      "ref": "shared.alert-target"
+    },
+    {
+      "ref": "shared.rerun-allowed"
+    },
     {
       "key": "automation.log-retention-days",
-      "prompt": "Hur många dagar ska loggarna sparas?",
+      "prompt": "question.automation.log-retention-days.prompt",
       "kind": "integer",
-      "config": { "minimum": 1, "maximum": 3650, "default": 90 }
+      "config": {
+        "minimum": 1,
+        "maximum": 3650,
+        "default": 90
+      }
     }
   ],
   "clauses": [
     {
       "key": "runs-on-schedule",
       "kind": "criterion",
-      "statement": "Jobbet kör enligt angivet schema i angiven miljö, styrkt med minst två körningar.",
-      "verification": "Körningarna syns i loggen med tidpunkt och utfall."
+      "statement": "clause.automation.runs-on-schedule.statement",
+      "verification": "clause.automation.runs-on-schedule.verification"
     },
     {
       "key": "alerts-on-failure",
       "kind": "criterion",
-      "statement": "När en körning misslyckas, ska larm gå till den överenskomna mottagaren.",
-      "verification": "En körning görs avsiktligt misslyckad under verifieringen."
+      "statement": "clause.automation.alerts-on-failure.statement",
+      "verification": "clause.automation.alerts-on-failure.verification"
     },
     {
       "key": "manual-rerun",
       "kind": "criterion",
-      "statement": "Manuell omkörning går att göra av kunden enligt medföljande instruktion.",
-      "verification": "Kunden kör om en körning under verifieringen."
+      "statement": "clause.automation.manual-rerun.statement",
+      "verification": "clause.automation.manual-rerun.verification"
     },
     {
       "key": "monitoring-setup",
       "kind": "exclusion",
-      "statement": "Övervakningsverktyg och jourrutin ingår inte."
+      "statement": "clause.automation.monitoring-setup.statement"
     }
   ]
 }

@@ -9,7 +9,7 @@ Repot innehåller tre tjänster under `services/`:
 | Tjänst | Vad det är |
 |---|---|
 | **api** | Fastify-API med 29 endpoints under `/api/v1` och `/health`. Bun, PostgreSQL, TypeBox |
-| **web** | React-gränssnitt ovanpå API:et. Vite, react-router, oidc-client-ts |
+| **web** | React-gränssnitt ovanpå API:et på fem språk. Vite, react-router, oidc-client-ts |
 | **e2e** | Playwright-svit som går hela flödet genom gränssnittet och fotar det till ett bildspel |
 
 **Roller är inte knutna till konton.** Samma användare är köpare i en förfrågan och säljare
@@ -74,6 +74,28 @@ Keycloak nås under **`/auth` på webbens egen adress** (`http://localhost:5173/
 proxad dit av Vite. Keycloak bygger sin issuer ur Host-huvudet, så tokenens `iss` blir
 webbens adress vare sig du surfar på localhost, kör e2e-sviten i en container eller går
 genom en cloudflare-tunnel — utan konfiguration per miljö.
+
+### Språk
+
+Gränssnittet finns på fem språk: `sv-SE`, `en-GB`, `nb-NO`, `da-DK` och `fi-FI`. Väljaren står i mastheaden bredvid inloggningen och följer med in, så språket
+går att byta mitt i ett formulär. Bytet slår igenom direkt på hela sidan — belopp och
+datum formateras också efter det valda språket — och valet sparas i webbläsaren till
+nästa besök. Standard är svenska.
+
+Texterna ligger i `services/web/src/locales/<språk>.json`, en platt fil per språk med
+samma nycklar (`bidDetail.sign`, `catalog.empty`, …) och `{namn}` som platshållare.
+Koden anropar `_('nyckel', { namn })` ur `src/i18n.ts`; en nyckel som saknas visas som
+den är och varnas för i konsolen. Ett nytt språk är en fil till och en rad i `LOCALES`.
+Kvar på svenska i koden är bara det som inte är gränssnittstext: ordmärket, statusvärden
+från API:et och utvecklarfel.
+
+Katalogens innehåll översätts på samma sätt, helt i webben. Uppdragstypernas namn,
+intervjuns frågor, hjälptexter och svarsalternativ samt mallarnas kriterierader ligger i
+`services/api/catalog/` som **nycklar** (`question.integration.systems.prompt`,
+`clause.bugfix.reproduction-gone.statement`), och API:et lagrar och skickar dem som de
+är — det översätter ingenting. Webben slår upp dem med samma `_()`; en rad kunden skrivit
+själv är fri text och visas oförändrad. Publiceringsblockerarna kommer likaså som nycklar
+med parametrar. Felsvarens rubriker ur API:et är fortfarande på svenska.
 
 ### Visa upp miljön utanför maskinen
 
@@ -321,8 +343,9 @@ Bun, Fastify och PostgreSQL. Scheman skrivs en gång i TypeBox och driver valide
 TS-typer och OpenAPI-dokumentationen. Anbudsdokumenten ligger i MinIO över S3-API:et; ett
 städjobb rensar föräldralösa objekt och larmar via mail när lagringen tappat innehåll.
 
-Keycloak över OIDC: webben loggar in med authorization code + PKCE mot Keycloaks egna
-sidor, API:et verifierar token mot realmets JWKS och speglar identiteten och
+Webben är React med Vite, och all text går genom `_()` mot en JSON-fil per språk (se
+*Språk* ovan). Keycloak över OIDC: webben loggar in med authorization code + PKCE mot
+Keycloaks egna sidor, API:et verifierar token mot realmets JWKS och speglar identiteten och
 organisationen i egna tabeller vid första anropet. Bakgrunden till bytet från egna konton
 står i [docs/SWITCH_TO_KEYCLOAK.md](docs/SWITCH_TO_KEYCLOAK.md).
 

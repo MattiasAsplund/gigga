@@ -196,7 +196,8 @@ test('AM.16 mallens kriterierader läses ut för bas och valda typer, i ordning'
     'regression-test',
     'neighbours-intact',
   ]);
-  expect(criteria[0]?.statement).toContain('återskapningsfallet');
+  // Lydelsen är en nyckel: texten slås upp i webbens språkfiler, inte här.
+  expect(criteria[0]?.statement).toBe('clause.bugfix.reproduction-gone.statement');
   expect(criteria[0]?.verification).not.toBeNull();
 
   // Basmallens minimikrav och villkor följer alltid med, oavsett typ.

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '../auth.tsx';
+import { _ } from '../i18n.ts';
 
 /**
  * Den enda öppna sidan.
@@ -16,15 +17,8 @@ export function Landing() {
   return (
     <section className="panel stack">
       <h1>gigga</h1>
-      <p>
-        Marknadsplats för distansuppdrag. Köpare publicerar uppdragsförfrågningar, säljare
-        lämnar anbud med genomförandeplan och ersättningsmodell, och parterna signerar ett
-        avtal.
-      </p>
-      <p>
-        Konton, lösenord och e-postbekräftelse sköts av Keycloak. Varje konto hör till en
-        organisation — det är företaget som är part i affären.
-      </p>
+      <p>{_('landing.intro')}</p>
+      <p>{_('landing.accounts')}</p>
       <button
         onClick={() =>
           signIn().catch((cause: unknown) =>
@@ -37,11 +31,11 @@ export function Landing() {
         disabled={loading}
         data-testid="login"
       >
-        Logga in
+        {_('landing.login')}
       </button>
       {failed && (
         <p className="error" data-testid="signin-error">
-          Inloggningen kunde inte startas: {failed}
+          {_('landing.signInFailed', { reason: failed })}
         </p>
       )}
     </section>

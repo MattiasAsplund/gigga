@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { call, type RequestSummary } from '../api.ts';
 import { useToken } from '../auth.tsx';
 import { Notice } from '../components/ui.tsx';
+import { _ } from '../i18n.ts';
 
 export function NewRequest() {
   const token = useToken();
@@ -40,44 +41,41 @@ export function NewRequest() {
 
   return (
     <>
-      <h1>Ny förfrågan</h1>
-      <p className="lede">
-        Beskriv uppdraget så att någon kan lämna anbud på det. Du blir köpare och kan
-        senare signera avtal med det anbud du väljer.
-      </p>
+      <h1>{_('newRequest.title')}</h1>
+      <p className="lede">{_('newRequest.lede')}</p>
 
       <Notice error={error} />
 
       <form className="stack" onSubmit={submit}>
         <label>
-          <span>Rubrik</span>
+          <span>{_('newRequest.titleField')}</span>
           <input name="title" required maxLength={120} data-testid="title" />
         </label>
         <label>
-          <span>Beskrivning</span>
+          <span>{_('newRequest.description')}</span>
           <textarea name="description" required data-testid="description" />
         </label>
         <div className="field-row">
           <label>
-            <span>Ersättningsform</span>
+            <span>{_('newRequest.compensationPref')}</span>
             <select name="compensationPref" defaultValue="any" data-testid="compensationPref">
-              <option value="any">Spelar ingen roll</option>
-              <option value="fixed">Fast pris</option>
-              <option value="hourly">Timpris</option>
+              <option value="any">{_('newRequest.prefAny')}</option>
+              <option value="fixed">{_('newRequest.prefFixed')}</option>
+              <option value="hourly">{_('newRequest.prefHourly')}</option>
             </select>
           </label>
           <label>
-            <span>Budget i kronor</span>
+            <span>{_('newRequest.budget')}</span>
             <input name="budget" type="number" min="1" step="0.01" data-testid="budget" />
           </label>
           <label>
-            <span>Sista anbudsdag</span>
+            <span>{_('newRequest.deadline')}</span>
             <input name="deadlineAt" type="date" data-testid="deadlineAt" />
           </label>
         </div>
         <div className="actions">
           <button type="submit" disabled={busy} data-testid="submit">
-            Publicera förfrågan
+            {_('newRequest.submit')}
           </button>
         </div>
       </form>

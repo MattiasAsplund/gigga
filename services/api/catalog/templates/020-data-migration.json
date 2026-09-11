@@ -1,63 +1,93 @@
 {
   "key": "data-migration",
   "layer": "type",
-  "name": "Datamigrering eller import",
-  "summary": "Data ska flyttas eller läsas in från en källa till ett mål, en eller flera gånger.",
+  "name": "catalog.data-migration.name",
+  "summary": "catalog.data-migration.summary",
   "position": 20,
   "asks": [
-    { "key": "migration.source", "prompt": "Från vilken källa, och i vilket format?", "kind": "text" },
-    { "key": "migration.volume", "prompt": "Ungefärlig datavolym — antal poster och storlek?", "kind": "text" },
+    {
+      "key": "migration.source",
+      "prompt": "question.migration.source.prompt",
+      "kind": "text"
+    },
+    {
+      "key": "migration.volume",
+      "prompt": "question.migration.volume.prompt",
+      "kind": "text"
+    },
     {
       "key": "migration.mapping-owner",
-      "prompt": "Vem definierar fältmappningen?",
+      "prompt": "question.migration.mapping-owner.prompt",
       "kind": "choice",
       "options": [
-        { "key": "customer", "label": "Kunden, före start" },
-        { "key": "supplier", "label": "Leverantören, som en del av uppdraget" },
-        { "key": "together", "label": "Tillsammans, vid ett första möte" }
+        {
+          "key": "customer",
+          "label": "question.migration.mapping-owner.option.customer"
+        },
+        {
+          "key": "supplier",
+          "label": "question.migration.mapping-owner.option.supplier"
+        },
+        {
+          "key": "together",
+          "label": "question.migration.mapping-owner.option.together"
+        }
       ]
     },
     {
       "key": "migration.bad-rows",
-      "prompt": "Vad ska hända med rader som inte går att tolka?",
+      "prompt": "question.migration.bad-rows.prompt",
       "kind": "choice",
       "options": [
-        { "key": "reject-report", "label": "Avvisas och rapporteras, övriga körs vidare" },
-        { "key": "stop", "label": "Hela körningen stoppas" },
-        { "key": "best-effort", "label": "Tas in så långt det går och flaggas" }
+        {
+          "key": "reject-report",
+          "label": "question.migration.bad-rows.option.reject-report"
+        },
+        {
+          "key": "stop",
+          "label": "question.migration.bad-rows.option.stop"
+        },
+        {
+          "key": "best-effort",
+          "label": "question.migration.bad-rows.option.best-effort"
+        }
       ]
     },
-    { "ref": "shared.rerun-allowed" },
-    { "ref": "shared.rollback-plan" }
+    {
+      "ref": "shared.rerun-allowed"
+    },
+    {
+      "ref": "shared.rollback-plan"
+    }
   ],
   "clauses": [
     {
       "key": "count-reconciliation",
       "kind": "criterion",
-      "statement": "När migreringen körts, ska antalet poster i målet stämma mot källan enligt den överenskomna avstämningen, med varje avvikelse förklarad.",
-      "verification": "Avstämningsrapport körd i verifieringsmiljön."
+      "statement": "clause.data-migration.count-reconciliation.statement",
+      "verification": "clause.data-migration.count-reconciliation.verification"
     },
     {
       "key": "bad-row-report",
       "kind": "criterion",
-      "statement": "Rader som inte kunde tolkas finns i en rapport med orsak angiven per rad.",
-      "verification": "Rapporten lämnas tillsammans med körningen."
+      "statement": "clause.data-migration.bad-row-report.statement",
+      "verification": "clause.data-migration.bad-row-report.verification"
     },
     {
       "key": "rerun-idempotent",
       "kind": "criterion",
-      "statement": "När migreringen körs om mot samma källa, ska resultatet bli detsamma utan dubbletter.",
-      "verification": "Två körningar i följd i verifieringsmiljön, med avstämning efter varje."
+      "statement": "clause.data-migration.rerun-idempotent.statement",
+      "verification": "clause.data-migration.rerun-idempotent.verification"
     },
     {
       "key": "source-cleanup",
       "kind": "exclusion",
-      "statement": "Rättning av felaktiga data i källan ingår inte."
+      "statement": "clause.data-migration.source-cleanup.statement"
     },
     {
       "key": "ongoing-sync",
       "kind": "exclusion",
-      "statement": "Fortlöpande synkronisering efter migreringen ingår inte."
+      "statement": "clause.data-migration.ongoing-sync.statement"
     }
   ]
 }
