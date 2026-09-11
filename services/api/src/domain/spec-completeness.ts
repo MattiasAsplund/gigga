@@ -37,7 +37,15 @@ export interface SpecBlocker {
   code: BlockerCode;
   /** Frågenyckel eller kriterie-id — det klienten ska peka på. Null när bristen är hela listans. */
   path: string | null;
+  /**
+   * Ingen text, en nyckel: API:et översätter ingenting, det gör webben ur sina
+   * språkfiler. För en obesvarad fråga är det frågans prompt-nyckel, för ett ogodkänt
+   * kriterium radens lydelse — som är en nyckel när raden kommer ur en mall och fri
+   * text när kunden skrivit den själv. Webben visar fri text som den är.
+   */
   detail: string;
+  /** Platshållarnas värden när nyckelns text bär `{namn}`. */
+  params?: Record<string, string | number>;
 }
 
 export interface Completeness {
@@ -61,7 +69,7 @@ export function assessSpec(input: {
     blockers.push({
       code: 'no-gig-type',
       path: 'gigTypes',
-      detail: 'Välj minst en uppdragstyp. Passar ingen mall finns typen "Övrigt".',
+      detail: 'blocker.no-gig-type',
     });
   }
 
@@ -80,7 +88,8 @@ export function assessSpec(input: {
     blockers.push({
       code: 'too-few-criteria',
       path: 'criteria',
-      detail: `Kravspecen behöver minst ${MIN_CRITERIA} acceptanskriterier, har ${criteria.length}.`,
+      detail: 'blocker.too-few-criteria',
+      params: { min: MIN_CRITERIA, count: criteria.length },
     });
   }
 
@@ -98,7 +107,7 @@ export function assessSpec(input: {
     blockers.push({
       code: 'no-exclusions',
       path: 'criteria',
-      detail: 'Listan över vad som inte ingår får inte vara tom.',
+      detail: 'blocker.no-exclusions',
     });
   }
 

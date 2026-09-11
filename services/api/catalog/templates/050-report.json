@@ -1,41 +1,67 @@
 {
   "key": "report",
   "layer": "type",
-  "name": "Rapport, export eller dashboard",
-  "summary": "Siffror ur befintliga data, presenterade på ett bestämt sätt.",
+  "name": "catalog.report.name",
+  "summary": "catalog.report.summary",
   "position": 50,
   "asks": [
     {
       "key": "report.figures",
-      "prompt": "Vilka siffror ska visas, från vilka källor, och med vilka filter?",
+      "prompt": "question.report.figures.prompt",
       "kind": "longtext"
     },
     {
       "key": "report.refresh",
-      "prompt": "Hur ofta uppdateras den?",
+      "prompt": "question.report.refresh.prompt",
       "kind": "choice",
       "options": [
-        { "key": "realtime", "label": "Vid varje visning" },
-        { "key": "scheduled", "label": "Enligt schema" },
-        { "key": "manual", "label": "När någon begär det" }
+        {
+          "key": "realtime",
+          "label": "question.report.refresh.option.realtime"
+        },
+        {
+          "key": "scheduled",
+          "label": "question.report.refresh.option.scheduled"
+        },
+        {
+          "key": "manual",
+          "label": "question.report.refresh.option.manual"
+        }
       ]
     },
     {
       "key": "report.format",
-      "prompt": "I vilket format ska resultatet lämnas?",
+      "prompt": "question.report.format.prompt",
       "kind": "multichoice",
       "options": [
-        { "key": "screen", "label": "På skärm" },
-        { "key": "pdf", "label": "PDF" },
-        { "key": "excel", "label": "Excel" },
-        { "key": "csv", "label": "CSV-fil" },
-        { "key": "feed", "label": "Fil till annat system" }
+        {
+          "key": "screen",
+          "label": "question.report.format.option.screen"
+        },
+        {
+          "key": "pdf",
+          "label": "question.report.format.option.pdf"
+        },
+        {
+          "key": "excel",
+          "label": "question.report.format.option.excel"
+        },
+        {
+          "key": "csv",
+          "label": "question.report.format.option.csv"
+        },
+        {
+          "key": "feed",
+          "label": "question.report.format.option.feed"
+        }
       ]
     },
-    { "ref": "shared.reference-result" },
+    {
+      "ref": "shared.reference-result"
+    },
     {
       "key": "report.verification-period",
-      "prompt": "Vilken period och vilket dataurval används vid verifieringen?",
+      "prompt": "question.report.verification-period.prompt",
       "kind": "text"
     }
   ],
@@ -43,19 +69,19 @@
     {
       "key": "matches-reference",
       "kind": "criterion",
-      "statement": "När rapporten körs för den angivna perioden, ska varje summa stämma med referensberäkningen.",
-      "verification": "Sida vid sida mot referensen, av verifieraren."
+      "statement": "clause.report.matches-reference.statement",
+      "verification": "clause.report.matches-reference.verification"
     },
     {
       "key": "filters-work",
       "kind": "criterion",
-      "statement": "Varje filter ger det förväntade utfallet för minst ett testfall som angetts i förväg.",
-      "verification": "Ett testfall per filter, med förväntat antal poster angivet innan körningen."
+      "statement": "clause.report.filters-work.statement",
+      "verification": "clause.report.filters-work.verification"
     },
     {
       "key": "source-data-quality",
       "kind": "exclusion",
-      "statement": "Rättning av fel i underliggande data ingår inte — rapporten visar det källan innehåller."
+      "statement": "clause.report.source-data-quality.statement"
     }
   ]
 }

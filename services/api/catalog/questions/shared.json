@@ -2,24 +2,24 @@
   "questions": [
     {
       "key": "shared.rollback-plan",
-      "prompt": "Behövs en dokumenterad väg tillbaka om något går fel, och vem utför den?",
+      "prompt": "question.shared.rollback-plan.prompt",
       "kind": "longtext"
     },
     {
       "key": "shared.rerun-allowed",
-      "prompt": "Får leveransen köras om utan att skapa dubbletter eller andra sidoeffekter?",
+      "prompt": "question.shared.rerun-allowed.prompt",
       "kind": "bool"
     },
     {
       "key": "shared.alert-target",
-      "prompt": "Vem ska larmas när något går fel, och på vilken kanal?",
-      "help": "Namn eller funktion plus kanal — e-post, chatt, telefon. \"Någon i driften\" går inte att verifiera.",
+      "prompt": "question.shared.alert-target.prompt",
+      "help": "question.shared.alert-target.help",
       "kind": "text"
     },
     {
       "key": "shared.reference-result",
-      "prompt": "Finns något liknande som redan fungerar, som resultatet kan jämföras med?",
-      "help": "Den här frågan fångar outtalade förväntningar, och det outtalade är det som sänker fastprisaffärer.",
+      "prompt": "question.shared.reference-result.prompt",
+      "help": "question.shared.reference-result.help",
       "kind": "longtext"
     }
   ]

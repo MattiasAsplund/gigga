@@ -1,39 +1,58 @@
 {
   "key": "study",
   "layer": "type",
-  "name": "Förstudie eller utredning",
-  "summary": "Leveransobjektet är ett dokument, inte kod.",
+  "name": "catalog.study.name",
+  "summary": "catalog.study.summary",
   "position": 100,
   "asks": [
     {
       "key": "study.questions",
-      "prompt": "Vilka frågor ska besvaras? Numrera dem.",
-      "help": "Listan är själva leveransen — acceptansen blir att var och en av frågorna är besvarad.",
+      "prompt": "question.study.questions.prompt",
+      "help": "question.study.questions.help",
       "kind": "longtext"
     },
-    { "key": "study.audience", "prompt": "Vem ska läsa resultatet?", "kind": "text" },
+    {
+      "key": "study.audience",
+      "prompt": "question.study.audience.prompt",
+      "kind": "text"
+    },
     {
       "key": "study.recommendation",
-      "prompt": "Ska resultatet innehålla en rekommendation?",
+      "prompt": "question.study.recommendation.prompt",
       "kind": "choice",
       "options": [
-        { "key": "recommendation", "label": "Ja, med motivering" },
-        { "key": "options-only", "label": "Nej, bara underlag och alternativ" }
+        {
+          "key": "recommendation",
+          "label": "question.study.recommendation.option.recommendation"
+        },
+        {
+          "key": "options-only",
+          "label": "question.study.recommendation.option.options-only"
+        }
       ]
     },
     {
       "key": "study.spec-output",
-      "prompt": "Ska utredningen mynna ut i en kravspec som kan användas för nästa gigg?",
+      "prompt": "question.study.spec-output.prompt",
       "kind": "bool"
     },
     {
       "key": "study.format",
-      "prompt": "I vilken form levereras resultatet?",
+      "prompt": "question.study.format.prompt",
       "kind": "choice",
       "options": [
-        { "key": "document", "label": "Dokument" },
-        { "key": "presentation", "label": "Presentation" },
-        { "key": "document-walkthrough", "label": "Dokument plus genomgång" }
+        {
+          "key": "document",
+          "label": "question.study.format.option.document"
+        },
+        {
+          "key": "presentation",
+          "label": "question.study.format.option.presentation"
+        },
+        {
+          "key": "document-walkthrough",
+          "label": "question.study.format.option.document-walkthrough"
+        }
       ]
     }
   ],
@@ -41,30 +60,30 @@
     {
       "key": "questions-answered",
       "kind": "criterion",
-      "statement": "Varje i förväg listad fråga är besvarad i dokumentet, med källa eller resonemang.",
-      "verification": "Genomgång fråga för fråga mot listan."
+      "statement": "clause.study.questions-answered.statement",
+      "verification": "clause.study.questions-answered.verification"
     },
     {
       "key": "recommendation-motivated",
       "kind": "criterion",
-      "statement": "Rekommendationen är motiverad, och de alternativ som valts bort är redovisade med skäl.",
-      "verification": "Läsning av avsnittet av den som ska fatta beslutet."
+      "statement": "clause.study.recommendation-motivated.statement",
+      "verification": "clause.study.recommendation-motivated.verification"
     },
     {
       "key": "spec-publishable",
       "kind": "criterion",
-      "statement": "Ingår en kravspec uppfyller den giggas formkrav för publicering.",
-      "verification": "Kravspecen provpubliceras i gigga."
+      "statement": "clause.study.spec-publishable.statement",
+      "verification": "clause.study.spec-publishable.verification"
     },
     {
       "key": "no-preference",
       "kind": "term",
-      "statement": "Den som gör förstudien har inte förtur på det bygge den mynnar ut i."
+      "statement": "clause.study.no-preference.statement"
     },
     {
       "key": "implementation",
       "kind": "exclusion",
-      "statement": "Genomförande av det utredningen föreslår ingår inte."
+      "statement": "clause.study.implementation.statement"
     }
   ]
 }

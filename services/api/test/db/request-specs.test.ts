@@ -142,7 +142,8 @@ test('KS.2 ett svar prövas mot frågans egen form', async () => {
   });
   expect(saved.value).toBe(30);
   // Frågans lydelse fryses i svarsraden.
-  expect(saved.prompt).toContain('loggarna');
+  // Prompten är en nyckel som webben slår upp; API:et bär ingen text.
+  expect(saved.prompt).toBe('question.automation.log-retention-days.prompt');
 
   await expect(
     saveAnswer(db.sql, {

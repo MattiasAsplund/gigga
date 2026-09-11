@@ -1,49 +1,91 @@
 {
   "key": "screen",
   "layer": "type",
-  "name": "Skärm, vy eller formulär",
-  "summary": "Något en människa ska titta på och använda.",
+  "name": "catalog.screen.name",
+  "summary": "catalog.screen.summary",
   "position": 40,
   "asks": [
     {
       "key": "screen.design",
-      "prompt": "Vilket designunderlag finns?",
-      "help": "Tvister om den här typen handlar nästan alltid om utseende. Antingen finns en skiss, eller så är utformningen uttryckligen leverantörens val.",
+      "prompt": "question.screen.design.prompt",
+      "help": "question.screen.design.help",
       "kind": "choice",
       "options": [
-        { "key": "sketch", "label": "Skiss eller mockup" },
-        { "key": "design-system", "label": "Befintligt designsystem att följa" },
-        { "key": "existing-view", "label": "En befintlig vy att härma" },
-        { "key": "free", "label": "Inget — utformningen är leverantörens val" }
+        {
+          "key": "sketch",
+          "label": "question.screen.design.option.sketch"
+        },
+        {
+          "key": "design-system",
+          "label": "question.screen.design.option.design-system"
+        },
+        {
+          "key": "existing-view",
+          "label": "question.screen.design.option.existing-view"
+        },
+        {
+          "key": "free",
+          "label": "question.screen.design.option.free"
+        }
       ]
     },
     {
       "key": "screen.design-source",
-      "prompt": "Var finns underlaget, och vem beslutar om avsteg från det?",
+      "prompt": "question.screen.design-source.prompt",
       "kind": "text",
       "condition": {
         "question": "screen.design",
-        "in": ["sketch", "design-system", "existing-view"]
+        "in": [
+          "sketch",
+          "design-system",
+          "existing-view"
+        ]
       }
     },
     {
       "key": "screen.fields",
-      "prompt": "Vilka fält ska finnas, och vilken validering gäller för var och en?",
+      "prompt": "question.screen.fields.prompt",
       "kind": "longtext"
     },
-    { "key": "screen.roles", "prompt": "Vilka roller ska se vyn?", "kind": "text" },
-    { "key": "screen.mobile", "prompt": "Ska vyn fungera på mobil?", "kind": "bool" },
+    {
+      "key": "screen.roles",
+      "prompt": "question.screen.roles.prompt",
+      "kind": "text"
+    },
+    {
+      "key": "screen.mobile",
+      "prompt": "question.screen.mobile.prompt",
+      "kind": "bool"
+    },
     {
       "key": "screen.browsers",
-      "prompt": "Vilka webbläsare ska stödjas?",
+      "prompt": "question.screen.browsers.prompt",
       "kind": "multichoice",
       "options": [
-        { "key": "chrome", "label": "Chrome" },
-        { "key": "edge", "label": "Edge" },
-        { "key": "firefox", "label": "Firefox" },
-        { "key": "safari", "label": "Safari på macOS" },
-        { "key": "safari-ios", "label": "Safari på iOS" },
-        { "key": "chrome-android", "label": "Chrome på Android" }
+        {
+          "key": "chrome",
+          "label": "question.screen.browsers.option.chrome"
+        },
+        {
+          "key": "edge",
+          "label": "question.screen.browsers.option.edge"
+        },
+        {
+          "key": "firefox",
+          "label": "question.screen.browsers.option.firefox"
+        },
+        {
+          "key": "safari",
+          "label": "question.screen.browsers.option.safari"
+        },
+        {
+          "key": "safari-ios",
+          "label": "question.screen.browsers.option.safari-ios"
+        },
+        {
+          "key": "chrome-android",
+          "label": "question.screen.browsers.option.chrome-android"
+        }
       ]
     }
   ],
@@ -51,35 +93,35 @@
     {
       "key": "fields-present",
       "kind": "criterion",
-      "statement": "Samtliga angivna fält finns i vyn, med den validering som anges för vart och ett.",
-      "verification": "Genomgång fält för fält mot listan i kravspecen."
+      "statement": "clause.screen.fields-present.statement",
+      "verification": "clause.screen.fields-present.verification"
     },
     {
       "key": "browsers-covered",
       "kind": "criterion",
-      "statement": "Vyn fungerar i de angivna webbläsarna och skärmstorlekarna.",
-      "verification": "Verifieraren öppnar vyn i var och en av dem."
+      "statement": "clause.screen.browsers-covered.statement",
+      "verification": "clause.screen.browsers-covered.verification"
     },
     {
       "key": "validation-messages",
       "kind": "criterion",
-      "statement": "När ogiltig inmatning skickas, ska ett läsbart felmeddelande visas vid det fält som är fel.",
-      "verification": "Ett testfall per valideringsregel."
+      "statement": "clause.screen.validation-messages.statement",
+      "verification": "clause.screen.validation-messages.verification"
     },
     {
       "key": "appearance-basis",
       "kind": "term",
-      "statement": "Utformningen bedöms mot det angivna designunderlaget. Saknas underlag är utformningen leverantörens val och kan inte ensam ligga till grund för underkännande."
+      "statement": "clause.screen.appearance-basis.statement"
     },
     {
       "key": "design-work",
       "kind": "exclusion",
-      "statement": "Framtagning av grafisk design eller designsystem ingår inte."
+      "statement": "clause.screen.design-work.statement"
     },
     {
       "key": "content-production",
       "kind": "exclusion",
-      "statement": "Framtagning av texter och bilder ingår inte."
+      "statement": "clause.screen.content-production.statement"
     }
   ]
 }

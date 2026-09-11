@@ -57,7 +57,7 @@ export function RequestSpec() {
             <Status value={data.version.status} />
             <span>
               <span className="eyebrow">{_('requestSpec.typeLabel')}</span>{' '}
-              {data.gigTypes.map((type) => type.name).join(', ') || '—'}
+              {data.gigTypes.map((type) => _(type.name)).join(', ') || '—'}
             </span>
             <span>
               <span className="eyebrow">{_('requestSpec.publishedLabel')}</span>{' '}
@@ -137,8 +137,8 @@ function ChooseTypes({
                 onChange={() => toggle(type.key)}
               />
               <span>
-                <strong>{type.name}</strong>
-                {type.summary && <span className="choice__hint">{type.summary}</span>}
+                <strong>{_(type.name)}</strong>
+                {type.summary && <span className="choice__hint">{_(type.summary)}</span>}
                 <span className="choice__count mono">
                   {_('requestSpec.typeCounts', {
                     questions: type.questionCount,
@@ -201,7 +201,7 @@ function Progress({ completeness }: { completeness: Completeness }) {
           */}
           {completeness.blockers.slice(0, BLOCKERS_SHOWN).map((blocker) => (
             <li key={`${blocker.code}:${blocker.path}`} data-testid="blocker">
-              {blocker.detail}
+              {_(blocker.detail, blocker.params)}
             </li>
           ))}
           {completeness.blockers.length > BLOCKERS_SHOWN && (
@@ -248,7 +248,7 @@ function Questions({
   const name = (key: string) =>
     key === 'base'
       ? _('requestSpec.baseGroupName')
-      : (spec.gigTypes.find((type) => type.key === key)?.name ?? key);
+      : _(spec.gigTypes.find((type) => type.key === key)?.name ?? key);
 
   const set = (key: string, value: unknown) =>
     setDrafts((current) => ({ ...current, [key]: value }));
@@ -341,10 +341,10 @@ function Field({
       data-answered={question.answered ? 'true' : 'false'}
     >
       <span>
-        {question.prompt}
+        {_(question.prompt)}
         {!required && <span className="question__optional">{_('requestSpec.optionalSuffix')}</span>}
       </span>
-      {question.helpText && <span className="question__help">{question.helpText}</span>}
+      {question.helpText && <span className="question__help">{_(question.helpText)}</span>}
 
       {question.kind === 'longtext' && (
         <textarea
@@ -408,7 +408,7 @@ function Field({
           <option value="">{_('requestSpec.selectPlaceholder')}</option>
           {question.options.map((option) => (
             <option value={option.key} key={option.key}>
-              {option.label}
+              {_(option.label)}
             </option>
           ))}
         </select>
@@ -432,7 +432,7 @@ function Field({
                     )
                   }
                 />
-                <span>{option.label}</span>
+                <span>{_(option.label)}</span>
               </label>
             );
           })}
@@ -500,7 +500,8 @@ function Row({
 }) {
   const token = useToken();
   const [editing, setEditing] = useState(false);
-  const [statement, setStatement] = useState(criterion.statement);
+  // Den översatta lydelsen och inte nyckeln: en omskriven rad är fri text från och med nu.
+  const [statement, setStatement] = useState(() => _(criterion.statement));
   const [busy, setBusy] = useState(false);
 
   const base = `/requests/${requestId}/spec/criteria/${criterion.id}`;
@@ -534,12 +535,12 @@ function Row({
             data-testid="criterion-statement"
           />
         ) : (
-          <p className="clause__statement">{criterion.statement}</p>
+          <p className="clause__statement">{_(criterion.statement)}</p>
         )}
 
         {criterion.verification && !editing && (
           <p className="clause__how">
-            <span className="eyebrow">{_('requestSpec.verifiedLabel')}</span> {criterion.verification}
+            <span className="eyebrow">{_('requestSpec.verifiedLabel')}</span> {_(criterion.verification)}
           </p>
         )}
 
@@ -790,12 +791,12 @@ export function SpecReading({ spec }: { spec: Spec }) {
               <ul className="plain-list">
                 {rows.map((criterion) => (
                   <li key={criterion.id} data-testid="criterion" data-kind={kind}>
-                    {criterion.statement}
+                    {_(criterion.statement)}
                     {criterion.verification && (
                       <span className="clause__how">
                         {' '}
                         <span className="eyebrow">{_('requestSpec.verifiedLabel')}</span>{' '}
-                        {criterion.verification}
+                        {_(criterion.verification)}
                       </span>
                     )}
                   </li>
@@ -814,7 +815,7 @@ export function SpecReading({ spec }: { spec: Spec }) {
           <dl className="answers" data-testid="answers">
             {answered.map((answer) => (
               <div className="answers__row" key={answer.questionKey} data-testid="answer-row">
-                <dt>{answer.prompt}</dt>
+                <dt>{_(answer.prompt)}</dt>
                 <dd>{readable(answer.value)}</dd>
               </div>
             ))}

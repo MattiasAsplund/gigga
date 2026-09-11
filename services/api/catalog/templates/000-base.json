@@ -1,162 +1,240 @@
 {
   "key": "base",
   "layer": "base",
-  "name": "Basmallen",
-  "summary": "Frågorna som gäller varje gigg oavsett typ: vad som överlämnas, hur det verifieras, vad kunden åtar sig och vem som äger resultatet.",
+  "name": "catalog.base.name",
+  "summary": "catalog.base.summary",
   "position": 0,
   "asks": [
     {
       "key": "context.system-age",
-      "prompt": "Nytt eller befintligt system?",
+      "prompt": "question.context.system-age.prompt",
       "kind": "choice",
       "options": [
-        { "key": "new", "label": "Nytt, byggs från grunden" },
-        { "key": "existing", "label": "Befintligt, i drift" },
-        { "key": "existing-legacy", "label": "Befintligt, gammalt och sparsamt dokumenterat" }
+        {
+          "key": "new",
+          "label": "question.context.system-age.option.new"
+        },
+        {
+          "key": "existing",
+          "label": "question.context.system-age.option.existing"
+        },
+        {
+          "key": "existing-legacy",
+          "label": "question.context.system-age.option.existing-legacy"
+        }
       ]
     },
     {
       "key": "context.stack",
-      "prompt": "Vilken teknisk stack? Ange språk, ramverk och databas.",
+      "prompt": "question.context.stack.prompt",
       "kind": "text"
     },
     {
       "key": "context.access",
-      "prompt": "Vem har åtkomst till kod och miljöer idag, och vem beslutar om ny åtkomst?",
+      "prompt": "question.context.access.prompt",
       "kind": "longtext"
     },
     {
       "key": "context.urgency",
-      "prompt": "Vad händer om det här inte blir gjort?",
-      "help": "Svaret säger mer om hur skarpt uppdraget är än ett datum gör.",
+      "prompt": "question.context.urgency.prompt",
+      "help": "question.context.urgency.help",
       "kind": "longtext"
     },
     {
       "key": "base.deliverables",
-      "prompt": "Vad överlämnas konkret? Ange repo, branch och hur leveransen sker — pull request, tagg eller annat.",
-      "help": "Den här raden är utgångspunkten vid en tvist. Skriv namnet på repo och branch, inte \"koden\".",
+      "prompt": "question.base.deliverables.prompt",
+      "help": "question.base.deliverables.help",
       "kind": "longtext"
     },
     {
       "key": "base.artifacts",
-      "prompt": "Vilka artefakter utöver kod ingår — SQL-skript, konfiguration, migreringsfiler?",
+      "prompt": "question.base.artifacts.prompt",
       "kind": "longtext",
       "required": false
     },
     {
       "key": "base.documentation",
-      "prompt": "Vilken dokumentation ingår, i vilken omfattning, och var ska den ligga?",
+      "prompt": "question.base.documentation.prompt",
       "kind": "longtext"
     },
     {
       "key": "base.deployment",
-      "prompt": "Ska något driftsättas som en del av uppdraget?",
+      "prompt": "question.base.deployment.prompt",
       "kind": "choice",
       "options": [
-        { "key": "none", "label": "Nej, leveransen är kod och dokument" },
-        { "key": "supplier", "label": "Ja, leverantören driftsätter" },
-        { "key": "customer", "label": "Ja, kunden driftsätter själv" },
-        { "key": "joint", "label": "Ja, tillsammans" }
+        {
+          "key": "none",
+          "label": "question.base.deployment.option.none"
+        },
+        {
+          "key": "supplier",
+          "label": "question.base.deployment.option.supplier"
+        },
+        {
+          "key": "customer",
+          "label": "question.base.deployment.option.customer"
+        },
+        {
+          "key": "joint",
+          "label": "question.base.deployment.option.joint"
+        }
       ]
     },
     {
       "key": "base.deployment-environment",
-      "prompt": "I vilken miljö sker driftsättningen, och vem har åtkomst till den?",
+      "prompt": "question.base.deployment-environment.prompt",
       "kind": "text",
-      "condition": { "question": "base.deployment", "notEquals": "none" }
+      "condition": {
+        "question": "base.deployment",
+        "notEquals": "none"
+      }
     },
     {
       "key": "base.verification-environment",
-      "prompt": "Var verifieras leveransen?",
-      "help": "Det här är fältet de flesta fastprisaffärer havererar på. \"Det fungerar hos mig\" är inte en acceptansgrund.",
+      "prompt": "question.base.verification-environment.prompt",
+      "help": "question.base.verification-environment.help",
       "kind": "choice",
       "options": [
-        { "key": "customer-test", "label": "Kundens testmiljö" },
-        { "key": "supplier-demo", "label": "Leverantörens demomiljö" },
-        { "key": "customer-prod", "label": "Kundens produktionsmiljö" },
-        { "key": "local", "label": "Lokalt hos leverantören" }
+        {
+          "key": "customer-test",
+          "label": "question.base.verification-environment.option.customer-test"
+        },
+        {
+          "key": "supplier-demo",
+          "label": "question.base.verification-environment.option.supplier-demo"
+        },
+        {
+          "key": "customer-prod",
+          "label": "question.base.verification-environment.option.customer-prod"
+        },
+        {
+          "key": "local",
+          "label": "question.base.verification-environment.option.local"
+        }
       ]
     },
     {
       "key": "base.verification-owner",
-      "prompt": "Vem kör verifieringen? Ange namn och roll.",
+      "prompt": "question.base.verification-owner.prompt",
       "kind": "text"
     },
     {
       "key": "base.test-data",
-      "prompt": "Vilka testdata används, och vem tillhandahåller dem?",
+      "prompt": "question.base.test-data.prompt",
       "kind": "longtext"
     },
     {
       "key": "base.verification-record",
-      "prompt": "Hur dokumenteras resultatet av verifieringen?",
+      "prompt": "question.base.verification-record.prompt",
       "kind": "choice",
       "options": [
-        { "key": "checklist", "label": "Avbockad kriterielista i gigga" },
-        { "key": "screenshots", "label": "Skärmbilder eller inspelning" },
-        { "key": "test-report", "label": "Testrapport" },
-        { "key": "written", "label": "Skriftligt besked rad för rad" }
+        {
+          "key": "checklist",
+          "label": "question.base.verification-record.option.checklist"
+        },
+        {
+          "key": "screenshots",
+          "label": "question.base.verification-record.option.screenshots"
+        },
+        {
+          "key": "test-report",
+          "label": "question.base.verification-record.option.test-report"
+        },
+        {
+          "key": "written",
+          "label": "question.base.verification-record.option.written"
+        }
       ]
     },
     {
       "key": "base.customer-access",
-      "prompt": "Vilka åtkomster ska du tillhandahålla — repo, miljöer, konton, nycklar?",
+      "prompt": "question.base.customer-access.prompt",
       "kind": "longtext"
     },
     {
       "key": "base.access-deadline",
-      "prompt": "Senast vilket datum finns åtkomsterna på plats?",
-      "help": "Dröjer de pausas leveranstiden dag för dag enligt klockstoppsvillkoret.",
+      "prompt": "question.base.access-deadline.prompt",
+      "help": "question.base.access-deadline.help",
       "kind": "date"
     },
     {
       "key": "base.contact-person",
-      "prompt": "Vem är namngiven kontaktperson under leveransen?",
+      "prompt": "question.base.contact-person.prompt",
       "kind": "text"
     },
     {
       "key": "base.response-time-days",
-      "prompt": "Din svarstid på frågor under leveransen, i arbetsdagar.",
+      "prompt": "question.base.response-time-days.prompt",
       "kind": "integer",
-      "config": { "minimum": 1, "maximum": 10, "default": 2 }
+      "config": {
+        "minimum": 1,
+        "maximum": 10,
+        "default": 2
+      }
     },
     {
       "key": "base.acceptance-window-days",
-      "prompt": "Hur många arbetsdagar har du på dig att godkänna eller underkänna leveransen?",
+      "prompt": "question.base.acceptance-window-days.prompt",
       "kind": "integer",
-      "config": { "minimum": 1, "maximum": 20, "default": 5 }
+      "config": {
+        "minimum": 1,
+        "maximum": 20,
+        "default": 5
+      }
     },
     {
       "key": "base.rework-rounds",
-      "prompt": "Hur många omtag ingår i priset?",
-      "help": "Därefter blir det en ny gigg.",
+      "prompt": "question.base.rework-rounds.prompt",
+      "help": "question.base.rework-rounds.help",
       "kind": "integer",
-      "config": { "minimum": 0, "maximum": 5, "default": 2 }
+      "config": {
+        "minimum": 0,
+        "maximum": 5,
+        "default": 2
+      }
     },
     {
       "key": "base.ip-owner",
-      "prompt": "Vem äger den levererade koden?",
+      "prompt": "question.base.ip-owner.prompt",
       "kind": "choice",
       "options": [
-        { "key": "customer", "label": "Kunden äger allt som levereras" },
-        { "key": "supplier-license", "label": "Leverantören äger, kunden får nyttjanderätt" },
-        { "key": "shared", "label": "Delat, regleras i avtalet" }
+        {
+          "key": "customer",
+          "label": "question.base.ip-owner.option.customer"
+        },
+        {
+          "key": "supplier-license",
+          "label": "question.base.ip-owner.option.supplier-license"
+        },
+        {
+          "key": "shared",
+          "label": "question.base.ip-owner.option.shared"
+        }
       ]
     },
     {
       "key": "base.licenses",
-      "prompt": "Vilka tredjepartslicenser accepterar du, och vilka gör du inte?",
-      "help": "Vanlig skrivning: MIT, BSD och Apache 2.0 är tillåtna, copyleft kräver godkännande i förväg.",
+      "prompt": "question.base.licenses.prompt",
+      "help": "question.base.licenses.help",
       "kind": "longtext"
     },
     {
       "key": "base.supplier-reuse",
-      "prompt": "Får leverantören återanvända eget befintligt material i leveransen?",
+      "prompt": "question.base.supplier-reuse.prompt",
       "kind": "choice",
       "options": [
-        { "key": "yes-perpetual", "label": "Ja, med evig nyttjanderätt för kunden" },
-        { "key": "yes-ask", "label": "Ja, men det ska anges innan det används" },
-        { "key": "no", "label": "Nej" }
+        {
+          "key": "yes-perpetual",
+          "label": "question.base.supplier-reuse.option.yes-perpetual"
+        },
+        {
+          "key": "yes-ask",
+          "label": "question.base.supplier-reuse.option.yes-ask"
+        },
+        {
+          "key": "no",
+          "label": "question.base.supplier-reuse.option.no"
+        }
       ]
     }
   ],
@@ -164,77 +242,77 @@
     {
       "key": "clean-start",
       "kind": "minimum",
-      "statement": "Koden går att starta från rent läge enligt medföljande instruktion.",
-      "verification": "Leverantören visar en start i en nyuppsatt miljö."
+      "statement": "clause.base.clean-start.statement",
+      "verification": "clause.base.clean-start.verification"
     },
     {
       "key": "no-secrets",
       "kind": "minimum",
-      "statement": "Inga hemligheter, nycklar eller lösenord finns i källkod eller repo.",
-      "verification": "Genomsökning av repo och historik."
+      "statement": "clause.base.no-secrets.statement",
+      "verification": "clause.base.no-secrets.verification"
     },
     {
       "key": "error-handling",
       "kind": "minimum",
-      "statement": "Applikationen kraschar inte på förutsägbara felfall — felen hanteras och rapporteras.",
-      "verification": "De felfall som anges bland kriterierna körs."
+      "statement": "clause.base.error-handling.statement",
+      "verification": "clause.base.error-handling.verification"
     },
     {
       "key": "no-regressions",
       "kind": "minimum",
-      "statement": "Ingen funktionalitet som fanns före leveransen slutar fungera.",
-      "verification": "Kundens befintliga rökteslista körs efter leveransen."
+      "statement": "clause.base.no-regressions.statement",
+      "verification": "clause.base.no-regressions.verification"
     },
     {
       "key": "dependency-licenses",
       "kind": "minimum",
-      "statement": "Tillkommande tredjepartsberoenden är listade med licens.",
-      "verification": "Listan följer med leveransen."
+      "statement": "clause.base.dependency-licenses.statement",
+      "verification": "clause.base.dependency-licenses.verification"
     },
     {
       "key": "clock-stop",
       "kind": "term",
-      "statement": "Levererar inte kunden enligt sina åtaganden pausas leveranstiden dag för dag tills åtagandet är uppfyllt."
+      "statement": "clause.base.clock-stop.statement"
     },
     {
       "key": "silent-acceptance",
       "kind": "term",
-      "statement": "Uteblivet svar inom acceptansfönstret räknas som godkännande."
+      "statement": "clause.base.silent-acceptance.statement"
     },
     {
       "key": "rejection-cites-rows",
       "kind": "term",
-      "statement": "Ett underkännande ska ange vilka kriterierader som inte uppfylls, inte en allmän missnöjesförklaring."
+      "statement": "clause.base.rejection-cites-rows.statement"
     },
     {
       "key": "warranty",
       "kind": "term",
-      "statement": "Avvikelser mot godkända acceptanskriterier åtgärdas utan kostnad inom 30 dagar efter acceptans. Nya önskemål är inte garantiärenden — de är nya giggar."
+      "statement": "clause.base.warranty.statement"
     },
     {
       "key": "ongoing-support",
       "kind": "exclusion",
-      "statement": "Löpande förvaltning, support och jour efter garantitiden ingår inte."
+      "statement": "clause.base.ongoing-support.statement"
     },
     {
       "key": "training",
       "kind": "exclusion",
-      "statement": "Utbildning av kundens personal ingår inte."
+      "statement": "clause.base.training.statement"
     },
     {
       "key": "data-cleanup",
       "kind": "exclusion",
-      "statement": "Rättning av kundens befintliga data ingår inte."
+      "statement": "clause.base.data-cleanup.statement"
     },
     {
       "key": "third-party-changes",
       "kind": "exclusion",
-      "statement": "Ändringar i system som kunden inte råder över ingår inte."
+      "statement": "clause.base.third-party-changes.statement"
     },
     {
       "key": "new-wishes",
       "kind": "exclusion",
-      "statement": "Önskemål som tillkommer under leveransen ingår inte — de blir en ny gigg."
+      "statement": "clause.base.new-wishes.statement"
     }
   ]
 }

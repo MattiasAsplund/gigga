@@ -273,7 +273,13 @@ export interface Completeness {
   criteria: number;
   approvedCriteria: number;
   publishable: boolean;
-  blockers: { code: string; path: string | null; detail: string }[];
+  blockers: {
+    code: string;
+    path: string | null;
+    /** En nyckel i språkfilerna, eller fri text när bristen är en rad kunden skrivit själv. */
+    detail: string;
+    params?: Record<string, string | number>;
+  }[];
 }
 
 export interface RequestSpec {

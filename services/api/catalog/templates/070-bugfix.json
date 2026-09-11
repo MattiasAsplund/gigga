@@ -1,47 +1,74 @@
 {
   "key": "bugfix",
   "layer": "type",
-  "name": "Buggfix i befintlig kod",
-  "summary": "Något fungerar inte som det ska och ska sluta göra det.",
+  "name": "catalog.bugfix.name",
+  "summary": "catalog.bugfix.summary",
   "position": 70,
   "asks": [
     {
       "key": "bugfix.reproduction",
-      "prompt": "Hur återskapas felet, steg för steg?",
-      "help": "Utan ett återskapningsfall går uppdraget inte att avgränsa, och då går det inte att sätta fast pris.",
+      "prompt": "question.bugfix.reproduction.prompt",
+      "help": "question.bugfix.reproduction.help",
       "kind": "longtext"
     },
-    { "key": "bugfix.environment", "prompt": "I vilken miljö uppträder felet?", "kind": "text" },
+    {
+      "key": "bugfix.environment",
+      "prompt": "question.bugfix.environment.prompt",
+      "kind": "text"
+    },
     {
       "key": "bugfix.code-access",
-      "prompt": "Har du åtkomst till koden att ge?",
+      "prompt": "question.bugfix.code-access.prompt",
       "kind": "choice",
       "options": [
-        { "key": "yes", "label": "Ja, direkt" },
-        { "key": "delayed", "label": "Ja, men det tar några dagar" },
-        { "key": "no", "label": "Nej, koden ligger hos någon annan" }
+        {
+          "key": "yes",
+          "label": "question.bugfix.code-access.option.yes"
+        },
+        {
+          "key": "delayed",
+          "label": "question.bugfix.code-access.option.delayed"
+        },
+        {
+          "key": "no",
+          "label": "question.bugfix.code-access.option.no"
+        }
       ]
     },
-    { "key": "bugfix.existing-tests", "prompt": "Finns tester sedan tidigare?", "kind": "bool" },
+    {
+      "key": "bugfix.existing-tests",
+      "prompt": "question.bugfix.existing-tests.prompt",
+      "kind": "bool"
+    },
     {
       "key": "bugfix.root-or-symptom",
-      "prompt": "Är det felet som ska bort, eller symtomet?",
+      "prompt": "question.bugfix.root-or-symptom.prompt",
       "kind": "choice",
       "options": [
-        { "key": "root", "label": "Orsaken, även om det tar längre tid" },
-        { "key": "symptom", "label": "Symtomet räcker tills vidare" }
+        {
+          "key": "root",
+          "label": "question.bugfix.root-or-symptom.option.root"
+        },
+        {
+          "key": "symptom",
+          "label": "question.bugfix.root-or-symptom.option.symptom"
+        }
       ]
     },
     {
       "key": "bugfix.investigation-cap-hours",
-      "prompt": "Efter hur många timmars felsökning ska uppdraget stanna och räknas om?",
-      "help": "Utredningstiden är okänd innan man börjat. Taket är skyddet åt båda håll.",
+      "prompt": "question.bugfix.investigation-cap-hours.prompt",
+      "help": "question.bugfix.investigation-cap-hours.help",
       "kind": "integer",
-      "config": { "minimum": 1, "maximum": 80, "default": 8 }
+      "config": {
+        "minimum": 1,
+        "maximum": 80,
+        "default": 8
+      }
     },
     {
       "key": "bugfix.neighbours",
-      "prompt": "Vilka angränsande funktioner ska fortsätta fungera oförändrat?",
+      "prompt": "question.bugfix.neighbours.prompt",
       "kind": "longtext"
     }
   ],
@@ -49,35 +76,35 @@
     {
       "key": "reproduction-gone",
       "kind": "criterion",
-      "statement": "När det beskrivna återskapningsfallet körs, ska felet inte längre uppstå.",
-      "verification": "Verifieraren kör stegen i den angivna miljön."
+      "statement": "clause.bugfix.reproduction-gone.statement",
+      "verification": "clause.bugfix.reproduction-gone.verification"
     },
     {
       "key": "regression-test",
       "kind": "criterion",
-      "statement": "Ett test som fångar felet finns, och det går igenom efter rättningen.",
-      "verification": "Testet körs mot koden före och efter rättningen."
+      "statement": "clause.bugfix.regression-test.statement",
+      "verification": "clause.bugfix.regression-test.verification"
     },
     {
       "key": "neighbours-intact",
       "kind": "criterion",
-      "statement": "De angivna angränsande funktionerna fungerar oförändrat.",
-      "verification": "Genomgång av listan i verifieringsmiljön."
+      "statement": "clause.bugfix.neighbours-intact.statement",
+      "verification": "clause.bugfix.neighbours-intact.verification"
     },
     {
       "key": "investigation-cap",
       "kind": "term",
-      "statement": "Är felet inte lokaliserat inom det angivna timtaket stannar uppdraget, och parterna kommer överens om en betald felsökningsgigg innan arbetet fortsätter."
+      "statement": "clause.bugfix.investigation-cap.statement"
     },
     {
       "key": "other-bugs",
       "kind": "exclusion",
-      "statement": "Andra fel som upptäcks under arbetet ingår inte."
+      "statement": "clause.bugfix.other-bugs.statement"
     },
     {
       "key": "refactoring",
       "kind": "exclusion",
-      "statement": "Ombyggnad av kringliggande kod ingår inte."
+      "statement": "clause.bugfix.refactoring.statement"
     }
   ]
 }

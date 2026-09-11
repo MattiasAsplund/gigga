@@ -20,6 +20,9 @@ const tables: Record<Locale, Record<string, string>> = {
 
 const STORAGE_KEY = "gigga.locale";
 
+/** `app.login`, `question.integration.systems.prompt` — men inte en mening med blanksteg. */
+const KEY_SHAPE = /^[a-z][a-z0-9-]*(\.[a-zA-Z0-9-]+)+$/;
+
 function storedLocale(): Locale {
 	try {
 		const value = localStorage.getItem(STORAGE_KEY);
@@ -83,7 +86,12 @@ export function useLocale(): Locale {
 export function _(key: string, params?: Params): string {
 	const template = tables[current][key];
 	if (template === undefined) {
-		console.warn(`i18n: nyckeln "${key}" saknas i ${current}.json`);
+		// Text ur API:et går också hit: katalogens frågor och kriterier kommer som nycklar,
+		// men ett kriterium kunden skrivit själv är fri text och ska visas som den är.
+		// Varningen gäller därför bara det som ser ut som en nyckel.
+		if (KEY_SHAPE.test(key)) {
+			console.warn(`i18n: nyckeln "${key}" saknas i ${current}.json`);
+		}
 		return key;
 	}
 	if (!params) return template;

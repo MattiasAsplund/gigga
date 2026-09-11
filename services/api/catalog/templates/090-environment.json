@@ -1,46 +1,73 @@
 {
   "key": "environment",
   "layer": "type",
-  "name": "Miljö, uppgradering eller driftsättning",
-  "summary": "Arbetet sker på infrastrukturen snarare än i koden.",
+  "name": "catalog.environment.name",
+  "summary": "catalog.environment.summary",
   "position": 90,
   "asks": [
-    { "key": "environment.from-to", "prompt": "Från vilken version till vilken?", "kind": "text" },
+    {
+      "key": "environment.from-to",
+      "prompt": "question.environment.from-to.prompt",
+      "kind": "text"
+    },
     {
       "key": "environment.infrastructure",
-      "prompt": "Vilken infrastruktur körs det på?",
+      "prompt": "question.environment.infrastructure.prompt",
       "kind": "text"
     },
     {
       "key": "environment.access",
-      "prompt": "Vem har åtkomst till målmiljön?",
+      "prompt": "question.environment.access.prompt",
       "kind": "choice",
       "options": [
-        { "key": "supplier", "label": "Leverantören får åtkomst" },
-        { "key": "customer-executes", "label": "Bara kunden — leverantören instruerar" },
-        { "key": "pairing", "label": "Tillsammans, under bokad tid" }
+        {
+          "key": "supplier",
+          "label": "question.environment.access.option.supplier"
+        },
+        {
+          "key": "customer-executes",
+          "label": "question.environment.access.option.customer-executes"
+        },
+        {
+          "key": "pairing",
+          "label": "question.environment.access.option.pairing"
+        }
       ]
     },
     {
       "key": "environment.downtime",
-      "prompt": "Får driftstopp förekomma?",
+      "prompt": "question.environment.downtime.prompt",
       "kind": "choice",
       "options": [
-        { "key": "none", "label": "Nej" },
-        { "key": "window", "label": "Ja, inom ett bokat fönster" },
-        { "key": "anytime", "label": "Ja, när som helst" }
+        {
+          "key": "none",
+          "label": "question.environment.downtime.option.none"
+        },
+        {
+          "key": "window",
+          "label": "question.environment.downtime.option.window"
+        },
+        {
+          "key": "anytime",
+          "label": "question.environment.downtime.option.anytime"
+        }
       ]
     },
     {
       "key": "environment.downtime-window",
-      "prompt": "Vilket fönster gäller för driftstoppet?",
+      "prompt": "question.environment.downtime-window.prompt",
       "kind": "text",
-      "condition": { "question": "environment.downtime", "equals": "window" }
+      "condition": {
+        "question": "environment.downtime",
+        "equals": "window"
+      }
     },
-    { "ref": "shared.rollback-plan" },
+    {
+      "ref": "shared.rollback-plan"
+    },
     {
       "key": "environment.smoke-list",
-      "prompt": "Vilken rökteslista ska passera efter uppgraderingen?",
+      "prompt": "question.environment.smoke-list.prompt",
       "kind": "longtext"
     }
   ],
@@ -48,25 +75,25 @@
     {
       "key": "version-live",
       "kind": "criterion",
-      "statement": "Målmiljön kör den angivna versionen, avläsbart i miljön själv.",
-      "verification": "Versionen läses av i målmiljön av verifieraren."
+      "statement": "clause.environment.version-live.statement",
+      "verification": "clause.environment.version-live.verification"
     },
     {
       "key": "smoke-passes",
       "kind": "criterion",
-      "statement": "Varje punkt i den angivna rökteslistan passerar efter uppgraderingen.",
-      "verification": "Listan bockas av rad för rad."
+      "statement": "clause.environment.smoke-passes.statement",
+      "verification": "clause.environment.smoke-passes.verification"
     },
     {
       "key": "rollback-documented",
       "kind": "criterion",
-      "statement": "En dokumenterad väg tillbaka finns, och den är provad.",
-      "verification": "Återställningen provas i testmiljön före uppgraderingen av produktionen."
+      "statement": "clause.environment.rollback-documented.statement",
+      "verification": "clause.environment.rollback-documented.verification"
     },
     {
       "key": "application-adaptations",
       "kind": "exclusion",
-      "statement": "Anpassningar i applikationen till följd av uppgraderingen ingår inte, utöver de som räknas upp i kriterierna."
+      "statement": "clause.environment.application-adaptations.statement"
     }
   ]
 }
