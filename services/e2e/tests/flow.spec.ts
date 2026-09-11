@@ -14,6 +14,7 @@ import {
 	ensureSignedOut,
 	submit,
 	runInterview,
+	latestMail,
 	resetFromMailbox,
 	signIn,
 	signOut,
@@ -372,6 +373,27 @@ test("hela flödet från förfrågan till signerat avtal", async ({ page }) => {
 		await expect(
 			page.getByTestId("catalog-item").filter({ hasText: "Fortnox" }),
 		).toHaveCount(0);
+	});
+
+	await test.step("9d. Avtalet kommer som länk i brevet och laddas ner som PDF", async () => {
+		// Brevet bär en länk, inte en bilaga: vägen till dokumentet ska gå genom
+		// inloggningen. Kim är redan inloggad här, så sidan hämtar filen direkt.
+		const brev = await latestMail(kim.email, "/contracts/");
+		const link = /\/contracts\/[0-9a-f-]+\/document/.exec(brev.Text)?.[0];
+		expect(link, "brevet saknar länk till avtalet").toBeTruthy();
+
+		const download = page.waitForEvent("download");
+		await page.goto(link!);
+		const pdf = await download;
+
+		// Filnamnet är uppdrag, datum och parterna — och %PDF visar att det är en riktig
+		// fil och inte ett felsvar som råkade laddas ner.
+		expect(pdf.suggestedFilename()).toContain("Fortnox");
+		expect(pdf.suggestedFilename()).toContain(".pdf");
+		const bytes = await readFile((await pdf.path())!);
+		expect(bytes.subarray(0, 4).toString()).toBe("%PDF");
+
+		await expect(page.getByTestId("contract-document-done")).toBeVisible();
 	});
 });
 

@@ -7,6 +7,7 @@ import { registerSwagger } from './plugins/swagger.ts';
 import { registerErrorHandling } from './plugins/errors.ts';
 import { createSmtpMailer, type Mailer } from './mail/mailer.ts';
 import { createS3ObjectStore, type ObjectStore } from './storage/object-store.ts';
+import { createHttpTypstCompiler, type TypstCompiler } from './typst/compiler.ts';
 import { createRemoteKeys, type KeySource } from './auth/keys.ts';
 import { registerAuth } from './plugins/auth.ts';
 import { healthRoutes } from './routes/health.ts';
@@ -30,6 +31,8 @@ declare module 'fastify' {
     sql: SQL;
     mailer: Mailer;
     objects: ObjectStore;
+    /** Typsättningsmotorn bakom avtalsdokumentet. Testerna skickar in en i minnet. */
+    typst: TypstCompiler;
     /** Keycloaks publika nycklar. Testerna skickar in sina egna. */
     keys: KeySource;
     /** Basadressen som verifieringslänkar byggs på. */
@@ -46,6 +49,8 @@ export interface BuildServerOptions {
   mailer?: Mailer;
   /** Och en Map i stället för att prata S3. */
   objects?: ObjectStore;
+  /** Och en motor som svarar med sin egen källa i stället för att prata med rust-server. */
+  typst?: TypstCompiler;
   /** Och en egen nyckeluppsättning i stället för att fråga Keycloak. */
   keys?: KeySource;
 }
@@ -71,6 +76,8 @@ export async function buildServer(options: BuildServerOptions = {}) {
       region: config.S3_REGION,
     });
 
+  const typst = options.typst ?? createHttpTypstCompiler(config.TYPST_URL);
+
   const app = Fastify({
     logger: { level: config.LOG_LEVEL },
     // Webben proxar /api vidare till API:et, så utan detta ser varje besökare ut att
@@ -84,6 +91,7 @@ export async function buildServer(options: BuildServerOptions = {}) {
   app.decorate('sql', sql);
   app.decorate('mailer', mailer);
   app.decorate('objects', objects);
+  app.decorate('typst', typst);
   app.decorate('keys', keys);
 
   // PUBLIC_BASE_URL sätts av AppHosten. Utan den faller vi tillbaka på den port vi

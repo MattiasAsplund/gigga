@@ -8,7 +8,7 @@ Repot innehåller tre tjänster under `services/`:
 
 | Tjänst | Vad det är |
 |---|---|
-| **api** | Fastify-API med 29 endpoints under `/api/v1` och `/health`. Bun, PostgreSQL, TypeBox |
+| **api** | Fastify-API med 30 endpoints under `/api/v1` och `/health`. Bun, PostgreSQL, TypeBox |
 | **web** | React-gränssnitt ovanpå API:et på fem språk. Vite, react-router, oidc-client-ts |
 | **e2e** | Playwright-svit som går hela flödet genom gränssnittet och fotar det till ett bildspel |
 
@@ -39,7 +39,8 @@ containrarna med podman. Dashboarden startar på `https://localhost:17173` (se
 | **keycloak** | Adminkonsolen, **`admin` / `admin`**. Konton, organisationer, inbjudningar |
 | **mailpit** | All utgående post — bekräftelser, inbjudningar, larm. Inget skickas på riktigt |
 | **pgweb** | Bläddrar i tabellerna |
-| **minio** | Anbudsdokumenten som objekt |
+| **minio** | Anbudsdokumenten och de signerade avtalen som objekt |
+| **typst** | `rust-server`, typsättningsmotorn som gör PDF av avtalet. Bara med `bun run dev-typst` |
 | **e2e** | Playwright-sviten. Startas på begäran från dashboarden, inte vid `aspire run` |
 | **pandoc** | Väntar på e2e och skriver bildspelet till `outputs/` när sviten gått igenom |
 
@@ -143,23 +144,23 @@ På folkid-sidan ska klienten `gigga` vara registrerad med hemligheten
 ## Tester
 
 ```bash
-bun test                  # API:ets svit: 286 tester, ~22 s
+bun test                  # API:ets svit: 303 tester, ~13 s
 bun run test:coverage     # samma, plus täckningsrapport i services/api/coverage/
 bun run typecheck         # AppHosten; tjänsterna har egna typecheck-skript
 bun run lint              # biome
 ```
 
 API-testerna kör mot en riktig Postgres i podman (`gigga-test-pg`, återanvänd mellan
-körningar) och ersätter SMTP och S3 med minnesvarianter. Tokens signeras med en
-testnyckel i stället för att gå mot Keycloak. Testerna är specifikationen: fallen bär
-stabila ID:n och API:erna har byggts fram genom dem, matrisen står i §7.2 i
-[genomförandeplanen](docs/GENOMFORANDE.md).
+körningar) och ersätter SMTP, S3 och typsättningsmotorn med minnesvarianter. Tokens
+signeras med en testnyckel i stället för att gå mot Keycloak. Testerna är
+specifikationen: fallen bär stabila ID:n och API:erna har byggts fram genom dem,
+matrisen står i §7.2 i [genomförandeplanen](docs/GENOMFORANDE.md).
 
 **E2E-sviten** startas från dashboarden (`aspire resource e2e start`) och kör i
 Playwrights egen image mot den levande miljön. Fyra serialiserade test: hela flödet från
-inbjudan till signerat avtal, ändra och dra tillbaka anbud, ett bekräftat konto utan
-organisation, och en ogiltig bekräftelselänk. Varje navigering fotas till
-`services/e2e/slides/`; när sviten gått igenom skriver **pandoc**-resursen
+inbjudan till signerat avtal och nedladdat avtalsdokument, ändra och dra tillbaka anbud,
+ett bekräftat konto utan organisation, och en ogiltig bekräftelselänk. Varje navigering
+fotas till `services/e2e/slides/`; när sviten gått igenom skriver **pandoc**-resursen
 `outputs/flow-dokument.pdf` och `outputs/flow.marp`, det senare att presentera med
 `bun run marp`. Video och spår hamnar i `services/e2e/recordings/`, rapporten i
 `services/e2e/report/`.
@@ -301,6 +302,40 @@ och i samma transaktion blir förfrågan `awarded`, det vinnande anbudet `accept
 Alla felsvar följer RFC 9457 (`application/problem+json`) med ett stabilt `type` att
 grena på. Konventionerna och hela endpointlistan står i [docs/API.md](docs/API.md).
 
+### 8. Avtalet landar i inkorgen
+
+Andra signaturen skriver avtalet som en **PDF** och lägger den i MinIO, och båda parter
+får ett brev i mailpit med en länk till `/contracts/{id}/document` i webben. Länken ligger
+bakom inloggning — ett klick ur inkorgen går via Keycloak och tillbaka, och nedladdningen
+startar då av sig själv. Dokumentet bifogas aldrig i brevet; en bilaga går att
+vidarebefordra förbi behörighetskontrollen, en länk gör det inte.
+
+Dokumentet bär uppdraget, ersättningen, säljarens plan, kravspecens frågor och svar,
+acceptanskriterierna och två signaturblock med namn, företag och tidsstämpel. Filen heter
+`Nattlig export - 2026-09-11 - Nordvind Bygg and Sydlig Teknik.pdf`, och innehållet är
+**alltid på engelska** oavsett gränssnittets språk.
+
+Vägen dit: villkoren i `terms` renderas till en **typst-källa**, som POSTas till
+`rust-server` — typsättningsmotorn i `typst`-resursen — och PDF:en som kommer tillbaka
+lagras. All fritext går in som strängliteraler, så en plan som innehåller typst-kod blir
+text i avtalet och inte kod i typsättningen. Motorn kan inte fälla en affär: går den inte
+att nå när avtalet sluts är avtalet ändå aktivt, och dokumentet sätts vid första
+nedladdningen i stället.
+
+Imagen byggs utanför det här repot, så `typst`-resursen är avstängd som standard. Bygg
+imagen en gång, och starta miljön med flaggan när motorn ska vara med:
+
+```bash
+cd ~/research/typst-server && podman compose build
+```
+
+```bash
+bun run dev-typst
+```
+
+Utan flaggan finns resursen inte. Avtalet sluts ändå, men PDF:en blir osatt tills miljön
+startats om med flaggan — då sätts den vid första nedladdningen.
+
 ## Vad som saknas
 
 **Flödet slutar vid ett signerat avtal.** Leveransrapportering, tidrapportering,
@@ -328,6 +363,12 @@ Utöver det:
 - **Ett dokument vars innehåll tappats går inte att ersätta.** Raden märks
   `available: false`; säljaren får radera och ladda upp på nytt.
 - **Bara läsrätt finns som rättighetsnivå.** Kolumnen är förberedd för fler.
+- **Avtalet är alltid på engelska**, och breven på svenska. Språkvalet bor i webbläsaren
+  och följer inte med till servern, och ett avtal på två språk kräver ett svar på vilken
+  lydelse som gäller vid tvist.
+- **Signaturen är en framställning, inte ett sigill.** Dokumentet ritar namnet och skriver
+  ut vem, för vilket företag och när — beviset är giggas logg tills elektronisk signering
+  finns på plats.
 - **Realmet släpper in vilken redirect-adress som helst** (`*`), med flit i en miljö där
   adresserna lottas. Ett skarpt realm måste peka ut dem.
 - **Migrationer kan inte rullas tillbaka.** Ofarligt mot en icke-persistent databas, men

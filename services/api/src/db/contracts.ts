@@ -1,6 +1,6 @@
 import type { SQL } from 'bun';
 import type { Compensation } from '../domain/bid-rules.ts';
-import type { ContractStatus, SignatureState } from '../domain/contract-rules.ts';
+import type { ContractStatus, SignatureState, SignerRole } from '../domain/contract-rules.ts';
 import { toBid, type Bid, type BidRow } from './bids.ts';
 import type { RequestStatus } from './requests.ts';
 
@@ -27,6 +27,13 @@ export interface Contract extends SignatureState {
   requestId: string;
   bidId: string;
   terms: ContractTerms;
+  /** Personen som signerade för köparen. Parten är företaget — det här är pennan. */
+  buyerSignedBy: string | null;
+  sellerSignedBy: string | null;
+  /** Dokumentet i objektlagringen. Null tills det kompilerats. */
+  documentKey: string | null;
+  documentFilename: string | null;
+  documentGeneratedAt: Date | null;
   createdAt: Date;
 }
 
@@ -38,6 +45,11 @@ interface ContractRow {
   terms: ContractTerms | string;
   buyer_signed_at: Date | null;
   seller_signed_at: Date | null;
+  buyer_signed_by: string | null;
+  seller_signed_by: string | null;
+  document_key: string | null;
+  document_filename: string | null;
+  document_generated_at: Date | null;
   status: ContractStatus;
   created_at: Date;
 }
@@ -53,7 +65,9 @@ function parseTerms(value: ContractTerms | string): ContractTerms {
 }
 
 const CONTRACT_COLUMNS =
-  'id, request_id, bid_id, terms, buyer_signed_at, seller_signed_at, status, created_at';
+  'id, request_id, bid_id, terms, buyer_signed_at, seller_signed_at, ' +
+  'buyer_signed_by, seller_signed_by, ' +
+  'document_key, document_filename, document_generated_at, status, created_at';
 
 function toContract(row: ContractRow): Contract {
   return {
@@ -63,6 +77,11 @@ function toContract(row: ContractRow): Contract {
     terms: parseTerms(row.terms),
     buyerSignedAt: row.buyer_signed_at,
     sellerSignedAt: row.seller_signed_at,
+    buyerSignedBy: row.buyer_signed_by,
+    sellerSignedBy: row.seller_signed_by,
+    documentKey: row.document_key,
+    documentFilename: row.document_filename,
+    documentGeneratedAt: row.document_generated_at,
     status: row.status,
     createdAt: row.created_at,
   };
@@ -133,6 +152,37 @@ export async function findContractByBid(sql: SQL, bidId: string): Promise<Contra
   return row ? toContract(row) : null;
 }
 
+/** Avtalet som det står. Nedladdningen behöver raden, inte anbudet den kom ur. */
+export async function findContractById(sql: SQL, id: string): Promise<Contract | null> {
+  const rows = (await sql`
+    SELECT ${sql.unsafe(CONTRACT_COLUMNS)} FROM contracts WHERE id = ${id}
+  `) as ContractRow[];
+
+  const row = rows[0];
+  return row ? toContract(row) : null;
+}
+
+/**
+ * Pekar ut det kompilerade dokumentet.
+ *
+ * Skrivs efter att objektet ligger i lagringen, aldrig före: en rad som pekar på ett
+ * objekt som inte finns är värre än en rad som saknar peka helt — den senare leder till
+ * en omkompilering, den förra till en tom nedladdning.
+ */
+export async function saveDocumentRef(
+  sql: SQL,
+  contractId: string,
+  document: { key: string; filename: string; generatedAt: Date },
+): Promise<void> {
+  await sql`
+    UPDATE contracts
+    SET document_key = ${document.key},
+        document_filename = ${document.filename},
+        document_generated_at = ${document.generatedAt}
+    WHERE id = ${contractId}
+  `;
+}
+
 /** Låser avtalsraden om den finns, så samtidiga signaturer serialiseras. */
 export async function findContractByBidForUpdate(
   sql: SQL,
@@ -153,12 +203,16 @@ export async function insertContract(
     bidId: string;
     terms: ContractTerms;
     state: SignatureState;
+    /** Köparens penna. Avtalet skapas av köparens signatur, så någon annan finns inte än. */
+    signedBy: string;
   },
 ): Promise<Contract> {
   const rows = (await sql`
-    INSERT INTO contracts (request_id, bid_id, terms, buyer_signed_at, seller_signed_at, status)
+    INSERT INTO contracts (request_id, bid_id, terms, buyer_signed_at, seller_signed_at,
+                           buyer_signed_by, status)
     VALUES (${input.requestId}, ${input.bidId}, ${JSON.stringify(input.terms)}::jsonb,
-            ${input.state.buyerSignedAt}, ${input.state.sellerSignedAt}, ${input.state.status})
+            ${input.state.buyerSignedAt}, ${input.state.sellerSignedAt},
+            ${input.signedBy}, ${input.state.status})
     RETURNING ${sql.unsafe(CONTRACT_COLUMNS)}
   `) as ContractRow[];
 
@@ -171,11 +225,16 @@ export async function updateSignatures(
   sql: SQL,
   contractId: string,
   state: SignatureState,
+  signer: { role: SignerRole; userId: string },
 ): Promise<Contract> {
   const rows = (await sql`
     UPDATE contracts
     SET buyer_signed_at = ${state.buyerSignedAt},
         seller_signed_at = ${state.sellerSignedAt},
+        buyer_signed_by = CASE WHEN ${signer.role} = 'buyer' THEN ${signer.userId}::uuid
+                               ELSE buyer_signed_by END,
+        seller_signed_by = CASE WHEN ${signer.role} = 'seller' THEN ${signer.userId}::uuid
+                                ELSE seller_signed_by END,
         status = ${state.status}
     WHERE id = ${contractId}
     RETURNING ${sql.unsafe(CONTRACT_COLUMNS)}

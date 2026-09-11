@@ -9,6 +9,7 @@ import { RequestSpec } from './pages/RequestSpec.tsx';
 import { MyRequests } from './pages/MyRequests.tsx';
 import { MyBids } from './pages/MyBids.tsx';
 import { BidDetail } from './pages/BidDetail.tsx';
+import { ContractDocument } from './pages/ContractDocument.tsx';
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { _, LOCALES, setLocale, useLocale, type Locale } from './i18n.ts';
 
@@ -204,6 +205,16 @@ function Shell() {
             element={
               <RequireAuth>
                 <BidDetail />
+              </RequireAuth>
+            }
+          />
+          {/* Adressen i brevet när båda signerat. Skyddad, så ett klick ur inkorgen
+              går via Keycloak och tillbaka hit innan filen hämtas. */}
+          <Route
+            path="/contracts/:contractId/document"
+            element={
+              <RequireAuth>
+                <ContractDocument />
               </RequireAuth>
             }
           />
