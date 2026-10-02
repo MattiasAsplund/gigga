@@ -78,10 +78,12 @@ genom en cloudflare-tunnel — utan konfiguration per miljö.
 
 ### Språk
 
-Gränssnittet finns på fem språk: `sv-SE`, `en-GB`, `nb-NO`, `da-DK` och `fi-FI`. Väljaren står i mastheaden bredvid inloggningen och följer med in, så språket
-går att byta mitt i ett formulär. Bytet slår igenom direkt på hela sidan — belopp och
-datum formateras också efter det valda språket — och valet sparas i webbläsaren till
-nästa besök. Standard är svenska.
+Gränssnittet finns på fem språk: `sv-SE`, `en-GB`, `nb-NO`, `da-DK` och `fi-FI`. Språket
+väljs inte i webbläsaren utan när webben startar: AppHosten sätter `TEST_LOCALE` på
+webben, Vite bakar in värdet (`define` i `vite.config.ts`) och hela sidan — belopp och
+datum också — följer det. Standard är svenska. I dashboarden byter kommandot *Starta
+på valt språk* på webbresursen språk: det startar om webben med det valda. Sviten
+startas sedan för hand och får samma språk.
 
 Texterna ligger i `services/web/src/locales/<språk>.json`, en platt fil per språk med
 samma nycklar (`bidDetail.sign`, `catalog.empty`, …) och `{namn}` som platshållare.
@@ -363,9 +365,9 @@ Utöver det:
 - **Ett dokument vars innehåll tappats går inte att ersätta.** Raden märks
   `available: false`; säljaren får radera och ladda upp på nytt.
 - **Bara läsrätt finns som rättighetsnivå.** Kolumnen är förberedd för fler.
-- **Avtalet är alltid på engelska**, och breven på svenska. Språkvalet bor i webbläsaren
-  och följer inte med till servern, och ett avtal på två språk kräver ett svar på vilken
-  lydelse som gäller vid tvist.
+- **Avtalet är alltid på engelska**, och breven på svenska. Språket är webbens, inte
+  användarens, och följer inte med till API:et; ett avtal på två språk kräver dessutom
+  ett svar på vilken lydelse som gäller vid tvist.
 - **Signaturen är en framställning, inte ett sigill.** Dokumentet ritar namnet och skriver
   ut vem, för vilket företag och när — beviset är giggas logg tills elektronisk signering
   finns på plats.

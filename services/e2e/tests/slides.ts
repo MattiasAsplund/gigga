@@ -131,7 +131,13 @@ function sökväg(url: string): string {
   return path.replace(/[0-9a-f]{8}-[0-9a-f-]{27}/g, (uuid) => `${uuid.slice(0, 8)}…`);
 }
 
-const tom = (url: string): boolean => url === '' || url === 'about:blank';
+/**
+ * Ingen sida att fota: före första navigeringen, och när navigeringen misslyckades och
+ * Chromium visar sin egen felsida (`chrome-error://chromewebdata/`). En bild på den är
+ * en tom ruta med en felikon — den skulle ha hamnat i bildspelet som en vit slide.
+ */
+const tom = (url: string): boolean =>
+  url === '' || url === 'about:blank' || url.startsWith('chrome-error://');
 
 /**
  * Hela sidan, inte bara det som råkar synas. Flera vyer — ett anbud med dokument och

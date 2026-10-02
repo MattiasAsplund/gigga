@@ -4,7 +4,6 @@
   "api.clauseExclusion": "Not included",
   "api.clauseMinimum": "Minimum requirements that always apply",
   "api.clauseTerm": "Terms",
-  "app.language": "Language",
   "app.loadingSession": "Loading your session…",
   "app.login": "Log in",
   "app.logout": "Log out",

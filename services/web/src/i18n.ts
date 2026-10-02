@@ -1,4 +1,3 @@
-import { useSyncExternalStore } from "react";
 import sv from "./locales/sv-SE.json";
 import en from "./locales/en-GB.json";
 import nb from "./locales/nb-NO.json";
@@ -18,60 +17,34 @@ const tables: Record<Locale, Record<string, string>> = {
 	"fi-FI": fi,
 };
 
-const STORAGE_KEY = "gigga.locale";
-
 /** `app.login`, `question.integration.systems.prompt` — men inte en mening med blanksteg. */
 const KEY_SHAPE = /^[a-z][a-z0-9-]*(\.[a-zA-Z0-9-]+)+$/;
 
-function storedLocale(): Locale {
-	try {
-		const value = localStorage.getItem(STORAGE_KEY);
-		if (value && (LOCALES as readonly string[]).includes(value))
-			return value as Locale;
-	} catch {
-		// Lagringen kan vara avstängd; standardspråket duger då.
+/*
+ * Språket bestäms när webben startar, inte av besökaren: AppHosten sätter TEST_LOCALE
+ * på webben (kommandot "Starta på valt språk" i dashboarden), och vite.config.ts bakar in
+ * värdet som import.meta.env.TEST_LOCALE. Ett byte är alltså en omstart av webben, och
+ * inget en komponent kan prenumerera på — därför en konstant och inget tillstånd.
+ *
+ * Ett värde som inte är ett av webbens språk faller tillbaka på svenska, med en varning:
+ * hellre en sida på fel språk än en tom.
+ */
+function configuredLocale(): Locale {
+	const value = import.meta.env.TEST_LOCALE;
+	if ((LOCALES as readonly string[]).includes(value)) return value as Locale;
+	if (value) {
+		console.warn(
+			`i18n: TEST_LOCALE=${value} är inget av webbens språk (${LOCALES.join(", ")}); svenska används`,
+		);
 	}
 	return "sv-SE";
 }
 
-/*
- * Språket är ett litet externt tillstånd, inte React-state: `_()` anropas från vilken
- * komponent som helst utan hook, och byte ska slå igenom överallt på en gång. Den som
- * prenumererar (App) ritas om vid byte, och med den hela trädet — alla `_()`-anrop körs
- * då på nytt mot den nya tabellen.
- */
-let current: Locale = storedLocale();
-const listeners = new Set<() => void>();
-
-function applyLang(): void {
-	document.documentElement.lang = current;
-}
-applyLang();
+const current: Locale = configuredLocale();
+document.documentElement.lang = current;
 
 export function getLocale(): Locale {
 	return current;
-}
-
-export function setLocale(locale: Locale): void {
-	if (locale === current) return;
-	current = locale;
-	applyLang();
-	try {
-		localStorage.setItem(STORAGE_KEY, locale);
-	} catch {
-		// Valet gäller ändå för den här sidvisningen.
-	}
-	for (const listener of listeners) listener();
-}
-
-function subscribe(listener: () => void): () => void {
-	listeners.add(listener);
-	return () => listeners.delete(listener);
-}
-
-/** Aktuellt språk, med omritning när det byts. Räcker att anropa högst upp i trädet. */
-export function useLocale(): Locale {
-	return useSyncExternalStore(subscribe, getLocale, getLocale);
 }
 
 /**

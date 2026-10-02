@@ -3,8 +3,10 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import {
 	createBuilder,
+	IconVariant,
 	type ResourceUrlsCallbackContext,
 } from "./.aspire/modules/aspire.mjs";
+import { InputType } from "./.aspire/modules/base.mjs";
 
 // Tre flaggor styr vad miljön innehåller.
 //
@@ -369,9 +371,9 @@ const web = await builder
 	.addViteApp("web", "./services/web")
 	// Samma skäl som för api: ingen egen installerare.
 	.withBun({ install: false })
-	// isProxied: false — Vite binder porten själv i stället för DCP:s proxy, som bara
-	// lyssnar på 127.0.0.1. Det är vad som gör webben nåbar från e2e-containern.
-	.withHttpEndpoint({ env: "PORT", port: 5173, isProxied: false })
+	// Porten hålls av DCP:s proxy (standard), inte av Vite själv — se e2e-sviten längre
+	// ned: tunneln dit överlever inte en omstart av en självbunden port.
+	.withHttpEndpoint({ env: "PORT", port: 5173 })
 	// Referensen och inte en sträng: porten är lottad och känd först när api tilldelats
 	// sin, alltså efter att grafen byggts. Vite läser variabeln när servern startar, och
 	// waitFor(api) nedan gör att det aldrig sker innan adressen finns.
@@ -579,9 +581,23 @@ if (tunnels) {
  *   port i e2e-containern. Varken en hårdkodad Windows-adress eller
  *   `host.containers.internal` fungerar tillförlitligt med Podman.
  *
+ *   Tunneln pekar på webbens *tjänst* i DCP, och därför är webbens endpoint proxad
+ *   (standard) och inte bunden av Vite själv. Med `isProxied: false` byttes tjänsten
+ *   ut vid varje omstart av webben, tunneln skulle bindas om på samma port i
+ *   containernätet — och misslyckades: *"listen tcp 0.0.0.0:5173: bind: address
+ *   already in use"* i tunnelproxyn, eftersom den gamla lyssnaren aldrig släpptes.
+ *   Därefter svarade webben inte längre från containern (ERR_CONNECTION_RESET) förrän
+ *   AppHosten startats om, och sviten föll på första sidan. Kommandot "Starta på valt
+ *   språk" på webben startar om den, så det här inträffade vid varje språkbyte.
+ *   Bakom proxyn lever tjänsten kvar när processen byts, och tunneln rörs inte.
+ *
  * `:z` på monteringen är inte valfritt på en SELinux-värd: utan omtaggning ger `/e2e`
  * "Permission denied" och npm dör innan Playwright ens startar. Aspires
  * `withBindMount()` kan inte sätta etiketten, så monteringen görs som runtime-argument.
+ *
+ * Webbens språkfiler monteras också in, lästa men inte skrivna: sviten slår upp
+ * gränssnittets lydelser i samma fil som webben läser för körningens språk (se
+ * tests/locale.ts), och containern ser ingenting utanför sina monteringar.
  *
  * withExplicitStart: sviten körs på begäran från dashboarden, inte varje gång
  * `aspire run` startar miljön.
@@ -591,10 +607,13 @@ const e2e = await builder
 	.withContainerRuntimeArgs([
 		"-v",
 		`${import.meta.dirname}/services/e2e:/e2e:z`,
+		"-v",
+		`${import.meta.dirname}/services/web/src/locales:/locales:z,ro`,
 	])
 	.withReference(web)
 	.withEnvironment("BASE_URL", await web.getEndpoint("http"))
 	.withEnvironment("MAILPIT_URL", "http://mailpit:8025")
+	.withEnvironment("LOCALES_DIR", "/locales")
 	// Keycloak nås samma väg som webbläsaren gör det, alltså genom webbens /auth-proxy —
 	// sviten behöver ingen egen adress dit. Adminuppgifterna behövs för att koppla
 	// nyregistrerade konton till en organisation: självregistrering ger inget medlemskap,
@@ -611,6 +630,72 @@ const e2e = await builder
 	.withExplicitStart()
 	.waitFor(web)
 	.waitFor(mailpit);
+
+/*
+ * Webben och sviten kör på samma språk, valt i dashboarden. Kommandot nedan på webben
+ * frågar efter språk, sparar svaret och startar om webben. Miljöcallbackarna på de två
+ * resurserna läser det sparade värdet när processen respektive containern sätts upp —
+ * därför står de på resurserna och inte i kommandot, och därför måste webben startas
+ * om: Vite bakar in TEST_LOCALE när servern startar (services/web/vite.config.ts), och
+ * webben har ingen språkväljare. Sviten startas sedan för hand, som förut: containern
+ * sätts upp på nytt vid varje start, så den får det språk webben senast startades på.
+ * Playwright-konfigurationen läser samma variabel, slår upp webbens språkfil innan
+ * körningen börjar och sätter webbläsarens språk efter den. Testerna jämför sedan
+ * gränssnittets lydelser mot filen — inte mot inskrivna svenska texter.
+ *
+ * Den vanliga startknappen kör som förut: på det språk webben senast startades med,
+ * alltså svenska tills något annat valts.
+ */
+let e2eLocale = "sv-SE";
+await web.withEnvironmentCallback(async (context) => {
+	await (await context.environment()).set("TEST_LOCALE", e2eLocale);
+});
+await e2e.withEnvironmentCallback(async (context) => {
+	await (await context.environment()).set("TEST_LOCALE", e2eLocale);
+});
+
+await web.withCommand(
+	"start-with-locale",
+	"Starta på valt språk",
+	async (context) => {
+		const locale = await context.arguments().value("locale");
+		if (!locale) {
+			return { success: false, errorMessage: "Välj ett språk." };
+		}
+		e2eLocale = locale;
+		const commands = await (
+			await context.services()
+		).getResourceCommandService();
+		// Omstart om webben kör; är den stoppad går omstarten inte, och då startas den.
+		const restarted = await commands.executeCommandAsync(web, "resource-restart");
+		if (restarted.success) return restarted;
+		return commands.executeCommandAsync(web, "resource-start");
+	},
+	{
+		commandOptions: {
+			description:
+				"Startar (om) webben på valt språk. Starta sviten för hand när webben är uppe.",
+			arguments: [
+				{
+					name: "locale",
+					label: "Språk",
+					inputType: InputType.Choice,
+					required: true,
+					value: "sv-SE",
+					options: [
+						{ key: "sv-SE", value: "Svenska (sv-SE)" },
+						{ key: "en-GB", value: "English (en-GB)" },
+						{ key: "nb-NO", value: "Norsk (nb-NO)" },
+						{ key: "da-DK", value: "Dansk (da-DK)" },
+						{ key: "fi-FI", value: "Suomi (fi-FI)" },
+					],
+				},
+			],
+			iconName: "Play",
+			iconVariant: IconVariant.Filled,
+		},
+	},
+);
 
 /*
  * Sviten skriver till services/e2e/slides: en skärmbild per navigering, och två

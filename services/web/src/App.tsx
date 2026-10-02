@@ -11,32 +11,7 @@ import { MyBids } from './pages/MyBids.tsx';
 import { BidDetail } from './pages/BidDetail.tsx';
 import { ContractDocument } from './pages/ContractDocument.tsx';
 import { useEffect, useRef, useState, type ReactElement } from 'react';
-import { _, LOCALES, setLocale, useLocale, type Locale } from './i18n.ts';
-
-/**
- * Språkväljaren står bredvid inloggningen och följer med in: den som är inloggad ska
- * kunna byta mitt i ett formulär. Valet slår igenom direkt — App prenumererar på
- * språket och ritar om hela trädet — och sparas i localStorage till nästa besök.
- */
-function LanguagePicker() {
-  const locale = useLocale();
-
-  return (
-    <select
-      className="language"
-      aria-label={_('app.language')}
-      value={locale}
-      onChange={(event) => setLocale(event.target.value as Locale)}
-      data-testid="language"
-    >
-      {LOCALES.map((code) => (
-        <option key={code} value={code}>
-          {code}
-        </option>
-      ))}
-    </select>
-  );
-}
+import { _ } from './i18n.ts';
 
 function Masthead() {
   const { account, signOut } = useAuth();
@@ -71,7 +46,6 @@ function Masthead() {
           ) : (
             <NavLink to="/">{_('app.login')}</NavLink>
           )}
-          <LanguagePicker />
         </div>
       </div>
     </header>
@@ -227,10 +201,6 @@ function Shell() {
 }
 
 export function App() {
-  // Prenumerationen ligger här och ingen annanstans: ett språkbyte ritar om App, och
-  // med den varje sida och varje `_()`-anrop. Sidorna behöver inte veta om det.
-  useLocale();
-
   return (
     <AuthProvider>
       <Shell />

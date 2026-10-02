@@ -4,7 +4,7 @@
     "language": "typescript/nodejs"
   },
   "sdk": {
-    "version": "13.5.3"
+    "version": "13.6.0"
   },
   "profiles": {
     "https": {
@@ -16,10 +16,10 @@
     }
   },
   "packages": {
-    "Aspire.Hosting.PostgreSQL": "13.5.3",
-    "Aspire.Hosting.JavaScript": "13.5.3",
-    "CommunityToolkit.Aspire.Hosting.MailPit": "13.5.0",
+    "Aspire.Hosting.PostgreSQL": "13.6.0",
+    "Aspire.Hosting.JavaScript": "13.6.0",
+    "CommunityToolkit.Aspire.Hosting.MailPit": "13.6.0",
     "CommunityToolkit.Aspire.Hosting.Minio": "13.5.0",
-    "Aspire.Hosting.Keycloak": "13.5.3-preview.1.26425.3"
+    "Aspire.Hosting.Keycloak": "13.6.0-preview.1.26479.8"
   }
 }

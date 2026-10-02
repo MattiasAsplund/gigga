@@ -8,6 +8,14 @@ import react from "@vitejs/plugin-react";
  */
 export default defineConfig({
 	plugins: [react()],
+	/*
+	 * Gränssnittets språk. AppHosten sätter TEST_LOCALE på webben — samma värde som
+	 * e2e-sviten får — och värdet bakas in här när servern startar, så ett byte är en
+	 * omstart av webben. Tomt när Vite körs för hand: då väljer i18n.ts svenska.
+	 */
+	define: {
+		"import.meta.env.TEST_LOCALE": JSON.stringify(process.env.TEST_LOCALE ?? ""),
+	},
 	server: {
 		host: "0.0.0.0",
 		// E2E-sviten kör i en container och når värden under det här namnet. Vite svarar

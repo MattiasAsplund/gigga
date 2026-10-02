@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 // Inte från '@playwright/test' rakt av: den här `test` bär `page`-fixturen som fotar
 // varje navigering till bildspelet i slides/. Se tests/slides.ts.
 import { test, expect } from "./slides.ts";
+import { _ } from "./locale.ts";
 import {
 	attach,
 	NEW_PASSWORD,
@@ -94,19 +95,21 @@ test("hela flödet från förfrågan till signerat avtal", async ({ page }) => {
 
 	await test.step("4a. Kim fastställer kravspecen — utan den går inget anbud att lämna", async () => {
 		// Hela intervjun genom gränssnittet: typval, frågor, kriterier, publicering.
-		await runInterview(page, "Integration mellan två system");
+		await runInterview(page, _("catalog.integration.name"));
 
 		// Och tillbaka på förfrågan syns den publicerade lydelsen.
 		await page.goto(`/requests/${requestId}`);
 		await expect(page.getByTestId("spec-panel")).toContainText(
-			"Acceptanskriterier",
+			_("api.clauseCriterion"),
 		);
 	});
 
 	await test.step("4b. Kim kan inte bjuda på sin egen förfrågan", async () => {
 		await page.goto("/requests");
 		const own = page.getByTestId("catalog-item").filter({ hasText: "Fortnox" });
-		await expect(own.getByTestId("cannot-bid")).toContainText("egen förfrågan");
+		await expect(own.getByTestId("cannot-bid")).toContainText(
+			_("catalog.cannotBidOwn"),
+		);
 	});
 
 	await test.step("5. Robin hittar uppdraget i katalogen", async () => {
@@ -313,13 +316,17 @@ test("hela flödet från förfrågan till signerat avtal", async ({ page }) => {
 
 		// Den som signerat erbjuds inte att signera igen.
 		await expect(page.getByTestId("sign")).toHaveCount(0);
-		await expect(page.getByTestId("already-signed")).toContainText("köpare");
+		await expect(page.getByTestId("already-signed")).toContainText(
+			_("bidDetail.roleBuyer"),
+		);
 
 		// Signaturen ska bära sin tidpunkt, inte bara en flagga: "Signerat" tillsammans med
 		// "Ingen signatur än" i samma ruta är två påståenden som motsäger varandra.
 		const köparensSignatur = page.getByTestId("signature-buyer");
-		await expect(köparensSignatur).toContainText("Signerat");
-		await expect(köparensSignatur).not.toContainText("Ingen signatur än");
+		await expect(köparensSignatur).toContainText(_("bidDetail.signed"));
+		await expect(köparensSignatur).not.toContainText(
+			_("bidDetail.noSignatureYet"),
+		);
 
 		await signOut(page);
 		await signIn(page, robin);
@@ -340,14 +347,16 @@ test("hela flödet från förfrågan till signerat avtal", async ({ page }) => {
 		// Och när båda signerat är knappen borta för säljaren också, även efter omladdning.
 		await page.reload();
 		await expect(page.getByTestId("sign")).toHaveCount(0);
-		await expect(page.getByTestId("already-signed")).toContainText("bindande");
+		await expect(page.getByTestId("already-signed")).toContainText(
+			_("bidDetail.contractBinding"),
+		);
 
 		// Säljarens vy av avtalet: båda signaturerna med tidpunkt, ingen "Ingen signatur än".
 		await expect(page.getByTestId("signature-seller")).toContainText(
-			"Signerat",
+			_("bidDetail.signed"),
 		);
 		await expect(page.getByTestId("contract")).not.toContainText(
-			"Ingen signatur än",
+			_("bidDetail.noSignatureYet"),
 		);
 	});
 

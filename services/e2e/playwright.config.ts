@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { locale } from './tests/locale.ts';
 
 /**
  * Sviten körs i Playwrights egen image via AppHosten, så webbläsarversionen följer
@@ -7,6 +8,11 @@ import { defineConfig, devices } from '@playwright/test';
  */
 const target = new URL(process.env.BASE_URL ?? 'http://localhost:5173');
 
+// Språket kommer från AppHosten (kommandot "Starta på valt språk" på webbresursen) som
+// TEST_LOCALE — samma variabel som webben startats med — och importen ovan läser webbens
+// språkfil för det redan här, innan körningen börjar, så att ett okänt språk stoppar
+// den med ett besked. Webbläsarens locale sätts efter det nedan, så att belopp och datum
+// som formateras av webbläsaren följer med.
 /*
  * Webbläsaren surfar på `localhost` och löser upp det till tunnelns värdnamn.
  *
@@ -49,7 +55,7 @@ export default defineConfig({
     // Alltid på: flödet är en kedja där ett fel långt in är lättare att förstå med
     // stegen före på film. Retries är 0, så det finns inget omtag att spara till.
     video: 'on',
-    locale: 'sv-SE',
+    locale,
   },
   projects: [
     {
